@@ -1,0 +1,6 @@
+{
+  "name": "StudentNeed",
+  "description": "A campus-only student marketplace to buy, sell, borrow, and request items.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

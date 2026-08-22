@@ -1,0 +1,111 @@
+{
+  "collections": {
+    "users": {
+      "rules": {
+        "read": "request.auth != null",
+        "create": "request.auth != null && request.auth.uid == id",
+        "update": "request.auth != null && request.auth.uid == id",
+        "delete": "false"
+      },
+      "schema": {
+        "email": "string",
+        "name": "string",
+        "department": "string",
+        "campus": "string",
+        "rating": "number",
+        "exchangesCompleted": "number",
+        "avatarUrl": "string?",
+        "role": "string",
+        "isVerified": "boolean",
+        "createdAt": "timestamp"
+      }
+    },
+    "listings": {
+      "rules": {
+        "read": "request.auth != null",
+        "create": "request.auth != null && request.resource.data.sellerId == request.auth.uid",
+        "update": "request.auth != null && (resource.data.sellerId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')",
+        "delete": "request.auth != null && (resource.data.sellerId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')"
+      },
+      "schema": {
+        "title": "string",
+        "description": "string",
+        "price": "number?",
+        "type": "string",
+        "condition": "string",
+        "category": "string",
+        "location": "string",
+        "sellerId": "string",
+        "images": "list",
+        "status": "string",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "requests": {
+      "rules": {
+        "read": "request.auth != null",
+        "create": "request.auth != null && request.resource.data.requesterId == request.auth.uid",
+        "update": "request.auth != null && (resource.data.requesterId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')",
+        "delete": "request.auth != null && (resource.data.requesterId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')"
+      },
+      "schema": {
+        "title": "string",
+        "category": "string",
+        "description": "string",
+        "budget": "number?",
+        "neededBy": "string",
+        "location": "string",
+        "status": "string",
+        "requesterId": "string",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "reservations": {
+      "rules": {
+        "read": "request.auth != null && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')",
+        "create": "request.auth != null && request.resource.data.buyerId == request.auth.uid",
+        "update": "request.auth != null && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')",
+        "delete": "false"
+      },
+      "schema": {
+        "listingId": "string",
+        "buyerId": "string",
+        "sellerId": "string",
+        "status": "string",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "chats": {
+      "rules": {
+        "read": "request.auth != null && request.auth.uid in resource.data.participants",
+        "create": "request.auth != null && request.auth.uid in request.resource.data.participants",
+        "update": "request.auth != null && request.auth.uid in resource.data.participants",
+        "delete": "false"
+      },
+      "schema": {
+        "listingId": "string",
+        "reservationId": "string?",
+        "participants": "list",
+        "lastMessage": "string?",
+        "lastMessageAt": "timestamp?",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "locations": {
+      "rules": {
+        "read": "request.auth != null",
+        "create": "get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'",
+        "update": "get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'",
+        "delete": "get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'"
+      },
+      "schema": {
+        "name": "string",
+        "isActive": "boolean"
+      }
+    }
+  }
+}
