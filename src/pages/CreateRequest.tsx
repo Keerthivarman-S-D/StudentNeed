@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AlertCircle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Category, ItemRequest } from '../types';
+import { Category } from '../types';
 
 export function CreateRequest() {
   const navigate = useNavigate();
   const { addRequest } = useAppContext();
-  const { currentUser } = useAuth();
+  const { currentUser, firebaseUser } = useAuth();
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -19,37 +20,37 @@ export function CreateRequest() {
   const [neededBy, setNeededBy] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser) return navigate('/login');
+    if (!currentUser || !firebaseUser) return navigate('/login');
     
     setIsSubmitting(true);
+    setError(null);
     
-    // Simulate network delay
-    setTimeout(() => {
-      const newRequest: ItemRequest = {
-        id: `r_${Date.now()}`,
-        title,
-        description,
+    try {
+      await addRequest({
+        title: title.trim(),
+        description: description.trim(),
         budget: budget ? Number(budget) : undefined,
         category,
-        location,
-        neededBy,
+        location: location.trim(),
+        neededBy: neededBy.trim(),
         status: 'open',
-        requesterId: currentUser.id,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+      });
       
-      addRequest(newRequest);
       setIsSubmitting(false);
       setShowSuccess(true);
       
       setTimeout(() => {
         navigate('/requests');
-      }, 2000);
-    }, 1000);
+      }, 1500);
+    } catch (err: any) {
+      console.error('Failed to create request:', err);
+      setIsSubmitting(false);
+      setError(err.message || 'Failed to post request to Firestore. Please try again.');
+    }
   };
 
   const categories: Category[] = ['Textbooks', 'Electronics', 'Stationery', 'Lab Essentials', 'Hostel Essentials', 'Sports', 'College Wear', 'Other'];
@@ -75,6 +76,13 @@ export function CreateRequest() {
         <h1 className="text-3xl font-bold text-zinc-900">Can't find what you need?</h1>
         <p className="text-zinc-600 mt-1">Tell the campus what you're looking for.</p>
       </div>
+
+      {error && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
+          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8">
         <div>
@@ -147,7 +155,7 @@ export function CreateRequest() {
         <div className="flex items-center justify-end gap-4 pt-4 border-t border-zinc-100">
           <Button type="button" variant="ghost" onClick={() => navigate(-1)}>Cancel</Button>
           <Button type="submit" size="lg" disabled={isSubmitting}>
-            {isSubmitting ? 'Posting...' : 'Post Request'}
+            {isSubmitting ? 'Posting to Firestore...' : 'Post Request'}
           </Button>
         </div>
       </form>

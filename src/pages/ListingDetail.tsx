@@ -1,23 +1,141 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MapPin, Clock, Heart, MessageSquare, ChevronLeft, AlertCircle } from 'lucide-react';
+import { MapPin, Clock, Heart, MessageSquare, ChevronLeft, AlertCircle, Loader2 } from 'lucide-react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { cn } from '../lib/utils';
+import { Listing, User } from '../types';
 
 export function ListingDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { listings, users, savedListings, toggleSaveListing } = useAppContext();
+  const { listings, listingsLoading, users, savedListings, toggleSaveListing } = useAppContext();
   const { currentUser } = useAuth();
   
+  const [fetchedListing, setFetchedListing] = useState<Listing | null>(null);
+  const [fetchedSeller, setFetchedSeller] = useState<User | null>(null);
+  const [isFetchingDirect, setIsFetchingDirect] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
 
-  const listing = listings.find(l => l.id === id);
-  const seller = users.find(u => u.id === listing?.sellerId);
+  // 1. Resolve listing from context or fetch directly if accessed via deep link
+  const listingFromContext = listings.find(l => l.id === id);
+  const listing = listingFromContext || fetchedListing;
+
+  useEffect(() => {
+    if (!listingFromContext && id && !listingsLoading) {
+      let isMounted = true;
+      setIsFetchingDirect(true);
+
+      const fetchSingleListing = async () => {
+        try {
+          const docSnap = await getDoc(doc(db, 'listings', id));
+          if (docSnap.exists() && isMounted) {
+            const data = docSnap.data();
+            const createdAt = data.createdAt?.toDate
+              ? data.createdAt.toDate().toISOString()
+              : typeof data.createdAt === 'string'
+              ? data.createdAt
+              : new Date().toISOString();
+            const updatedAt = data.updatedAt?.toDate
+              ? data.updatedAt.toDate().toISOString()
+              : typeof data.updatedAt === 'string'
+              ? data.updatedAt
+              : new Date().toISOString();
+
+            setFetchedListing({
+              id: docSnap.id,
+              title: data.title || '',
+              description: data.description || '',
+              price: data.price !== undefined ? Number(data.price) : undefined,
+              type: data.type || 'Sale',
+              condition: data.condition || 'Good',
+              category: data.category || 'Other',
+              location: data.location || '',
+              sellerId: data.sellerId || '',
+              images: Array.isArray(data.images) && data.images.length > 0
+                ? data.images
+                : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800'],
+              status: data.status || 'available',
+              createdAt,
+              updatedAt,
+            });
+          }
+        } catch (err) {
+          console.error('Error fetching listing directly:', err);
+        } finally {
+          if (isMounted) setIsFetchingDirect(false);
+        }
+      };
+
+      fetchSingleListing();
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [id, listingFromContext, listingsLoading]);
+
+  // 2. Resolve seller details
+  const sellerFromContext = users.find(u => u.id === listing?.sellerId);
+  const seller = sellerFromContext || fetchedSeller || (listing ? {
+    id: listing.sellerId,
+    name: 'Student Seller',
+    email: '',
+    department: 'Campus Member',
+    campus: 'Main Campus',
+    rating: 5.0,
+    exchangesCompleted: 1,
+    role: 'student' as const,
+    isVerified: true,
+    createdAt: new Date().toISOString(),
+  } : null);
+
+  useEffect(() => {
+    if (listing?.sellerId && !sellerFromContext && !fetchedSeller) {
+      let isMounted = true;
+      const fetchSellerDoc = async () => {
+        try {
+          const userSnap = await getDoc(doc(db, 'users', listing.sellerId));
+          if (userSnap.exists() && isMounted) {
+            const uData = userSnap.data();
+            setFetchedSeller({
+              id: userSnap.id,
+              name: uData.name || 'Student',
+              email: uData.email || '',
+              department: uData.department || 'Anna Univ',
+              campus: uData.campus || 'Main Campus',
+              rating: typeof uData.rating === 'number' ? uData.rating : 5.0,
+              avatarUrl: uData.avatarUrl,
+              exchangesCompleted: uData.exchangesCompleted || 0,
+              role: uData.role || 'student',
+              isVerified: Boolean(uData.isVerified),
+              createdAt: new Date().toISOString(),
+            });
+          }
+        } catch (err) {
+          console.warn('Could not fetch seller user doc:', err);
+        }
+      };
+      fetchSellerDoc();
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [listing?.sellerId, sellerFromContext, fetchedSeller]);
+
   const isSaved = listing ? savedListings.includes(listing.id) : false;
+
+  if (listingsLoading || isFetchingDirect) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-zinc-600 mb-4" />
+        <p className="text-zinc-500 font-medium">Loading item details from Firestore...</p>
+      </div>
+    );
+  }
 
   if (!listing || !seller) {
     return (
@@ -102,11 +220,17 @@ export function ListingDetail() {
 
           <div className="mb-8 flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
             <div className="flex items-center gap-3">
-              <img 
-                src={seller.avatarUrl} 
-                alt={seller.name} 
-                className="h-12 w-12 rounded-full object-cover border border-zinc-200 bg-white"
-              />
+              {seller.avatarUrl ? (
+                <img 
+                  src={seller.avatarUrl} 
+                  alt={seller.name} 
+                  className="h-12 w-12 rounded-full object-cover border border-zinc-200 bg-white"
+                />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900 text-white font-bold text-lg">
+                  {seller.name.charAt(0).toUpperCase()}
+                </div>
+              )}
               <div>
                 <p className="font-semibold text-zinc-900">{seller.name}</p>
                 <p className="text-sm text-zinc-500">{seller.department} • {seller.rating} ★</p>
@@ -135,8 +259,8 @@ export function ListingDetail() {
                 </Button>
               </>
             ) : (
-              <Button size="lg" variant="outline" className="flex-1 text-base">
-                Edit Listing
+              <Button size="lg" variant="outline" className="flex-1 text-base" onClick={() => navigate('/profile')}>
+                Manage My Listing
               </Button>
             )}
           </div>
@@ -164,3 +288,4 @@ export function ListingDetail() {
     </div>
   );
 }
+

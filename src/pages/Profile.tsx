@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Star, Package, Bookmark, Settings, UserCircle2, Upload, Check } from 'lucide-react';
+import { LogOut, Star, Package, Bookmark, Settings, UserCircle2, Upload, Check, Loader2 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { auth, db } from '../lib/firebase';
+import { auth, db, storage } from '../lib/firebase';
 import { updatePassword } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { ListingCard } from '../components/ListingCard';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -99,58 +100,47 @@ export function Profile() {
     }
   };
 
-  const processImage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 256;
-          const MAX_HEIGHT = 256;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
-        };
-        img.onerror = (error) => reject(error);
-      };
-      reader.onerror = (error) => reject(error);
-    });
-  };
-
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !firebaseUser) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      setImageMessage({ type: 'error', text: 'Unsupported image format. Please upload JPG, PNG, WEBP, or GIF.' });
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setImageMessage({ type: 'error', text: 'Image exceeds 5MB limit. Please choose a smaller photo.' });
+      if (e.target) e.target.value = '';
+      return;
+    }
     
     setIsUploadingImage(true);
     setImageMessage({ type: '', text: '' });
     try {
-      const base64Url = await processImage(file);
+      const ext = file.name.split('.').pop() || 'jpg';
+      const safeName = `${Date.now()}_avatar.${ext.replace(/[^a-zA-Z0-9]/g, '')}`;
+      const avatarStorageRef = ref(storage, `avatars/${firebaseUser.uid}/${safeName}`);
+
+      const metadata = {
+        contentType: file.type,
+        customMetadata: {
+          uploadedBy: firebaseUser.uid
+        }
+      };
+
+      const uploadResult = await uploadBytes(avatarStorageRef, file, metadata);
+      const downloadUrl = await getDownloadURL(uploadResult.ref);
+
       await updateDoc(doc(db, 'users', firebaseUser.uid), {
-        avatarUrl: base64Url
+        avatarUrl: downloadUrl
       });
       setImageMessage({ type: 'success', text: 'Profile image updated successfully.' });
     } catch (err: any) {
-      console.error(err);
-      setImageMessage({ type: 'error', text: err.message || 'Failed to update image.' });
+      console.error('Failed to upload avatar to Storage:', err);
+      setImageMessage({ type: 'error', text: err.message || 'Failed to upload image to Firebase Storage.' });
     } finally {
       setIsUploadingImage(false);
       if (e.target) e.target.value = ''; // Reset input

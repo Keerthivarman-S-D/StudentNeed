@@ -4,29 +4,42 @@ import { createServer as createViteServer } from "vite";
 import cors from "cors";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import nodemailer from "nodemailer";
-import { db } from "./src/lib/firebase";
-import { doc, setDoc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { Resend } from "resend";
+import fs from "fs";
+
+// Load Firebase Config for REST API
+const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf8"));
+const { projectId, firestoreDatabaseId } = firebaseConfig;
+
+// In-Memory Stores to avoid Node.js Firebase Web SDK WebSocket errors (Code=unavailable)
+const otpStore = new Map<string, { hash: string; expiresAt: number; attempts: number }>();
+const verifiedEmails = new Map<string, { expiresAt: number }>();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT
+    ? parseInt(process.env.PORT, 10)
+    : 3000;
 
-  app.use(cors());
-  app.use(express.json());
+  app.use(
+    cors({
+      origin: true,
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+      credentials: true,
+    })
+  );
 
-  // Email Transporter (using env vars)
-  const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || "smtp.gmail.com",
-    port: parseInt(process.env.EMAIL_PORT || "587"),
-    secure: process.env.EMAIL_PORT === "465",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD,
-    },
-  });
+  app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-  // API Routes
+  // Helper to lazily initialize Resend client
+  const getResendClient = () => {
+    const apiKey = process.env.RESEND_API_KEY?.trim();
+    if (!apiKey) return null;
+    return new Resend(apiKey);
+  };
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
@@ -35,62 +48,84 @@ async function startServer() {
   app.post("/api/auth/send-otp", async (req, res) => {
     try {
       const { email } = req.body;
-      
       if (!email || typeof email !== "string") {
-        return res.status(400).json({ error: "Email is required" });
+        return res.status(400).json({ error: "Email is required." });
       }
 
-      // Backend independent validation
-      const allowedDomain = "@student.annauniv.edu";
-      if (!email.toLowerCase().endsWith(allowedDomain)) {
-        return res.status(403).json({ error: `Only ${allowedDomain} emails are allowed.` });
-      }
-
-      // Check cooldown / existing OTP
-      const otpRef = doc(db, "otps", email.toLowerCase());
-      const otpDoc = await getDoc(otpRef);
+      const normalizedEmail = email.toLowerCase().trim();
+      const rawDomain = (process.env.COLLEGE_EMAIL_DOMAIN || "student.annauniv.edu").trim().replace(/^@/, '');
+      const allowedDomain = `@${rawDomain}`;
       
-      if (otpDoc.exists()) {
-        const data = otpDoc.data();
-        // 1 minute cooldown for resend
-        if (Date.now() < data.createdAt + 60 * 1000) {
-          return res.status(429).json({ error: "Please wait 60 seconds before requesting a new OTP." });
-        }
+      if (!normalizedEmail.endsWith(allowedDomain)) {
+        return res.status(403).json({ error: "Please use your official college email address." });
       }
 
-      // Generate cryptographically secure 6-digit OTP
-      const otp = crypto.randomInt(100000, 999999).toString();
-      
-      // Hash OTP before storing
+      // Check cooldown (60s minimum interval)
+      const existingOtp = otpStore.get(normalizedEmail);
+      if (existingOtp && Date.now() < existingOtp.expiresAt - 4 * 60 * 1000) {
+        return res.status(429).json({ error: "Please wait 60 seconds before requesting a new OTP." });
+      }
+
+      const otp = crypto.randomInt(100000, 1000000).toString();
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(otp, salt);
 
-      // Store in DB (5 min expiration)
-      await setDoc(otpRef, {
+      otpStore.set(normalizedEmail, {
         hash,
-        createdAt: Date.now(),
         expiresAt: Date.now() + 5 * 60 * 1000,
         attempts: 0
       });
 
-      // Send Email
-      // Note: If EMAIL_USER is not set in env, we log the OTP to console for debugging in dev
-      if (!process.env.EMAIL_USER) {
-        console.warn(`[DEV MODE] OTP for ${email} is: ${otp}`);
-      } else {
-        await transporter.sendMail({
-          from: `"StudentNeed" <${process.env.EMAIL_USER}>`,
-          to: email,
-          subject: "Your StudentNeed Verification Code",
-          text: `Your verification code is: ${otp}\n\nThis code will expire in 5 minutes.`,
-          html: `<p>Your verification code is: <strong>${otp}</strong></p><p>This code will expire in 5 minutes.</p>`,
-        });
+      const resend = getResendClient();
+      let from = (process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev").trim();
+      if (!from || !from.includes("@")) {
+        from = "onboarding@resend.dev";
+      }
+      const formattedFrom = from.includes("<") ? from : `StudentNeed <${from}>`;
+
+      if (!resend) {
+        console.warn(`[DEV MODE] RESEND_API_KEY not configured. OTP for ${normalizedEmail} is: ${otp}`);
+        return res.json({ message: "OTP sent successfully." });
       }
 
-      res.json({ message: "OTP sent successfully." });
+      try {
+        const { error: resendError } = await resend.emails.send({
+          from: formattedFrom,
+          to: [normalizedEmail],
+          subject: "Your StudentNeed Verification Code",
+          text: `Your StudentNeed verification code is: ${otp}\n\nThis code will expire in 5 minutes. If you did not request this, please ignore this email.`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e4e4e7; border-radius: 8px;">
+              <h2 style="color: #18181b; margin-top: 0;">StudentNeed Campus Verification</h2>
+              <p style="color: #52525b; font-size: 15px;">Use the verification code below to verify your student email address:</p>
+              <div style="background-color: #f4f4f5; border-radius: 6px; padding: 16px; text-align: center; margin: 24px 0;">
+                <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #18181b;">${otp}</span>
+              </div>
+              <p style="color: #71717a; font-size: 13px; margin-bottom: 0;">This code expires in 5 minutes. If you did not request this code, no action is needed.</p>
+            </div>
+          `,
+        });
+
+        if (resendError) {
+          otpStore.delete(normalizedEmail);
+          console.warn("[Resend Notice]:", resendError.message || resendError.name);
+          
+          let friendlyError = resendError.message || "Failed to send verification email via Resend.";
+          if (resendError.message?.includes("testing emails to your own email address")) {
+            friendlyError = "Resend test domain (onboarding@resend.dev) can only send emails to your registered Resend account address. To send to college emails, please verify your custom domain in the Resend Dashboard and set RESEND_FROM_EMAIL to your verified domain.";
+          }
+          return res.status(400).json({ error: friendlyError });
+        }
+
+        return res.json({ message: "OTP sent successfully." });
+      } catch (err: any) {
+        console.warn("[Resend Dispatch Notice]:", err?.message || err);
+        otpStore.delete(normalizedEmail);
+        return res.status(500).json({ error: err.message || "Failed to deliver verification code. Please try again later." });
+      }
     } catch (error: any) {
       console.error("Send OTP Error:", error);
-      res.status(500).json({ error: "Internal server error." });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   });
 
@@ -98,101 +133,114 @@ async function startServer() {
   app.post("/api/auth/verify-otp", async (req, res) => {
     try {
       const { email, otp } = req.body;
-
       if (!email || !otp) {
         return res.status(400).json({ error: "Email and OTP are required." });
       }
 
-      const otpRef = doc(db, "otps", email.toLowerCase());
-      const otpDoc = await getDoc(otpRef);
+      const normalizedEmail = email.toLowerCase().trim();
+      const data = otpStore.get(normalizedEmail);
 
-      if (!otpDoc.exists()) {
+      if (!data) {
         return res.status(400).json({ error: "No pending verification found or OTP expired." });
       }
 
-      const data = otpDoc.data();
-
-      // Check Expiration
       if (Date.now() > data.expiresAt) {
-        await deleteDoc(otpRef);
-        return res.status(400).json({ error: "OTP has expired. Please request a new one." });
+        otpStore.delete(normalizedEmail);
+        return res.status(400).json({ error: "This verification code has expired. Please request a new code." });
       }
 
-      // Check Attempts
       if (data.attempts >= 5) {
-        await deleteDoc(otpRef);
+        otpStore.delete(normalizedEmail);
         return res.status(429).json({ error: "Too many failed attempts. Please request a new OTP." });
       }
 
-      // Verify Hash
-      const isValid = await bcrypt.compare(otp.toString(), data.hash);
+      const isValid = await bcrypt.compare(otp.toString().trim(), data.hash);
 
       if (!isValid) {
-        await updateDoc(otpRef, { attempts: data.attempts + 1 });
-        return res.status(400).json({ error: "Invalid OTP." });
+        data.attempts += 1;
+        return res.status(400).json({ error: "Invalid verification code. Please try again." });
       }
 
-      // OTP is valid. Mark as verified in a temporary collection.
-      // This ensures the frontend can't just bypass Step 2.
-      await setDoc(doc(db, "verified_emails", email.toLowerCase()), {
-        verifiedAt: Date.now(),
-        expiresAt: Date.now() + 30 * 60 * 1000 // Allow 30 mins to finish signup
-      });
-
-      // OTP is single-use, delete it.
-      await deleteDoc(otpRef);
+      verifiedEmails.set(normalizedEmail, { expiresAt: Date.now() + 30 * 60 * 1000 });
+      otpStore.delete(normalizedEmail);
 
       res.json({ message: "Email verified successfully." });
     } catch (error: any) {
       console.error("Verify OTP Error:", error);
-      res.status(500).json({ error: "Internal server error." });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   });
 
-  // 3. Finalize Account (Called after Firebase Auth creates the user)
+  // 3. Finalize Account using REST API to avoid Web SDK errors
   app.post("/api/auth/finalize-account", async (req, res) => {
     try {
-      const { uid, email, name, department, avatarUrl } = req.body;
+      const { uid, email, name, department, avatarUrl, idToken } = req.body;
 
-      if (!uid || !email) {
-        return res.status(400).json({ error: "UID and email are required." });
+      if (!uid || !email || !idToken) {
+        return res.status(400).json({ error: "UID, email, and idToken are required." });
       }
 
-      // Backend independently validates the domain again
-      const allowedDomain = "@student.annauniv.edu";
-      if (!email.toLowerCase().endsWith(allowedDomain)) {
-        return res.status(403).json({ error: `Only ${allowedDomain} emails are allowed.` });
+      const normalizedEmail = email.toLowerCase().trim();
+      const allowedDomain = (process.env.COLLEGE_EMAIL_DOMAIN || "@student.annauniv.edu").trim();
+      if (!normalizedEmail.endsWith(allowedDomain)) {
+        return res.status(403).json({ error: "Please use your official college email address." });
       }
 
-      // Check if email was securely verified via OTP
-      const verifiedRef = doc(db, "verified_emails", email.toLowerCase());
-      const verifiedDoc = await getDoc(verifiedRef);
-
-      if (!verifiedDoc.exists() || Date.now() > verifiedDoc.data().expiresAt) {
+      const verifiedRecord = verifiedEmails.get(normalizedEmail);
+      if (!verifiedRecord || Date.now() > verifiedRecord.expiresAt) {
         return res.status(403).json({ error: "Email not verified or verification expired. You cannot create an account." });
       }
 
-      // Generate default avatar if not provided
       const finalAvatarUrl = avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${name || 'User'}&backgroundColor=000000`;
 
-      // Create the official user document with isVerified = true
-      await setDoc(doc(db, "users", uid), {
-        id: uid,
-        name: name || '',
-        email: email.toLowerCase(),
-        department: department || '',
-        campus: 'Anna University',
-        rating: 0,
-        avatarUrl: finalAvatarUrl,
-        exchangesCompleted: 0,
-        role: 'student',
-        isVerified: true, // Securely set by backend!
-        createdAt: new Date().toISOString()
+      // Use Firestore REST API to securely create the document acting as the user
+      const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users?documentId=${uid}`;
+      
+      const firestorePayload = {
+        fields: {
+          id: { stringValue: uid },
+          name: { stringValue: name || '' },
+          email: { stringValue: normalizedEmail },
+          department: { stringValue: department || '' },
+          campus: { stringValue: 'Anna University' },
+          rating: { integerValue: "0" },
+          avatarUrl: { stringValue: finalAvatarUrl },
+          exchangesCompleted: { integerValue: "0" },
+          role: { stringValue: 'student' },
+          isVerified: { booleanValue: true },
+          createdAt: { stringValue: new Date().toISOString() }
+        }
+      };
+
+      const firestoreRes = await fetch(firestoreUrl, {
+        method: "POST", 
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
+        body: JSON.stringify(firestorePayload)
       });
 
-      // Consume the verification token
-      await deleteDoc(verifiedRef);
+      if (!firestoreRes.ok) {
+        // If POST fails, it might already exist, try PATCH
+        const patchUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${uid}`;
+        const patchRes = await fetch(patchUrl, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${idToken}`
+          },
+          body: JSON.stringify(firestorePayload)
+        });
+        
+        if (!patchRes.ok) {
+           const errText = await patchRes.text();
+           console.error("Firestore REST Error:", errText);
+           return res.status(500).json({ error: "Failed to create user profile in database." });
+        }
+      }
 
+      verifiedEmails.delete(normalizedEmail);
       res.json({ message: "Account finalized successfully." });
     } catch (error: any) {
       console.error("Finalize Account Error:", error);
@@ -216,7 +264,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
   });
 }
 

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { auth, db } from '../lib/firebase';
+import { auth, db, storage } from '../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { UserCircle2, Upload } from 'lucide-react';
+import { AUTH_ENDPOINTS } from '../config/api';
 
 export function Onboarding() {
   const navigate = useNavigate();
@@ -26,43 +28,6 @@ export function Onboarding() {
     }
   }, [firebaseUser, currentUser, navigate]);
 
-  const processImage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 256;
-          const MAX_HEIGHT = 256;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
-        };
-        img.onerror = (error) => reject(error);
-      };
-      reader.onerror = (error) => reject(error);
-    });
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firebaseUser) return;
@@ -72,18 +37,28 @@ export function Onboarding() {
     
     try {
       // Use the provided image URL or generate a default avatar using initials
-      let finalAvatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${name}&backgroundColor=000000`;
+      let finalAvatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=000000`;
       
       if (avatarFile) {
         try {
-          finalAvatarUrl = await processImage(avatarFile);
+          const ext = avatarFile.name.split('.').pop() || 'jpg';
+          const safeName = `${Date.now()}_avatar.${ext.replace(/[^a-zA-Z0-9]/g, '')}`;
+          const avatarStorageRef = ref(storage, `avatars/${firebaseUser.uid}/${safeName}`);
+          
+          const uploadResult = await uploadBytes(avatarStorageRef, avatarFile, {
+            contentType: avatarFile.type,
+            customMetadata: { uploadedBy: firebaseUser.uid }
+          });
+          finalAvatarUrl = await getDownloadURL(uploadResult.ref);
         } catch (imgError) {
-          console.error("Failed to process image:", imgError);
-          // Fallback to initials if image processing fails
+          console.error("Failed to upload image to Storage:", imgError);
+          // Fallback to initials if image upload fails
         }
       }
       
-      const response = await fetch('/api/auth/finalize-account', {
+      const idToken = await firebaseUser.getIdToken();
+      
+      const response = await fetch(AUTH_ENDPOINTS.finalizeAccount, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -91,13 +66,21 @@ export function Onboarding() {
           email: firebaseUser.email,
           name,
           department,
-          avatarUrl: finalAvatarUrl
+          avatarUrl: finalAvatarUrl,
+          idToken
         })
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to finalize account setup.");
+        let errMessage = "Failed to finalize account setup.";
+        try {
+          const text = await response.text();
+          const data = JSON.parse(text);
+          errMessage = data.error || errMessage;
+        } catch (e) {
+          errMessage = `Server error ${response.status}`;
+        }
+        throw new Error(errMessage);
       }
       // AuthContext's onSnapshot will pick this up from Firestore, set currentUser, and trigger the useEffect redirect
     } catch (err: any) {
@@ -196,6 +179,15 @@ export function Onboarding() {
             <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
               {isLoading ? 'Saving...' : 'Complete Registration'}
             </Button>
+            <div className="mt-4 text-center">
+              <button 
+                type="button" 
+                onClick={() => auth.signOut()}
+                className="text-sm text-zinc-500 hover:text-zinc-900 underline underline-offset-4"
+              >
+                Sign out and start over
+              </button>
+            </div>
           </div>
         </form>
       </div>

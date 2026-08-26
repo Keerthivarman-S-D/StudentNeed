@@ -1,20 +1,33 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, MapPin, Clock, Plus, IndianRupee } from 'lucide-react';
+import { Search, MapPin, Clock, Plus, IndianRupee, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 
 export function Requests() {
-  const { requests, users } = useAppContext();
-  const { currentUser } = useAuth();
+  const { requests, requestsLoading, requestsError, updateRequestStatus, users } = useAppContext();
+  const { currentUser, firebaseUser } = useAuth();
   
   const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [contactedId, setContactedId] = useState<string | null>(null);
 
   const displayedRequests = activeTab === 'all' 
     ? requests.filter(r => r.status === 'open')
-    : requests.filter(r => r.requesterId === currentUser?.id);
+    : requests.filter(r => r.requesterId === (firebaseUser?.uid || currentUser?.id));
+
+  const handleMarkAsFound = async (requestId: string) => {
+    setUpdatingId(requestId);
+    try {
+      await updateRequestStatus(requestId, 'completed');
+    } catch (err) {
+      console.error('Failed to mark request as found:', err);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
@@ -52,15 +65,32 @@ export function Requests() {
                 : 'text-zinc-500 hover:text-zinc-900'
             }`}
           >
-            My Requests
+            My Requests {requests.filter(r => r.requesterId === (firebaseUser?.uid || currentUser?.id)).length > 0 && `(${requests.filter(r => r.requesterId === (firebaseUser?.uid || currentUser?.id)).length})`}
           </button>
         )}
       </div>
 
-      {displayedRequests.length > 0 ? (
+      {requestsLoading ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-zinc-600 mb-3" />
+          <p className="text-sm text-zinc-500 font-medium">Fetching real-time student requests from Firestore...</p>
+        </div>
+      ) : requestsError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+          <AlertCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
+          <h3 className="text-base font-semibold text-red-900 mb-1">Could not load campus requests</h3>
+          <p className="text-sm text-red-700 max-w-md mx-auto mb-4">{requestsError}</p>
+          {!currentUser && (
+            <Link to="/login">
+              <Button size="sm">Sign In to Access</Button>
+            </Link>
+          )}
+        </div>
+      ) : displayedRequests.length > 0 ? (
         <div className="grid gap-4">
           {displayedRequests.map(request => {
             const requester = users.find(u => u.id === request.requesterId);
+            const isOwner = (firebaseUser?.uid || currentUser?.id) === request.requesterId;
             
             return (
               <div key={request.id} className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-5 transition-shadow hover:shadow-md sm:flex-row sm:items-center">
@@ -95,13 +125,39 @@ export function Requests() {
                 
                 <div className="flex flex-col items-start gap-4 border-t border-zinc-100 pt-4 sm:items-end sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 shrink-0">
                   <div className="flex items-center gap-2">
-                    <img src={requester?.avatarUrl} alt={requester?.name} className="h-8 w-8 rounded-full bg-zinc-100" />
-                    <span className="text-sm font-medium text-zinc-900">{requester?.name}</span>
+                    {requester?.avatarUrl ? (
+                      <img src={requester.avatarUrl} alt={requester.name} className="h-8 w-8 rounded-full object-cover bg-zinc-100" />
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-semibold text-white">
+                        {requester?.name ? requester.name.charAt(0).toUpperCase() : 'S'}
+                      </div>
+                    )}
+                    <span className="text-sm font-medium text-zinc-900">{requester?.name || (isOwner ? currentUser?.name || 'You' : 'Student Requester')}</span>
                   </div>
-                  {currentUser?.id !== request.requesterId && request.status === 'open' ? (
-                    <Button variant="outline" className="w-full sm:w-auto">I have this</Button>
-                  ) : activeTab === 'my' ? (
-                    <Button variant="secondary" className="w-full sm:w-auto text-xs h-8">Mark as Found</Button>
+                  {!isOwner && request.status === 'open' ? (
+                    contactedId === request.id ? (
+                      <div className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Offer sent!
+                      </div>
+                    ) : (
+                      <Button 
+                        variant="outline" 
+                        className="w-full sm:w-auto text-xs h-9"
+                        onClick={() => setContactedId(request.id)}
+                      >
+                        I have this
+                      </Button>
+                    )
+                  ) : isOwner && request.status === 'open' ? (
+                    <Button 
+                      variant="secondary" 
+                      className="w-full sm:w-auto text-xs h-8"
+                      disabled={updatingId === request.id}
+                      onClick={() => handleMarkAsFound(request.id)}
+                    >
+                      {updatingId === request.id ? 'Updating...' : 'Mark as Found'}
+                    </Button>
                   ) : null}
                 </div>
               </div>
@@ -111,10 +167,17 @@ export function Requests() {
       ) : (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 py-24 text-center">
           <Search className="h-12 w-12 text-zinc-300 mb-4" />
-          <h3 className="text-lg font-semibold text-zinc-900">No requests found</h3>
+          <h3 className="text-lg font-semibold text-zinc-900">
+            {activeTab === 'my' ? "You haven't posted any requests yet" : "No requests found"}
+          </h3>
           <p className="text-sm text-zinc-500 mt-1 max-w-sm">
-            There are no active requests right now. 
+            {activeTab === 'my'
+              ? "When you need something on campus, create a request and peers will reach out."
+              : "There are no active requests right now. Be the first to ask for what you need!"}
           </p>
+          <Link to="/create-request">
+            <Button className="mt-6">Create Request</Button>
+          </Link>
         </div>
       )}
     </div>

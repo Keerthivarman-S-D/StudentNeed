@@ -6,6 +6,7 @@ import { auth } from '../lib/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { AUTH_ENDPOINTS, COLLEGE_EMAIL_DOMAIN } from '../config/api';
 
 export function Login() {
   const navigate = useNavigate();
@@ -19,9 +20,19 @@ export function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSignup, setIsSignup] = useState(false);
   const [signupStep, setSignupStep] = useState<1 | 2 | 3>(1);
+  const [resendCooldown, setResendCooldown] = useState(0);
   
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Timer countdown for Resend OTP button
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   // Redirect if already logged in or needs onboarding
   useEffect(() => {
@@ -59,20 +70,32 @@ export function Login() {
     setSuccessMessage(null);
     
     try {
-      if (!email.toLowerCase().endsWith('@student.annauniv.edu')) {
-        throw new Error("You must use a valid @student.annauniv.edu email to join the marketplace.");
+      const rawDomain = COLLEGE_EMAIL_DOMAIN.trim().replace(/^@/, '');
+      const allowedDomain = `@${rawDomain}`;
+      if (!email.toLowerCase().trim().endsWith(allowedDomain)) {
+        throw new Error("Please use your official college email address.");
       }
       
-      const res = await fetch('/api/auth/send-otp', {
+      const res = await fetch(AUTH_ENDPOINTS.sendOtp, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email: email.trim() })
       });
       
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send OTP.");
+      if (!res.ok) {
+        let errMessage = "Failed to send OTP.";
+        try {
+          const text = await res.text();
+          const data = JSON.parse(text);
+          errMessage = data.error || errMessage;
+        } catch (e) {
+          errMessage = `Server error ${res.status}`;
+        }
+        throw new Error(errMessage);
+      }
       
-      setSuccessMessage("OTP sent! Please check your email.");
+      setSuccessMessage(`Verification code sent to ${email.trim()}`);
+      setResendCooldown(60);
       setSignupStep(2);
     } catch (err: any) {
       setError(err.message || "An error occurred.");
@@ -88,14 +111,25 @@ export function Login() {
     setSuccessMessage(null);
     
     try {
-      const res = await fetch('/api/auth/verify-otp', {
+      const res = await fetch(AUTH_ENDPOINTS.verifyOtp, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp })
       });
       
+      if (!res.ok) {
+        let errMessage = "Invalid OTP.";
+        try {
+          const text = await res.text();
+          const data = JSON.parse(text);
+          errMessage = data.error || errMessage;
+        } catch (e) {
+          errMessage = `Server error ${res.status}`;
+        }
+        throw new Error(errMessage);
+      }
+      
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Invalid OTP.");
       
       setSuccessMessage("Email verified successfully!");
       setSignupStep(3);
@@ -250,6 +284,9 @@ export function Login() {
 
               {signupStep === 2 && (
                 <form onSubmit={handleVerifyOTP} className="space-y-4">
+                  <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg text-sm text-zinc-600 text-center">
+                    We&apos;ve sent a 6-digit verification code to <span className="font-semibold text-zinc-900">{email}</span>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-zinc-700 mb-1">Enter Verification Code</label>
                     <Input 
@@ -270,13 +307,18 @@ export function Login() {
                     variant="outline" 
                     className="w-full" 
                     onClick={handleSendOTP} 
-                    disabled={isLoading}
+                    disabled={isLoading || resendCooldown > 0}
                   >
-                    Resend OTP
+                    {resendCooldown > 0 ? `Resend OTP in ${resendCooldown}s` : 'Resend OTP'}
                   </Button>
                   <button
                     type="button"
-                    onClick={() => setSignupStep(1)}
+                    onClick={() => {
+                      setSignupStep(1);
+                      setOtp('');
+                      setError(null);
+                      setSuccessMessage(null);
+                    }}
                     className="text-sm text-zinc-500 hover:text-zinc-900 w-full flex items-center justify-center gap-1 mt-2"
                   >
                     <ArrowLeft className="h-4 w-4" /> Change Email

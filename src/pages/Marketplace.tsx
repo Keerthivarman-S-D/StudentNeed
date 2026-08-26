@@ -1,13 +1,15 @@
 import { useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { useSearchParams, Link } from 'react-router-dom';
+import { Search, SlidersHorizontal, AlertCircle, Loader2 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { ListingCard } from '../components/ListingCard';
 import { Button } from '../components/ui/Button';
 import { Category, ListingType } from '../types';
 
 export function Marketplace() {
-  const { listings } = useAppContext();
+  const { listings, listingsLoading, listingsError } = useAppContext();
+  const { currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   
   const [search, setSearch] = useState('');
@@ -161,7 +163,23 @@ export function Marketplace() {
             </div>
           </div>
 
-          {filteredListings.length > 0 ? (
+          {listingsLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-zinc-600 mb-3" />
+              <p className="text-sm text-zinc-500 font-medium">Fetching real-time listings from Firestore...</p>
+            </div>
+          ) : listingsError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+              <AlertCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
+              <h3 className="text-base font-semibold text-red-900 mb-1">Could not load campus listings</h3>
+              <p className="text-sm text-red-700 max-w-md mx-auto mb-4">{listingsError}</p>
+              {!currentUser && (
+                <Link to="/login">
+                  <Button size="sm">Sign In to Access</Button>
+                </Link>
+              )}
+            </div>
+          ) : filteredListings.length > 0 ? (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredListings.map(listing => (
                 <ListingCard key={listing.id} listing={listing} />
@@ -172,19 +190,27 @@ export function Marketplace() {
               <Search className="h-12 w-12 text-zinc-300 mb-4" />
               <h3 className="text-lg font-semibold text-zinc-900">No items found</h3>
               <p className="text-sm text-zinc-500 mt-1 max-w-sm">
-                We couldn't find any items matching your filters. Try adjusting them or create a request!
+                {listings.length === 0 
+                  ? "There are no campus listings yet. Be the first student to post an item!"
+                  : "We couldn't find any items matching your filters. Try adjusting them or create a request!"}
               </p>
-              <Button 
-                variant="outline" 
-                className="mt-6"
-                onClick={() => {
-                  setSearch('');
-                  setSelectedCategory('All');
-                  setSelectedType('All');
-                }}
-              >
-                Clear Filters
-              </Button>
+              {listings.length === 0 ? (
+                <Link to="/create-listing">
+                  <Button className="mt-6">Post the First Item</Button>
+                </Link>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  className="mt-6"
+                  onClick={() => {
+                    setSearch('');
+                    setSelectedCategory('All');
+                    setSelectedType('All');
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -192,3 +218,4 @@ export function Marketplace() {
     </div>
   );
 }
+
