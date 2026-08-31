@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import cors from "cors";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import fs from "fs";
 
 // Load Firebase Config for REST API
@@ -33,11 +33,24 @@ async function startServer() {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-  // Helper to lazily initialize Resend client
-  const getResendClient = () => {
-    const apiKey = process.env.RESEND_API_KEY?.trim();
-    if (!apiKey) return null;
-    return new Resend(apiKey);
+  // Helper to lazily initialize Nodemailer SMTP transporter
+  const getMailTransporter = () => {
+    const host = (process.env.EMAIL_HOST || "smtp.gmail.com").trim();
+    const port = process.env.EMAIL_PORT ? parseInt(process.env.EMAIL_PORT, 10) : 587;
+    const user = (process.env.EMAIL_USER || "studentneed.info@gmail.com").trim();
+    const pass = process.env.EMAIL_PASSWORD?.trim();
+
+    if (!pass) return null;
+
+    return nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: {
+        user,
+        pass,
+      },
+    });
   };
 
   app.get("/api/health", (req, res) => {
@@ -76,22 +89,18 @@ async function startServer() {
         attempts: 0
       });
 
-      const resend = getResendClient();
-      let from = (process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev").trim();
-      if (!from || !from.includes("@")) {
-        from = "onboarding@resend.dev";
-      }
-      const formattedFrom = from.includes("<") ? from : `StudentNeed <${from}>`;
+      const transporter = getMailTransporter();
+      const senderEmail = (process.env.EMAIL_USER || "studentneed.info@gmail.com").trim();
 
-      if (!resend) {
-        console.warn(`[DEV MODE] RESEND_API_KEY not configured. OTP for ${normalizedEmail} is: ${otp}`);
+      if (!transporter) {
+        console.warn(`[DEV MODE] EMAIL_PASSWORD not configured. OTP for ${normalizedEmail} is: ${otp}`);
         return res.json({ message: "OTP sent successfully." });
       }
 
       try {
-        const { error: resendError } = await resend.emails.send({
-          from: formattedFrom,
-          to: [normalizedEmail],
+        await transporter.sendMail({
+          from: `StudentNeed <${senderEmail}>`,
+          to: normalizedEmail,
           subject: "Your StudentNeed Verification Code",
           text: `Your StudentNeed verification code is: ${otp}\n\nThis code will expire in 5 minutes. If you did not request this, please ignore this email.`,
           html: `
@@ -106,22 +115,11 @@ async function startServer() {
           `,
         });
 
-        if (resendError) {
-          otpStore.delete(normalizedEmail);
-          console.warn("[Resend Notice]:", resendError.message || resendError.name);
-          
-          let friendlyError = resendError.message || "Failed to send verification email via Resend.";
-          if (resendError.message?.includes("testing emails to your own email address")) {
-            friendlyError = "Resend test domain (onboarding@resend.dev) can only send emails to your registered Resend account address. To send to college emails, please verify your custom domain in the Resend Dashboard and set RESEND_FROM_EMAIL to your verified domain.";
-          }
-          return res.status(400).json({ error: friendlyError });
-        }
-
         return res.json({ message: "OTP sent successfully." });
       } catch (err: any) {
-        console.warn("[Resend Dispatch Notice]:", err?.message || err);
+        console.error("[SMTP Dispatch Error]:", err?.message || err);
         otpStore.delete(normalizedEmail);
-        return res.status(500).json({ error: err.message || "Failed to deliver verification code. Please try again later." });
+        return res.status(500).json({ error: "Failed to deliver verification email. Please check SMTP configuration or try again later." });
       }
     } catch (error: any) {
       console.error("Send OTP Error:", error);
