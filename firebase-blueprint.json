@@ -65,15 +65,22 @@
     "reservations": {
       "rules": {
         "read": "request.auth != null && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')",
-        "create": "request.auth != null && request.resource.data.buyerId == request.auth.uid",
-        "update": "request.auth != null && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')",
+        "create": "request.auth != null && request.resource.data.buyerId == request.auth.uid && request.resource.data.sellerId != request.auth.uid && request.resource.data.status == 'pending'",
+        "update": "request.auth != null && ((resource.data.sellerId == request.auth.uid && resource.data.status == 'pending' && (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected')) || (resource.data.buyerId == request.auth.uid && resource.data.status == 'rejected' && request.resource.data.status == 'pending') || (resource.data.status == 'accepted' && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid)) || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')",
         "delete": "false"
       },
       "schema": {
         "listingId": "string",
         "buyerId": "string",
         "sellerId": "string",
+        "chatId": "string",
         "status": "string",
+        "meetup": {
+          "location": "string?",
+          "status": "string?",
+          "proposedBy": "string?",
+          "updatedAt": "timestamp?"
+        },
         "createdAt": "timestamp",
         "updatedAt": "timestamp"
       }
@@ -81,7 +88,7 @@
     "chats": {
       "rules": {
         "read": "request.auth != null && request.auth.uid in resource.data.participants",
-        "create": "request.auth != null && request.auth.uid in request.resource.data.participants",
+        "create": "request.auth != null && request.auth.uid in request.resource.data.participants && request.resource.data.participants.size() == 2",
         "update": "request.auth != null && request.auth.uid in resource.data.participants",
         "delete": "false"
       },
@@ -105,6 +112,23 @@
       "schema": {
         "name": "string",
         "isActive": "boolean"
+      }
+    },
+    "temp_otps": {
+      "rules": {
+        "read": "request.auth != null && request.auth.token.email == 'internal.system@student.annauniv.edu'",
+        "create": "request.auth != null && request.auth.token.email == 'internal.system@student.annauniv.edu'",
+        "update": "request.auth != null && request.auth.token.email == 'internal.system@student.annauniv.edu'",
+        "delete": "request.auth != null && request.auth.token.email == 'internal.system@student.annauniv.edu'"
+      },
+      "schema": {
+        "hash": "string",
+        "expiresAt": "number",
+        "attempts": "number",
+        "used": "boolean",
+        "lastRequestedAt": "number",
+        "verified": "boolean",
+        "verifiedExpiresAt": "number?"
       }
     }
   }

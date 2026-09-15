@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ImagePlus, AlertCircle, X, Loader2 } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -31,6 +31,22 @@ export function CreateListing() {
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Track preview URLs to revoke on unmount and prevent memory leaks
+  const previewsRef = useRef<string[]>([]);
+  previewsRef.current = imagePreviews;
+
+  useEffect(() => {
+    return () => {
+      previewsRef.current.forEach(url => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // ignore
+        }
+      });
+    };
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -122,6 +138,14 @@ export function CreateListing() {
         status: 'available',
       });
       
+      imagePreviews.forEach(url => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // ignore
+        }
+      });
+
       setIsSubmitting(false);
       setShowSuccess(true);
       

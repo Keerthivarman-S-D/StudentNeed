@@ -15,6 +15,7 @@ import { VerifyEmail } from './pages/VerifyEmail';
 import { Onboarding } from './pages/Onboarding';
 import { Profile } from './pages/Profile';
 import { Requests } from './pages/Requests';
+import { ChatPage } from './pages/Chat';
 
 export default function App() {
   return (
@@ -63,6 +64,14 @@ export default function App() {
                   }
                 />
                 <Route path="/requests" element={<Requests />} />
+                <Route
+                  path="/chat/:chatId"
+                  element={
+                    <ProtectedRoute>
+                      <ChatPage />
+                    </ProtectedRoute>
+                  }
+                />
               </Routes>
             </main>
           </div>

@@ -83,24 +83,122 @@ service cloud.firestore {
       );
     }
 
+    function isValidCampusLocation(loc) {
+      return loc == 'Main Gate' || 
+             loc == 'Central Library' || 
+             loc == 'Food Court' || 
+             loc == 'Hostel' || 
+             loc == 'CSE Block' || 
+             loc == 'ECE Block';
+    }
+
+    function isMeetupParticipant(resData) {
+      return request.auth.uid == resData.buyerId || request.auth.uid == resData.sellerId;
+    }
+
+    function isProposingMeetup(resData, reqData) {
+      return reqData.meetup.status == 'proposed' &&
+             isValidCampusLocation(reqData.meetup.location) &&
+             reqData.meetup.proposedBy == request.auth.uid &&
+             (
+               !('meetup' in resData) ||
+               resData.meetup == null ||
+               !('status' in resData.meetup) ||
+               resData.meetup.status == 'not_set' ||
+               resData.meetup.status == 'cancelled' ||
+               resData.meetup.status == 'proposed'
+             );
+    }
+
+    function isConfirmingMeetup(resData, reqData) {
+      return reqData.meetup.status == 'confirmed' &&
+             ('meetup' in resData) &&
+             resData.meetup != null &&
+             ('status' in resData.meetup) &&
+             resData.meetup.status == 'proposed' &&
+             request.auth.uid != resData.meetup.proposedBy &&
+             reqData.meetup.location == resData.meetup.location;
+    }
+
+    function isCancellingMeetup(resData, reqData) {
+      return reqData.meetup.status == 'cancelled' &&
+             ('meetup' in resData) &&
+             resData.meetup != null &&
+             ('status' in resData.meetup) &&
+             (resData.meetup.status == 'proposed' || resData.meetup.status == 'confirmed');
+    }
+
+    function isValidMeetupTransition(resData, reqData) {
+      return ('meetup' in reqData) && 
+             (reqData.meetup is map) && 
+             (
+               isProposingMeetup(resData, reqData) ||
+               isConfirmingMeetup(resData, reqData) ||
+               isCancellingMeetup(resData, reqData)
+             );
+    }
+
     match /reservations/{reservationId} {
       allow read: if isAuthenticated() && (
         resource.data.buyerId == request.auth.uid || 
         resource.data.sellerId == request.auth.uid || 
         isAdmin()
       );
-      allow create: if isAuthenticated() && request.resource.data.buyerId == request.auth.uid;
+
+      // Only authenticated students can create a reservation in 'pending' status for another student's listing
+      allow create: if isAuthenticated() && 
+                       request.resource.data.buyerId == request.auth.uid &&
+                       request.resource.data.sellerId != request.auth.uid &&
+                       request.resource.data.status == 'pending' &&
+                       request.resource.data.listingId is string &&
+                       request.resource.data.chatId is string;
+
+      // Updates:
+      // 1. Status transitions: ONLY seller can transition from 'pending' to 'accepted' or 'rejected'
+      // 2. Buyer re-request: ONLY original buyer can transition from 'rejected' to 'pending' (core IDs strictly immutable)
+      // 3. Campus meetup updates: ONLY on ACCEPTED reservations by buyer or seller
       allow update: if isAuthenticated() && (
-        (resource.data.buyerId == request.auth.uid && request.resource.data.buyerId == resource.data.buyerId) || 
-        (resource.data.sellerId == request.auth.uid && request.resource.data.sellerId == resource.data.sellerId) || 
+        (
+          resource.data.sellerId == request.auth.uid &&
+          request.resource.data.sellerId == resource.data.sellerId &&
+          request.resource.data.buyerId == resource.data.buyerId &&
+          request.resource.data.listingId == resource.data.listingId &&
+          request.resource.data.chatId == resource.data.chatId &&
+          resource.data.status == 'pending' &&
+          (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected')
+        ) || 
+        (
+          resource.data.buyerId == request.auth.uid &&
+          request.resource.data.buyerId == resource.data.buyerId &&
+          request.resource.data.sellerId == resource.data.sellerId &&
+          request.resource.data.listingId == resource.data.listingId &&
+          request.resource.data.chatId == resource.data.chatId &&
+          resource.data.status == 'rejected' &&
+          request.resource.data.status == 'pending'
+        ) ||
+        (
+          resource.data.status == 'accepted' &&
+          request.resource.data.status == 'accepted' &&
+          request.resource.data.sellerId == resource.data.sellerId &&
+          request.resource.data.buyerId == resource.data.buyerId &&
+          request.resource.data.listingId == resource.data.listingId &&
+          request.resource.data.chatId == resource.data.chatId &&
+          isMeetupParticipant(resource.data) &&
+          isValidMeetupTransition(resource.data, request.resource.data)
+        ) ||
         isAdmin()
       );
+
       allow delete: if false;
     }
 
     match /chats/{chatId} {
       allow read, update: if isAuthenticated() && request.auth.uid in resource.data.participants;
-      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      allow create: if isAuthenticated() && 
+                       request.auth.uid in request.resource.data.participants &&
+                       request.resource.data.participants is list &&
+                       request.resource.data.participants.size() == 2 &&
+                       request.resource.data.participants[0] != request.resource.data.participants[1];
       allow delete: if false;
 
       match /messages/{messageId} {
@@ -108,7 +206,10 @@ service cloud.firestore {
                        request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
         allow create: if isAuthenticated() && 
                          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants && 
-                         request.resource.data.senderId == request.auth.uid;
+                         request.resource.data.senderId == request.auth.uid &&
+                         request.resource.data.text is string &&
+                         request.resource.data.text.size() > 0 &&
+                         request.resource.data.text.size() <= 2000;
         allow update, delete: if false;
       }
     }
@@ -116,6 +217,13 @@ service cloud.firestore {
     match /locations/{locationId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+    }
+
+    // Temporary server-side OTP store for registration verification
+    // Strictly restricted to the server's internal service account
+    match /temp_otps/{otpId} {
+      allow read, write: if isAuthenticated() && 
+                            request.auth.token.email == 'internal.system@student.annauniv.edu';
     }
   }
 }

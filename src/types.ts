@@ -61,12 +61,50 @@ export type ItemRequest = {
   updatedAt: string;
 };
 
+export const CAMPUS_MEETUP_LOCATIONS = [
+  'Main Gate',
+  'Central Library',
+  'Food Court',
+  'Hostel',
+  'CSE Block',
+  'ECE Block',
+] as const;
+
+export type CampusMeetupLocation = typeof CAMPUS_MEETUP_LOCATIONS[number];
+
+export type MeetupStatus = 'not_set' | 'proposed' | 'confirmed' | 'cancelled';
+
+export type MeetupInfo = {
+  location: string;
+  status: MeetupStatus;
+  proposedBy?: string;
+  updatedAt?: any;
+};
+
 export type Reservation = {
   id: string;
   listingId: string;
   buyerId: string;
   sellerId: string;
+  chatId: string;
   status: ReservationStatus;
-  createdAt: string;
-  updatedAt: string;
+  meetup?: MeetupInfo;
+  createdAt: any;
+  updatedAt: any;
+};
+
+export type Chat = {
+  id: string;
+  participants: string[];
+  listingId?: string;
+  reservationId?: string;
+  createdAt: any;
+  updatedAt: any;
+};
+
+export type ChatMessage = {
+  id: string;
+  senderId: string;
+  text: string;
+  createdAt: any;
 };

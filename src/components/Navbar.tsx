@@ -1,11 +1,55 @@
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Search, Plus, UserCircle2, MessageSquare, LayoutGrid } from 'lucide-react';
+import { collection, query, where, limit, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 
 export function Navbar() {
   const { currentUser } = useAuth();
   const location = useLocation();
+  const [hasActiveReservation, setHasActiveReservation] = useState(false);
+
+  // Lightweight active reservation listener strictly limited to 1 doc each
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setHasActiveReservation(false);
+      return;
+    }
+
+    const qBuyer = query(
+      collection(db, 'reservations'),
+      where('buyerId', '==', currentUser.id),
+      where('status', 'in', ['pending', 'accepted']),
+      limit(1)
+    );
+
+    const qSeller = query(
+      collection(db, 'reservations'),
+      where('sellerId', '==', currentUser.id),
+      where('status', 'in', ['pending', 'accepted']),
+      limit(1)
+    );
+
+    let buyerActive = false;
+    let sellerActive = false;
+
+    const unsubBuyer = onSnapshot(qBuyer, (snap) => {
+      buyerActive = !snap.empty;
+      setHasActiveReservation(buyerActive || sellerActive);
+    }, (err) => console.warn('Navbar buyer res indicator query:', err));
+
+    const unsubSeller = onSnapshot(qSeller, (snap) => {
+      sellerActive = !snap.empty;
+      setHasActiveReservation(buyerActive || sellerActive);
+    }, (err) => console.warn('Navbar seller res indicator query:', err));
+
+    return () => {
+      unsubBuyer();
+      unsubSeller();
+    };
+  }, [currentUser?.id]);
 
   const navLinks = [
     { name: 'Marketplace', path: '/marketplace', icon: LayoutGrid },
@@ -61,12 +105,25 @@ export function Navbar() {
             
             {currentUser ? (
               <Link to="/profile" className="flex items-center gap-2 rounded-full border border-zinc-200 p-1 pr-3 hover:bg-zinc-50 transition-colors">
-                <img 
-                  src={currentUser.avatarUrl} 
-                  alt={currentUser.name} 
-                  className="h-7 w-7 rounded-full object-cover"
-                />
+                <div className="relative">
+                  <img 
+                    src={currentUser.avatarUrl} 
+                    alt={currentUser.name} 
+                    className="h-7 w-7 rounded-full object-cover"
+                  />
+                  {hasActiveReservation && (
+                    <span 
+                      className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" 
+                      title="Active reservation in progress"
+                    />
+                  )}
+                </div>
                 <span className="text-sm font-medium text-zinc-700">{currentUser.name}</span>
+                {hasActiveReservation && (
+                  <span className="hidden xl:inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                    Active Trade
+                  </span>
+                )}
               </Link>
             ) : (
               <Link to="/login" className="text-sm font-medium text-zinc-600 hover:text-zinc-900">
@@ -98,7 +155,15 @@ export function Navbar() {
             <span className="text-[10px] font-medium">Requests</span>
           </Link>
           <Link to={currentUser ? "/profile" : "/login"} className={cn("flex flex-col items-center gap-1 p-2 text-zinc-500", location.pathname.includes('/profile') && "text-zinc-900")}>
-            <UserCircle2 className="h-5 w-5" />
+            <div className="relative">
+              <UserCircle2 className="h-5 w-5" />
+              {hasActiveReservation && (
+                <span 
+                  className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-white animate-pulse" 
+                  title="Active reservation"
+                />
+              )}
+            </div>
             <span className="text-[10px] font-medium">Profile</span>
           </Link>
         </nav>

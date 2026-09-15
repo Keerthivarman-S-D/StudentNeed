@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Search, SlidersHorizontal, AlertCircle, Loader2 } from 'lucide-react';
+import { Search, SlidersHorizontal, AlertCircle, Loader2, GraduationCap, ShieldCheck, ArrowRight } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { ListingCard } from '../components/ListingCard';
@@ -63,6 +63,33 @@ export function Marketplace() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* Unauthenticated Verified Student Prompt */}
+      {!currentUser && (
+        <div className="mb-8 overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 p-6 text-white shadow-sm sm:p-8">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-2xl space-y-2">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-zinc-200 backdrop-blur-sm">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                Anna University Verified Network
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">
+                Access exclusive campus listings & student exchanges
+              </h2>
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Sign in with your verified <span className="font-mono text-white">@student.annauniv.edu</span> email to reserve items, chat directly with peers, and coordinate secure campus meetups.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <Link to="/login">
+                <Button className="bg-white text-zinc-900 hover:bg-zinc-100 font-semibold gap-1.5 shadow-sm">
+                  Sign In with Student Email
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col gap-6 md:flex-row md:items-start">
         
         {/* Mobile Filter Toggle */}
