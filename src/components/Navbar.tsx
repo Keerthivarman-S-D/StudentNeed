@@ -104,31 +104,32 @@ export function Navbar() {
             </Link>
             
             {currentUser ? (
-              <Link to="/profile" className="flex items-center gap-2 rounded-full border border-zinc-200 p-1 pr-3 hover:bg-zinc-50 transition-colors">
-                <div className="relative">
-                  <img 
-                    src={currentUser.avatarUrl} 
-                    alt={currentUser.name} 
-                    className="h-7 w-7 rounded-full object-cover"
-                  />
-                  {hasActiveReservation && (
-                    <span 
-                      className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" 
-                      title="Active reservation in progress"
+              <div className="flex items-center gap-2">
+                <Link to="/profile" className="flex items-center gap-2 rounded-full border border-zinc-200 p-1 pr-3 hover:bg-zinc-50 transition-colors">
+                  <div className="relative">
+                    <img 
+                      src={currentUser.avatarUrl} 
+                      alt={currentUser.name} 
+                      className="h-7 w-7 rounded-full object-cover"
                     />
-                  )}
-                </div>
-                <span className="text-sm font-medium text-zinc-700">{currentUser.name}</span>
+                    {hasActiveReservation && (
+                      <span 
+                        className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" 
+                        title="Active reservation in progress"
+                      />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium text-zinc-700">{currentUser.name}</span>
+                </Link>
                 {hasActiveReservation && (
                   <Link 
                     to="/reserved"
-                    onClick={(e) => e.stopPropagation()}
                     className="hidden xl:inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
                   >
                     Active Trade
                   </Link>
                 )}
-              </Link>
+              </div>
             ) : (
               <Link to="/login" className="text-sm font-medium text-zinc-600 hover:text-zinc-900">
                 Sign in

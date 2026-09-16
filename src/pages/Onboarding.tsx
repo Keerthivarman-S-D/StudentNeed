@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { auth, db, storage } from '../lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { auth, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';

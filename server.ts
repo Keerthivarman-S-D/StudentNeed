@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -19,13 +20,21 @@ async function getServerToken(): Promise<string> {
   if (serverToken && Date.now() < serverTokenExpiry - 60000) {
     return serverToken;
   }
+
+  const systemEmail = process.env.INTERNAL_SYSTEM_EMAIL?.trim();
+  const systemPassword = process.env.INTERNAL_SYSTEM_PASSWORD?.trim();
+
+  if (!systemEmail || !systemPassword) {
+    throw new Error("Internal system credentials are not configured.");
+  }
+
   const authUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`;
   const res = await fetch(authUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      email: "internal.system@student.annauniv.edu",
-      password: "InternalSystemSecretPassword2026!",
+      email: systemEmail,
+      password: systemPassword,
       returnSecureToken: true,
     }),
   });

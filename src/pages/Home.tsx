@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Search, ArrowRight, BookOpen, Laptop, Beaker, Backpack, ShieldCheck, Zap, Handshake } from 'lucide-react';
+import { ArrowRight, BookOpen, Laptop, Beaker, Backpack, ShieldCheck, Zap, Handshake } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { ListingCard } from '../components/ListingCard';
 import { Button } from '../components/ui/Button';

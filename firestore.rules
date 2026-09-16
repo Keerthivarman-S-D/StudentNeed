@@ -223,7 +223,7 @@ service cloud.firestore {
     // Strictly restricted to the server's internal service account
     match /temp_otps/{otpId} {
       allow read, write: if isAuthenticated() && 
-                            request.auth.token.email == 'internal.system@student.annauniv.edu';
+                            request.auth.token.email == 'admin@student.annauniv.edu';
     }
   }
 }
