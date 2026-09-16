@@ -16,13 +16,15 @@ import {
 import { 
   doc, 
   getDoc, 
+  getDocs,
   setDoc, 
   updateDoc, 
   collection, 
   query, 
   where, 
   onSnapshot, 
-  serverTimestamp 
+  serverTimestamp,
+  limit
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useAppContext } from '../context/AppContext';
@@ -169,26 +171,35 @@ export function ListingDetail() {
       return;
     }
 
-    const resId = `res_${listing.id}_${currentUserId}`;
+    const q = query(
+      collection(db, 'reservations'),
+      where('buyerId', '==', currentUserId),
+      where('listingId', '==', listing.id),
+      limit(1)
+    );
+
     const unsub = onSnapshot(
-      doc(db, 'reservations', resId),
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setUserReservation({
-            id: docSnap.id,
-            listingId: data.listingId,
-            buyerId: data.buyerId,
-            sellerId: data.sellerId,
-            chatId: data.chatId,
-            status: data.status,
-            meetup: data.meetup || undefined,
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt,
-          });
-        } else {
+      q,
+      (snapshot) => {
+        if (snapshot.empty) {
           setUserReservation(null);
+          return;
         }
+
+        const docSnap = snapshot.docs[0];
+        const data = docSnap.data();
+
+        setUserReservation({
+          id: docSnap.id,
+          listingId: data.listingId,
+          buyerId: data.buyerId,
+          sellerId: data.sellerId,
+          chatId: data.chatId,
+          status: data.status,
+          meetup: data.meetup || undefined,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
       },
       (err) => {
         console.warn('User reservation listener error:', err);
@@ -288,15 +299,31 @@ export function ListingDetail() {
 
     const chatId = [currentUserId, sellerId].sort().join('_');
     const chatDocRef = doc(db, 'chats', chatId);
-    const chatDocSnap = await getDoc(chatDocRef);
 
-    if (!chatDocSnap.exists()) {
-      await setDoc(chatDocRef, {
-        participants: [currentUserId, sellerId],
-        listingId: listing.id,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+    try {
+      const chatDocSnap = await getDoc(chatDocRef);
+      if (!chatDocSnap.exists()) {
+        await setDoc(chatDocRef, {
+          participants: [currentUserId, sellerId],
+          listingId: listing.id,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    } catch {
+      // If document does not exist yet, rules evaluation on null resource may throw.
+      // Proceed to initialize new chat document via the authorized create rule:
+      try {
+        await setDoc(chatDocRef, {
+          participants: [currentUserId, sellerId],
+          listingId: listing.id,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (createErr) {
+        console.error('Failed to initialize chat document:', createErr);
+        throw createErr;
+      }
     }
 
     return chatId;
@@ -350,10 +377,18 @@ export function ListingDetail() {
       const resId = `res_${listing.id}_${currentUserId}`;
       const resRef = doc(db, 'reservations', resId);
 
-      // Verify server document
-      const existingSnap = await getDoc(resRef);
-      if (existingSnap.exists()) {
-        const existingData = existingSnap.data();
+      // Verify server document using a secure query to prevent permission errors on non-existent documents
+      const qExisting = query(
+        collection(db, 'reservations'),
+        where('buyerId', '==', currentUserId),
+        where('listingId', '==', listing.id),
+        limit(1)
+      );
+      const existingSnap = await getDocs(qExisting);
+
+      if (!existingSnap.empty) {
+        const existingDoc = existingSnap.docs[0];
+        const existingData = existingDoc.data();
         const existingStatus = existingData?.status;
         if (existingStatus === 'pending' || existingStatus === 'accepted') {
           setChatError(`You already have an active reservation request (${existingStatus}).`);
@@ -363,13 +398,13 @@ export function ListingDetail() {
 
         if (existingStatus === 'rejected') {
           // Re-request reservation for original buyer: transition rejected -> pending
-          await updateDoc(resRef, {
+          await updateDoc(doc(db, 'reservations', existingDoc.id), {
             status: 'pending',
             updatedAt: serverTimestamp(),
           });
 
           await updateDoc(doc(db, 'chats', chatId), {
-            reservationId: resId,
+            reservationId: existingDoc.id,
             updatedAt: serverTimestamp(),
           });
 

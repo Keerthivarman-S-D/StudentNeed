@@ -1,22 +1,49 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LogOut, Star, Package, Bookmark, Settings, UserCircle2, Upload, Check, Loader2 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { 
+  LogOut, 
+  Star, 
+  Package, 
+  Bookmark, 
+  Settings, 
+  UserCircle2, 
+  Upload, 
+  Check, 
+  Loader2,
+  BookmarkCheck,
+  Clock,
+  MapPin,
+  MessageSquare,
+  ExternalLink,
+  Inbox,
+  AlertCircle
+} from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { auth, db, storage } from '../lib/firebase';
 import { updatePassword } from 'firebase/auth';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { ListingCard } from '../components/ListingCard';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { Badge } from '../components/ui/Badge';
+import { Reservation } from '../types';
 
-export function Profile() {
+export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' | 'saved' | 'settings' } = {}) {
   const navigate = useNavigate();
-  const { listings, savedListings } = useAppContext();
+  const [searchParams] = useSearchParams();
+  const { listings, savedListings, users } = useAppContext();
   const { currentUser, firebaseUser, logout } = useAuth();
   
-  const [activeTab, setActiveTab] = useState<'listings' | 'saved' | 'settings'>('listings');
+  const initialTab = defaultTab || (searchParams.get('tab') as any) || 'listings';
+  const [activeTab, setActiveTab] = useState<'listings' | 'reserved' | 'saved' | 'settings'>(initialTab);
+  const [reservedSubView, setReservedSubView] = useState<'outgoing' | 'incoming'>('outgoing');
+
+  // Reservations State
+  const [myReservations, setMyReservations] = useState<Reservation[]>([]);
+  const [incomingReservations, setIncomingReservations] = useState<Reservation[]>([]);
+  const [isLoadingReservations, setIsLoadingReservations] = useState(false);
 
   // Settings State
   const [editName, setEditName] = useState('');
@@ -147,6 +174,71 @@ export function Profile() {
     }
   };
 
+  // Subscribe to user reservations (both as buyer and as seller)
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    setIsLoadingReservations(true);
+
+    const buyerQuery = query(
+      collection(db, 'reservations'),
+      where('buyerId', '==', currentUser.id)
+    );
+
+    const sellerQuery = query(
+      collection(db, 'reservations'),
+      where('sellerId', '==', currentUser.id)
+    );
+
+    const unsubBuyer = onSnapshot(
+      buyerQuery,
+      (snap) => {
+        const list: Reservation[] = snap.docs.map((d) => ({
+          id: d.id,
+          listingId: d.data().listingId,
+          buyerId: d.data().buyerId,
+          sellerId: d.data().sellerId,
+          chatId: d.data().chatId,
+          status: d.data().status,
+          meetup: d.data().meetup || undefined,
+          createdAt: d.data().createdAt,
+          updatedAt: d.data().updatedAt,
+        }));
+        setMyReservations(list);
+        setIsLoadingReservations(false);
+      },
+      (err) => {
+        console.warn('Buyer reservations listener notice:', err);
+        setIsLoadingReservations(false);
+      }
+    );
+
+    const unsubSeller = onSnapshot(
+      sellerQuery,
+      (snap) => {
+        const list: Reservation[] = snap.docs.map((d) => ({
+          id: d.id,
+          listingId: d.data().listingId,
+          buyerId: d.data().buyerId,
+          sellerId: d.data().sellerId,
+          chatId: d.data().chatId,
+          status: d.data().status,
+          meetup: d.data().meetup || undefined,
+          createdAt: d.data().createdAt,
+          updatedAt: d.data().updatedAt,
+        }));
+        setIncomingReservations(list);
+      },
+      (err) => {
+        console.warn('Seller reservations listener notice:', err);
+      }
+    );
+
+    return () => {
+      unsubBuyer();
+      unsubSeller();
+    };
+  }, [currentUser?.id]);
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
       {/* Profile Header */}
@@ -202,6 +294,17 @@ export function Profile() {
             My Listings ({myListings.length})
           </button>
           <button
+            onClick={() => setActiveTab('reserved')}
+            className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-colors flex items-center gap-2 ${
+              activeTab === 'reserved'
+                ? 'border-zinc-900 text-zinc-900'
+                : 'border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700'
+            }`}
+          >
+            <BookmarkCheck className="h-4 w-4" />
+            Reserved Items ({myReservations.filter(r => r.status === 'pending' || r.status === 'accepted').length + incomingReservations.filter(r => r.status === 'pending' || r.status === 'accepted').length})
+          </button>
+          <button
             onClick={() => setActiveTab('saved')}
             className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-colors ${
               activeTab === 'saved'
@@ -227,6 +330,194 @@ export function Profile() {
 
       {/* Tab Content */}
       <div className="min-h-[400px]">
+        {activeTab === 'reserved' && (
+          <div className="space-y-6">
+            {/* Sub-view switcher */}
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+              <div className="inline-flex rounded-xl bg-zinc-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setReservedSubView('outgoing')}
+                  className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-all ${
+                    reservedSubView === 'outgoing'
+                      ? 'bg-white text-zinc-900 shadow-sm'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  Items I Reserved ({myReservations.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReservedSubView('incoming')}
+                  className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-all ${
+                    reservedSubView === 'incoming'
+                      ? 'bg-white text-zinc-900 shadow-sm'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  Incoming Requests ({incomingReservations.length})
+                </button>
+              </div>
+
+              <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-500">
+                <Clock className="h-3.5 w-3.5 text-amber-500" />
+                <span>Reserved items are held while students coordinate meetup</span>
+              </div>
+            </div>
+
+            {/* List */}
+            {(() => {
+              const currentList = reservedSubView === 'outgoing' ? myReservations : incomingReservations;
+
+              if (isLoadingReservations) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-20 text-zinc-400">
+                    <Loader2 className="h-8 w-8 animate-spin mb-3 text-zinc-600" />
+                    <p className="text-sm font-medium">Loading reservations...</p>
+                  </div>
+                );
+              }
+
+              if (currentList.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 py-20 text-center px-4">
+                    <div className="h-12 w-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3 text-zinc-400">
+                      <BookmarkCheck className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-base font-semibold text-zinc-900">
+                      {reservedSubView === 'outgoing' ? 'No items reserved yet' : 'No incoming requests yet'}
+                    </h3>
+                    <p className="text-sm text-zinc-500 mt-1 mb-5 max-w-sm">
+                      {reservedSubView === 'outgoing'
+                        ? 'When you request to hold or trade an item with another student, it will appear here.'
+                        : 'When other campus members request to reserve your listings, their requests will appear here.'}
+                    </p>
+                    {reservedSubView === 'outgoing' && (
+                      <Button onClick={() => navigate('/marketplace')} variant="outline">
+                        Explore Marketplace
+                      </Button>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {currentList.map((res) => {
+                    const item = listings.find((l) => l.id === res.listingId);
+                    const counterpartId = reservedSubView === 'outgoing' ? res.sellerId : res.buyerId;
+                    const counterpart = users.find((u) => u.id === counterpartId);
+
+                    return (
+                      <div
+                        key={res.id}
+                        className="flex flex-col rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm hover:border-zinc-300 transition-all gap-4"
+                      >
+                        <div className="flex gap-4">
+                          {/* Image */}
+                          <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl bg-zinc-100 border border-zinc-200">
+                            {item?.images && item.images.length > 0 ? (
+                              <img
+                                src={item.images[0]}
+                                alt={item?.title || 'Listing image'}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-zinc-400">
+                                <Package className="h-6 w-6" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex flex-1 flex-col justify-between">
+                            <div>
+                              <div className="flex items-start justify-between gap-2">
+                                <h4 className="font-semibold text-zinc-900 line-clamp-1 text-sm sm:text-base">
+                                  {item?.title || 'Campus Item'}
+                                </h4>
+                                {/* Status badge */}
+                                {res.status === 'accepted' && (
+                                  <Badge variant="success" className="gap-1 flex-shrink-0">
+                                    <Check className="h-3 w-3" /> Reserved
+                                  </Badge>
+                                )}
+                                {res.status === 'pending' && (
+                                  <Badge variant="warning" className="gap-1 flex-shrink-0">
+                                    <Clock className="h-3 w-3" /> Pending
+                                  </Badge>
+                                )}
+                                {res.status === 'rejected' && (
+                                  <Badge variant="outline" className="gap-1 text-zinc-500 flex-shrink-0">
+                                    Declined
+                                  </Badge>
+                                )}
+                                {res.status === 'completed' && (
+                                  <Badge variant="default" className="gap-1 flex-shrink-0 bg-blue-600">
+                                    Completed
+                                  </Badge>
+                                )}
+                              </div>
+
+                              <p className="mt-1 font-bold text-zinc-900 text-sm">
+                                {item ? (item.price === 0 ? 'Free' : `$${item.price}`) : '—'}
+                              </p>
+                            </div>
+
+                            {/* Counterpart info */}
+                            <div className="mt-2 text-xs text-zinc-500">
+                              <span>
+                                {reservedSubView === 'outgoing' ? 'Seller' : 'Buyer'}:{' '}
+                                <strong className="text-zinc-700 font-medium">
+                                  {counterpart?.name || (reservedSubView === 'outgoing' ? 'Campus Seller' : 'Student Buyer')}
+                                </strong>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Meetup status if available */}
+                        {res.meetup && (
+                          <div className="flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-2 text-xs border border-zinc-100">
+                            <MapPin className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
+                            <span className="font-medium text-zinc-800 line-clamp-1">
+                              Meetup: {typeof res.meetup.location === 'object' ? (res.meetup.location as any)?.name : res.meetup.location}
+                            </span>
+                            <span className="ml-auto capitalize text-[10px] font-semibold text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-full">
+                              {res.meetup.status}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Card Actions */}
+                        <div className="flex items-center gap-2 pt-1 border-t border-zinc-100 mt-auto">
+                          <Button
+                            size="sm"
+                            className="flex-1 gap-1.5 text-xs h-9"
+                            onClick={() => navigate(`/chat/${res.chatId}`)}
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            Open Chat
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 text-xs h-9 px-3"
+                            onClick={() => navigate(`/listing/${res.listingId}`)}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Item
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
         {activeTab === 'listings' && (
           <div>
             {myListings.length > 0 ? (

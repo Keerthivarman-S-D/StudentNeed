@@ -63,6 +63,14 @@ export default function App() {
                     </ProtectedRoute>
                   }
                 />
+                <Route
+                  path="/reserved"
+                  element={
+                    <ProtectedRoute>
+                      <Profile defaultTab="reserved" />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="/requests" element={<Requests />} />
                 <Route
                   path="/chat/:chatId"

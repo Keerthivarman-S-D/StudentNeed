@@ -5,11 +5,14 @@ import {
   doc, 
   onSnapshot, 
   query, 
+  where,
+  limit,
   orderBy, 
   addDoc, 
   setDoc,
   updateDoc, 
   getDoc, 
+  getDocs,
   serverTimestamp 
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
@@ -163,40 +166,81 @@ export function ChatPage() {
 
   // 2. Subscribe to Reservation Document in real time
   useEffect(() => {
-    if (!chat || !listing || !buyerId) return;
+    if (!chat || !listing || !buyerId || !currentUserId) return;
 
-    // Resolve reservation ID: either explicitly saved on chat or deterministic
-    const resId = chat.reservationId || `res_${listing.id}_${buyerId}`;
-    const resRef = doc(db, 'reservations', resId);
-
-    const unsubscribeRes = onSnapshot(
-      resRef,
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setReservation({
-            id: docSnap.id,
-            listingId: data.listingId,
-            buyerId: data.buyerId,
-            sellerId: data.sellerId,
-            chatId: data.chatId || chat.id,
-            status: data.status,
-            meetup: data.meetup || undefined,
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt,
-          });
-        } else {
-          setReservation(null);
+    // If chat already has a reservationId, listen to it directly
+    if (chat.reservationId) {
+      const resRef = doc(db, 'reservations', chat.reservationId);
+      const unsubscribeRes = onSnapshot(
+        resRef,
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setReservation({
+              id: docSnap.id,
+              listingId: data.listingId,
+              buyerId: data.buyerId,
+              sellerId: data.sellerId,
+              chatId: data.chatId || chat.id,
+              status: data.status,
+              meetup: data.meetup || undefined,
+              createdAt: data.createdAt,
+              updatedAt: data.updatedAt,
+            });
+          } else {
+            setReservation(null);
+          }
+        },
+        (err) => {
+          console.warn('Reservation listener notice:', err);
         }
+      );
+      return () => unsubscribeRes();
+    }
+
+    // When reservationId is not yet on chat, use role-scoped queries to avoid permission errors on non-existent documents
+    const q = isBuyer
+      ? query(
+          collection(db, 'reservations'),
+          where('buyerId', '==', currentUserId),
+          where('listingId', '==', listing.id),
+          limit(1)
+        )
+      : query(
+          collection(db, 'reservations'),
+          where('sellerId', '==', currentUserId),
+          where('chatId', '==', chat.id),
+          limit(1)
+        );
+
+    const unsubscribeQuery = onSnapshot(
+      q,
+      (snapshot) => {
+        if (snapshot.empty) {
+          setReservation(null);
+          return;
+        }
+        const docSnap = snapshot.docs[0];
+        const data = docSnap.data();
+        setReservation({
+          id: docSnap.id,
+          listingId: data.listingId,
+          buyerId: data.buyerId,
+          sellerId: data.sellerId,
+          chatId: data.chatId || chat.id,
+          status: data.status,
+          meetup: data.meetup || undefined,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
       },
       (err) => {
-        // User may not be authorized or document does not exist yet
-        console.warn('Reservation listener notice:', err);
+        console.warn('Reservation query listener notice:', err);
       }
     );
 
-    return () => unsubscribeRes();
-  }, [chat, listing, buyerId]);
+    return () => unsubscribeQuery();
+  }, [chat, listing, buyerId, currentUserId, isBuyer]);
 
   // 3. Subscribe to Messages subcollection in real time
   useEffect(() => {
@@ -294,10 +338,18 @@ export function ChatPage() {
       const resId = `res_${listing.id}_${buyerId}`;
       const resRef = doc(db, 'reservations', resId);
 
-      // Verify server-side state before creating
-      const existingSnap = await getDoc(resRef);
-      if (existingSnap.exists()) {
-        const existingData = existingSnap.data();
+      // Verify server-side state via a secure query instead of getDoc to avoid permission error on non-existent doc
+      const qExisting = query(
+        collection(db, 'reservations'),
+        where('buyerId', '==', currentUserId),
+        where('listingId', '==', listing.id),
+        limit(1)
+      );
+      const existingSnap = await getDocs(qExisting);
+
+      if (!existingSnap.empty) {
+        const existingDoc = existingSnap.docs[0];
+        const existingData = existingDoc.data();
         const existingStatus = existingData?.status;
         if (existingStatus === 'pending' || existingStatus === 'accepted') {
           setReservationError(`An active reservation already exists with status "${existingStatus}".`);
@@ -307,13 +359,13 @@ export function ChatPage() {
 
         if (existingStatus === 'rejected') {
           // Re-request reservation: allowed for original buyer (rejected -> pending)
-          await updateDoc(resRef, {
+          await updateDoc(doc(db, 'reservations', existingDoc.id), {
             status: 'pending',
             updatedAt: serverTimestamp(),
           });
 
           await updateDoc(doc(db, 'chats', chat.id), {
-            reservationId: resId,
+            reservationId: existingDoc.id,
             updatedAt: serverTimestamp(),
           });
 
@@ -378,6 +430,14 @@ export function ChatPage() {
       // Also update chat timestamp
       if (chat?.id) {
         await updateDoc(doc(db, 'chats', chat.id), {
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      // Synchronize listing status: 'reserved' when accepted, 'available' when rejected
+      if (listing?.id && currentUserId === listing.sellerId) {
+        await updateDoc(doc(db, 'listings', listing.id), {
+          status: targetStatus === 'accepted' ? 'reserved' : 'available',
           updatedAt: serverTimestamp(),
         });
       }

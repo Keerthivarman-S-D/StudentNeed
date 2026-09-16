@@ -120,9 +120,13 @@ export function Navbar() {
                 </div>
                 <span className="text-sm font-medium text-zinc-700">{currentUser.name}</span>
                 {hasActiveReservation && (
-                  <span className="hidden xl:inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                  <Link 
+                    to="/reserved"
+                    onClick={(e) => e.stopPropagation()}
+                    className="hidden xl:inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                  >
                     Active Trade
-                  </span>
+                  </Link>
                 )}
               </Link>
             ) : (
