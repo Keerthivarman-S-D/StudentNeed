@@ -30,6 +30,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setFirebaseUser(user);
       
       if (user) {
+        if (unsubscribeDoc) {
+          unsubscribeDoc();
+        }
         // Listen to the user profile document in real-time
         unsubscribeDoc = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
           if (docSnap.exists()) {
