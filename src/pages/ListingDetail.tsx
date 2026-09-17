@@ -37,7 +37,7 @@ import { Listing, User, Reservation } from '../types';
 export function ListingDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { listings, listingsLoading, users, savedListings, toggleSaveListing } = useAppContext();
+  const { listings, listingsLoading, users, savedListings, toggleSaveListing, cancelListing } = useAppContext();
   const { currentUser } = useAuth();
   const currentUserId = auth.currentUser?.uid || currentUser?.id;
   
@@ -48,6 +48,34 @@ export function ListingDetail() {
   const [isStartingChat, setIsStartingChat] = useState(false);
   const [isReserving, setIsReserving] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+
+  // Cancellation state
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelSuccessMsg, setCancelSuccessMsg] = useState<string | null>(null);
+
+  const handleConfirmCancelPost = async () => {
+    if (!listing?.id) return;
+    setChatError(null);
+    setIsCancelling(true);
+    try {
+      await cancelListing(listing.id);
+      if (fetchedListing) {
+        setFetchedListing(prev => prev ? { ...prev, status: 'cancelled' } : null);
+      }
+      setShowCancelModal(false);
+      setCancelSuccessMsg('This listing has been cancelled.');
+      setTimeout(() => {
+        setCancelSuccessMsg(null);
+      }, 4000);
+    } catch (err: any) {
+      console.error('Failed to cancel listing:', err);
+      setChatError(err?.message || 'Failed to cancel listing. Please try again.');
+      setShowCancelModal(false);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   // Reservation states
   const [userReservation, setUserReservation] = useState<Reservation | null>(null);
@@ -361,6 +389,11 @@ export function ListingDetail() {
       return;
     }
 
+    if (listing.status === 'cancelled' || listing.status === 'completed') {
+      setChatError(`Cannot reserve this item: listing is ${listing.status}.`);
+      return;
+    }
+
     // Check for duplicate active reservation
     if (userReservation && (userReservation.status === 'pending' || userReservation.status === 'accepted')) {
       const chatId = userReservation.chatId || [currentUserId, listing.sellerId].sort().join('_');
@@ -452,16 +485,29 @@ export function ListingDetail() {
 
       <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:gap-12">
         {/* Image Gallery */}
-        <div className="relative aspect-square overflow-hidden rounded-3xl bg-zinc-100 border border-zinc-200">
-          <img 
-            src={listing.images[0]} 
-            alt={listing.title} 
-            className="h-full w-full object-cover"
-          />
-          <div className="absolute left-4 top-4">
+        <div className="relative aspect-square overflow-hidden rounded-3xl bg-zinc-100 border border-zinc-200 flex items-center justify-center">
+          {listing.images && listing.images.length > 0 ? (
+            <img 
+              src={listing.images[0]} 
+              alt={listing.title} 
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center p-8 text-center bg-gradient-to-br from-zinc-50 to-zinc-100 h-full w-full">
+              <span className="text-5xl mb-3">{listing.type === 'Borrow' ? '🤝' : '🔄'}</span>
+              <span className="text-base font-semibold uppercase tracking-wider text-zinc-600">{listing.type} Request</span>
+              <p className="text-xs text-zinc-400 mt-2 max-w-xs">Text-only listing — no photos required for peer campus requests.</p>
+            </div>
+          )}
+          <div className="absolute left-4 top-4 flex gap-2 flex-wrap">
             <Badge variant={getTypeColor(listing.type) as any} className="text-sm px-3 py-1 shadow-md">
               {listing.type}
             </Badge>
+            {listing.status === 'cancelled' && (
+              <Badge variant="destructive" className="text-sm px-3 py-1 shadow-md bg-red-600 text-white">
+                Cancelled
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -645,6 +691,27 @@ export function ListingDetail() {
             </div>
           )}
 
+          {cancelSuccessMsg && (
+            <div className="mb-4 flex items-center gap-2 rounded-xl bg-green-50 p-3 text-sm font-medium text-green-800 border border-green-200">
+              <Check className="h-4 w-4 text-green-600 shrink-0" />
+              <span>{cancelSuccessMsg}</span>
+            </div>
+          )}
+
+          {listing.status === 'cancelled' && (
+            <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-sm text-red-900">Listing Cancelled</h4>
+                  <p className="text-xs text-red-700 mt-0.5">
+                    This post has been cancelled by the student and is no longer available on the campus marketplace.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {chatError && (
             <div className="mb-4 flex items-center justify-between rounded-xl bg-red-50 p-3 text-sm text-red-700 border border-red-200">
               <div className="flex items-center gap-2">
@@ -663,43 +730,18 @@ export function ListingDetail() {
 
           <div className="mt-auto flex flex-col sm:flex-row gap-3">
             {!isOwner ? (
-              <>
-                {/* Primary Reservation / Chat Action */}
-                {userReservation && (userReservation.status === 'pending' || userReservation.status === 'accepted') ? (
-                  <Button 
-                    size="lg" 
-                    className="flex-1 text-base gap-2 bg-zinc-900 text-white"
-                    disabled={isStartingChat}
-                    onClick={handleContactStudent}
-                  >
-                    {isStartingChat ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <MessageSquare className="h-5 w-5" />
-                    )}
-                    {isStartingChat ? 'Opening Chat...' : 'View Request in Chat'}
-                  </Button>
-                ) : (
-                  <>
+              listing.status === 'cancelled' ? (
+                <Button size="lg" disabled className="flex-1 text-base bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed">
+                  Listing Cancelled
+                </Button>
+              ) : (
+                <>
+                  {/* Primary Reservation / Chat Action */}
+                  {userReservation && (userReservation.status === 'pending' || userReservation.status === 'accepted') ? (
                     <Button 
                       size="lg" 
-                      className="flex-1 text-base gap-2 bg-zinc-900 text-white hover:bg-zinc-800"
-                      disabled={isReserving || isStartingChat}
-                      onClick={handleReserveItem}
-                    >
-                      {isReserving ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : (
-                        <BookmarkCheck className="h-5 w-5" />
-                      )}
-                      {isReserving ? 'Reserving...' : 'Reserve Item'}
-                    </Button>
-
-                    <Button 
-                      size="lg" 
-                      variant="outline"
-                      className="text-base gap-2"
-                      disabled={isStartingChat || isReserving}
+                      className="flex-1 text-base gap-2 bg-zinc-900 text-white"
+                      disabled={isStartingChat}
                       onClick={handleContactStudent}
                     >
                       {isStartingChat ? (
@@ -707,29 +749,113 @@ export function ListingDetail() {
                       ) : (
                         <MessageSquare className="h-5 w-5" />
                       )}
-                      {isStartingChat ? 'Connecting...' : 'Chat'}
+                      {isStartingChat ? 'Opening Chat...' : 'View Request in Chat'}
                     </Button>
-                  </>
-                )}
+                  ) : (
+                    <>
+                      <Button 
+                        size="lg" 
+                        className="flex-1 text-base gap-2 bg-zinc-900 text-white hover:bg-zinc-800"
+                        disabled={isReserving || isStartingChat}
+                        onClick={handleReserveItem}
+                      >
+                        {isReserving ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <BookmarkCheck className="h-5 w-5" />
+                        )}
+                        {isReserving ? 'Reserving...' : 'Reserve Item'}
+                      </Button>
 
-                <Button 
-                  size="icon" 
-                  variant="outline" 
-                  className={cn("h-11 w-11 shrink-0 transition-colors self-end sm:self-auto", isSaved && "border-red-500 bg-red-50")}
-                  onClick={() => toggleSaveListing(listing.id)}
-                  title={isSaved ? "Saved" : "Save Listing"}
-                >
-                  <Heart className={cn("h-5 w-5", isSaved && "fill-red-500 text-red-500")} />
-                </Button>
-              </>
+                      <Button 
+                        size="lg" 
+                        variant="outline" 
+                        className="text-base gap-2"
+                        disabled={isStartingChat || isReserving}
+                        onClick={handleContactStudent}
+                      >
+                        {isStartingChat ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <MessageSquare className="h-5 w-5" />
+                        )}
+                        {isStartingChat ? 'Connecting...' : 'Chat'}
+                      </Button>
+                    </>
+                  )}
+
+                  <Button 
+                    size="icon" 
+                    variant="outline" 
+                    className={cn("h-11 w-11 shrink-0 transition-colors self-end sm:self-auto", isSaved && "border-red-500 bg-red-50")}
+                    onClick={() => toggleSaveListing(listing.id)}
+                    title={isSaved ? "Saved" : "Save Listing"}
+                  >
+                    <Heart className={cn("h-5 w-5", isSaved && "fill-red-500 text-red-500")} />
+                  </Button>
+                </>
+              )
             ) : (
-              <Button size="lg" variant="outline" className="flex-1 text-base" onClick={() => navigate('/profile')}>
-                Manage My Listing
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-3 w-full">
+                <Button size="lg" variant="outline" className="flex-1 text-base" onClick={() => navigate('/profile')}>
+                  Manage in Profile
+                </Button>
+                {listing.status !== 'cancelled' && (
+                  <Button 
+                    size="lg" 
+                    variant="outline" 
+                    className="text-base text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-medium"
+                    onClick={() => setShowCancelModal(true)}
+                  >
+                    Cancel Post
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal for Owner Cancelling Post */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-zinc-200 space-y-4">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <h3 className="text-lg font-bold text-zinc-900">Cancel Listing?</h3>
+            </div>
+            <p className="text-sm text-zinc-600 leading-relaxed">
+              Are you sure you want to cancel &ldquo;{listing.title}&rdquo;? It will be marked as cancelled and removed from the active marketplace feed.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowCancelModal(false)} 
+                disabled={isCancelling}
+              >
+                Keep Listing
+              </Button>
+              <Button 
+                variant="destructive" 
+                className="bg-red-600 hover:bg-red-700 text-white font-medium" 
+                disabled={isCancelling}
+                onClick={handleConfirmCancelPost}
+              >
+                {isCancelling ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Cancelling...
+                  </span>
+                ) : (
+                  'Confirm Cancel'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

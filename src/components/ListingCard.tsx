@@ -35,12 +35,20 @@ export function ListingCard({ listing }: { listing: Listing }) {
       to={`/listing/${listing.id}`} 
       className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition-all hover:shadow-md hover:border-zinc-300"
     >
-      <div className="relative aspect-square overflow-hidden bg-zinc-100">
-        <img 
-          src={listing.images[0]} 
-          alt={listing.title} 
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-        />
+      <div className="relative aspect-square overflow-hidden bg-zinc-100 flex items-center justify-center">
+        {listing.images && listing.images.length > 0 ? (
+          <img 
+            src={listing.images[0]} 
+            alt={listing.title} 
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center p-6 text-center bg-gradient-to-br from-zinc-50 to-zinc-100 h-full w-full">
+            <span className="text-3xl mb-2">{listing.type === 'Borrow' ? '🤝' : '🔄'}</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{listing.type} Request</span>
+            <span className="text-xs text-zinc-400 mt-1 line-clamp-1">{listing.category}</span>
+          </div>
+        )}
         <button
           onClick={(e) => {
             e.preventDefault();
@@ -53,10 +61,15 @@ export function ListingCard({ listing }: { listing: Listing }) {
             className={cn("h-5 w-5 transition-all", isSaved && "fill-red-500 text-red-500")} 
           />
         </button>
-        <div className="absolute left-3 top-3 flex gap-2">
+        <div className="absolute left-3 top-3 flex gap-1.5 flex-wrap">
           <Badge variant={getTypeColor(listing.type) as any} className="shadow-sm">
             {listing.type}
           </Badge>
+          {listing.status === 'cancelled' && (
+            <Badge variant="destructive" className="bg-red-600 text-white shadow-sm">
+              Cancelled
+            </Badge>
+          )}
         </div>
       </div>
       

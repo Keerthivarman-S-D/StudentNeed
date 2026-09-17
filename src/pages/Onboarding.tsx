@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { auth, storage } from '../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth } from '../lib/firebase';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { UserCircle2, Upload, Link2, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { AUTH_ENDPOINTS } from '../config/api';
 import { cn } from '../lib/utils';
+import { uploadImageToCloudinary, validateImageFile } from '../lib/cloudinary';
 
 export function Onboarding() {
   const navigate = useNavigate();
@@ -159,18 +159,15 @@ export function Onboarding() {
         }
       } else if (avatarSource === 'upload' && avatarFile) {
         try {
-          const ext = avatarFile.name.split('.').pop() || 'jpg';
-          const safeName = `${Date.now()}_avatar.${ext.replace(/[^a-zA-Z0-9]/g, '')}`;
-          const avatarStorageRef = ref(storage, `avatars/${firebaseUser.uid}/${safeName}`);
-          
-          const uploadResult = await uploadBytes(avatarStorageRef, avatarFile, {
-            contentType: avatarFile.type,
-            customMetadata: { uploadedBy: firebaseUser.uid }
+          const secureUrl = await uploadImageToCloudinary(avatarFile, {
+            folder: 'studentneed/avatars',
           });
-          finalAvatarUrl = await getDownloadURL(uploadResult.ref);
-        } catch (imgError) {
-          console.error("Failed to upload image to Storage:", imgError);
-          // Fallback to initials if image upload fails
+          finalAvatarUrl = secureUrl;
+        } catch (imgError: any) {
+          console.error("Failed to upload avatar to Cloudinary:", imgError);
+          setError(imgError.message || "Failed to upload photo. Please select a valid JPG, PNG, or WEBP image under 5MB.");
+          setIsLoading(false);
+          return;
         }
       }
       
@@ -319,10 +316,19 @@ export function Onboarding() {
                     <div>
                       <Input 
                         type="file" 
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
+                            const validation = validateImageFile(file);
+                            if (!validation.valid) {
+                              setError(validation.error || 'Invalid image file.');
+                              setAvatarFile(null);
+                              setAvatarPreview('');
+                              e.target.value = '';
+                              return;
+                            }
+                            setError(null);
                             setAvatarFile(file);
                             setAvatarPreview(URL.createObjectURL(file));
                           } else {
@@ -333,7 +339,7 @@ export function Onboarding() {
                         className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-zinc-100 file:text-zinc-900 hover:file:bg-zinc-200"
                       />
                       <p className="mt-1 text-xs text-zinc-500">
-                        Upload an image. We will automatically optimize it.
+                        JPG, JPEG, PNG, or WEBP. Max 5MB.
                       </p>
                     </div>
                   ) : (

@@ -326,6 +326,11 @@ export function ChatPage() {
       return;
     }
 
+    if (listing.status === 'cancelled' || listing.status === 'completed') {
+      setReservationError(`Cannot reserve this item: listing is ${listing.status}.`);
+      return;
+    }
+
     // Prevent duplicate active reservations
     if (reservation && (reservation.status === 'pending' || reservation.status === 'accepted')) {
       setReservationError(`You already have an active reservation (${reservation.status}) for this item.`);
@@ -748,25 +753,26 @@ export function ChatPage() {
                     )}
 
                     {/* Status Badge */}
-                    {reservation?.status === 'pending' && (
+                    {listing.status === 'cancelled' ? (
+                      <Badge variant="destructive" className="gap-1 font-medium bg-red-600 text-white">
+                        Cancelled
+                      </Badge>
+                    ) : reservation?.status === 'pending' ? (
                       <Badge variant="warning" className="gap-1 font-medium">
                         <Clock className="h-3 w-3" />
                         Pending
                       </Badge>
-                    )}
-                    {reservation?.status === 'accepted' && (
+                    ) : reservation?.status === 'accepted' ? (
                       <Badge variant="success" className="gap-1 font-medium">
                         <Check className="h-3 w-3" />
                         Accepted
                       </Badge>
-                    )}
-                    {reservation?.status === 'rejected' && (
+                    ) : reservation?.status === 'rejected' ? (
                       <Badge variant="secondary" className="gap-1 font-medium text-zinc-600">
                         <X className="h-3 w-3" />
                         Declined
                       </Badge>
-                    )}
-                    {!reservation && (
+                    ) : (
                       <Badge variant="outline" className="text-zinc-500 font-normal">
                         No active request
                       </Badge>
@@ -775,20 +781,26 @@ export function ChatPage() {
 
                   {/* Contextual Description */}
                   <p className="text-[11px] text-zinc-500 mt-0.5">
-                    {reservation?.status === 'pending' && isBuyer && 'Your reservation request is pending seller confirmation.'}
-                    {reservation?.status === 'pending' && isSeller && `Incoming reservation request from ${otherUser?.name || 'student'}.`}
-                    {reservation?.status === 'accepted' && 'Item is reserved. Arrange pickup and exchange details in chat.'}
-                    {reservation?.status === 'rejected' && 'The reservation request for this listing was declined.'}
-                    {!reservation && isBuyer && 'Interested in this item? Request to reserve it from the seller.'}
-                    {!reservation && isSeller && 'Waiting for student reservation request.'}
+                    {listing.status === 'cancelled' && 'This listing has been cancelled by the seller.'}
+                    {listing.status !== 'cancelled' && reservation?.status === 'pending' && isBuyer && 'Your reservation request is pending seller confirmation.'}
+                    {listing.status !== 'cancelled' && reservation?.status === 'pending' && isSeller && `Incoming reservation request from ${otherUser?.name || 'student'}.`}
+                    {listing.status !== 'cancelled' && reservation?.status === 'accepted' && 'Item is reserved. Arrange pickup and exchange details in chat.'}
+                    {listing.status !== 'cancelled' && reservation?.status === 'rejected' && 'The reservation request for this listing was declined.'}
+                    {listing.status !== 'cancelled' && !reservation && isBuyer && 'Interested in this item? Request to reserve it from the seller.'}
+                    {listing.status !== 'cancelled' && !reservation && isSeller && 'Waiting for student reservation request.'}
                   </p>
                 </div>
               </div>
 
               {/* Right Side: Dynamic Action Buttons */}
               <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                {/* Cancelled Listing notice for Buyer */}
+                {isBuyer && listing.status === 'cancelled' && (
+                  <span className="text-xs text-red-600 font-medium">Listing Cancelled</span>
+                )}
+
                 {/* Buyer: Request Reservation button */}
-                {isBuyer && (!reservation || reservation.status === 'rejected') && (
+                {isBuyer && listing.status !== 'cancelled' && (!reservation || reservation.status === 'rejected') && (
                   <Button
                     size="sm"
                     onClick={handleRequestReservation}

@@ -1,6 +1,6 @@
 export type Role = 'student' | 'admin';
-export type ListingStatus = 'available' | 'reserved' | 'completed' | 'cancelled' | 'expired';
-export type RequestStatus = 'open' | 'matched' | 'completed' | 'cancelled';
+export type ListingStatus = 'available' | 'active' | 'reserved' | 'completed' | 'cancelled' | 'expired';
+export type RequestStatus = 'open' | 'active' | 'matched' | 'accepted' | 'completed' | 'cancelled';
 export type ReservationStatus = 'pending' | 'accepted' | 'rejected' | 'completed' | 'cancelled';
 
 export type User = {

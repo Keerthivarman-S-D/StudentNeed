@@ -1,0 +1,21 @@
+[
+  {
+    "origin": [
+      "https://studentneed.me",
+      "https://www.studentneed.me",
+      "http://localhost:3000",
+      "http://localhost:5173"
+    ],
+    "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
+    "responseHeader": [
+      "Content-Type",
+      "Authorization",
+      "Content-Length",
+      "User-Agent",
+      "x-goog-resumable",
+      "x-firebase-storage-version",
+      "x-goog-upload-protocol"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

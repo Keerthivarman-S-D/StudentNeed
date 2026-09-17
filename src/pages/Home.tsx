@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button';
 
 export function Home() {
   const { listings } = useAppContext();
-  const recentListings = listings.slice(0, 4);
+  const recentListings = listings.filter(l => l.status !== 'cancelled').slice(0, 4);
 
   const categories = [
     { name: 'Textbooks', icon: BookOpen, color: 'bg-blue-100 text-blue-600' },

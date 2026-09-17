@@ -7,11 +7,13 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 
 export function Requests() {
-  const { requests, requestsLoading, requestsError, updateRequestStatus, users } = useAppContext();
+  const { requests, requestsLoading, requestsError, updateRequestStatus, cancelRequest, users } = useAppContext();
   const { currentUser, firebaseUser } = useAuth();
   
   const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
   const [contactedId, setContactedId] = useState<string | null>(null);
 
   const displayedRequests = activeTab === 'all' 
@@ -26,6 +28,18 @@ export function Requests() {
       console.error('Failed to mark request as found:', err);
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const handleConfirmCancelRequest = async (requestId: string) => {
+    setCancellingId(requestId);
+    try {
+      await cancelRequest(requestId);
+      setConfirmCancelId(null);
+    } catch (err) {
+      console.error('Failed to cancel request:', err);
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -98,7 +112,10 @@ export function Requests() {
                   <div className="flex items-start justify-between">
                     <h3 className="text-lg font-bold text-zinc-900">{request.title}</h3>
                     {request.status !== 'open' && (
-                      <Badge variant={request.status === 'matched' ? 'success' : 'secondary'} className="ml-2">
+                      <Badge 
+                        variant={request.status === 'matched' ? 'success' : request.status === 'cancelled' ? 'destructive' : 'secondary'} 
+                        className={`ml-2 ${request.status === 'cancelled' ? 'bg-red-600 text-white' : ''}`}
+                      >
                         {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
                       </Badge>
                     )}
@@ -150,14 +167,47 @@ export function Requests() {
                       </Button>
                     )
                   ) : isOwner && request.status === 'open' ? (
-                    <Button 
-                      variant="secondary" 
-                      className="w-full sm:w-auto text-xs h-8"
-                      disabled={updatingId === request.id}
-                      onClick={() => handleMarkAsFound(request.id)}
-                    >
-                      {updatingId === request.id ? 'Updating...' : 'Mark as Found'}
-                    </Button>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                      <Button 
+                        variant="secondary" 
+                        className="text-xs h-8"
+                        disabled={updatingId === request.id || cancellingId === request.id}
+                        onClick={() => handleMarkAsFound(request.id)}
+                      >
+                        {updatingId === request.id ? 'Updating...' : 'Mark as Found'}
+                      </Button>
+                      {confirmCancelId === request.id ? (
+                        <div className="flex items-center justify-end gap-1.5 bg-red-50 p-1 rounded-lg border border-red-200">
+                          <span className="text-[11px] font-medium text-red-800 px-1">Cancel?</span>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-6 px-2 text-[11px] bg-red-600 hover:bg-red-700 text-white"
+                            disabled={cancellingId === request.id}
+                            onClick={() => handleConfirmCancelRequest(request.id)}
+                          >
+                            {cancellingId === request.id ? '...' : 'Yes'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-1.5 text-[11px] text-zinc-600"
+                            onClick={() => setConfirmCancelId(null)}
+                          >
+                            No
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button 
+                          variant="outline" 
+                          className="text-xs h-8 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-medium"
+                          disabled={updatingId === request.id || cancellingId === request.id}
+                          onClick={() => setConfirmCancelId(request.id)}
+                        >
+                          Cancel Request
+                        </Button>
+                      )}
+                    </div>
                   ) : null}
                 </div>
               </div>

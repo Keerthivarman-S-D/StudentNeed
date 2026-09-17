@@ -45,23 +45,54 @@ service cloud.firestore {
       allow delete: if false;
     }
     
+    function validListingImages(data) {
+      return (data.type in ['Borrow', 'Exchange'] && (!('images' in data) || data.images == null || data.images.size() == 0)) ||
+             (!(data.type in ['Borrow', 'Exchange']) && ('images' in data) && data.images is list && data.images.size() > 0 && data.images.size() <= 5);
+    }
+
     match /listings/{listingId} {
       allow read: if isAuthenticated();
       
       // Only authenticated users can create listings where sellerId matches their UID
+      // Must start with available/active status and satisfy image constraints
       allow create: if isAuthenticated() && 
-                       request.resource.data.sellerId == request.auth.uid;
+                       request.resource.data.sellerId == request.auth.uid &&
+                       request.resource.data.status in ['available', 'active'] &&
+                       validListingImages(request.resource.data);
       
-      // Updates: owner can modify listing details, but CANNOT transfer sellerId to another user
+      // Updates:
+      // - Cannot transition if already cancelled or completed
+      // - Only owner can cancel listing, transitioning from available/active/reserved to cancelled
+      // - Owner can modify listing details while preserving images constraint and sellerId
+      // - Reservation sync allowed between available and reserved while not cancelled
       allow update: if isAuthenticated() && (
-        (resource.data.sellerId == request.auth.uid && request.resource.data.sellerId == resource.data.sellerId) || 
+        (
+          resource.data.status != 'cancelled' &&
+          resource.data.status != 'completed' &&
+          request.resource.data.sellerId == resource.data.sellerId &&
+          (
+            // Owner cancelling or editing
+            (
+              resource.data.sellerId == request.auth.uid &&
+              (
+                // Cancellation transition
+                (request.resource.data.status == 'cancelled' && resource.data.status in ['available', 'active', 'reserved']) ||
+                // Regular active/available edit
+                (request.resource.data.status in ['available', 'active', 'reserved', 'completed'] && validListingImages(request.resource.data))
+              )
+            ) ||
+            // Reservation sync (available <-> reserved)
+            (
+              resource.data.status in ['available', 'active', 'reserved'] &&
+              request.resource.data.status in ['available', 'active', 'reserved']
+            )
+          )
+        ) || 
         isAdmin()
       );
       
-      allow delete: if isAuthenticated() && (
-        resource.data.sellerId == request.auth.uid || 
-        isAdmin()
-      );
+      // Preserve cancelled/completed records for history; only admins may permanently remove
+      allow delete: if isAdmin();
     }
     
     match /requests/{requestId} {
@@ -69,18 +100,25 @@ service cloud.firestore {
       
       // Only authenticated users can create requests with requesterId matching their UID
       allow create: if isAuthenticated() && 
-                       request.resource.data.requesterId == request.auth.uid;
+                       request.resource.data.requesterId == request.auth.uid &&
+                       request.resource.data.status in ['open', 'active'];
       
-      // Updates: owner can modify request details, but CANNOT transfer requesterId to another user
+      // Updates:
+      // - Cannot transition if already cancelled or completed
+      // - Only owner can update or cancel request
       allow update: if isAuthenticated() && (
-        (resource.data.requesterId == request.auth.uid && request.resource.data.requesterId == resource.data.requesterId) || 
+        (
+          resource.data.status != 'cancelled' &&
+          resource.data.status != 'completed' &&
+          resource.data.requesterId == request.auth.uid && 
+          request.resource.data.requesterId == resource.data.requesterId &&
+          request.resource.data.status in ['open', 'active', 'matched', 'accepted', 'completed', 'cancelled']
+        ) || 
         isAdmin()
       );
       
-      allow delete: if isAuthenticated() && (
-        resource.data.requesterId == request.auth.uid || 
-        isAdmin()
-      );
+      // Preserve request records for history; only admins may permanently remove
+      allow delete: if isAdmin();
     }
 
     function isValidCampusLocation(loc) {
@@ -145,13 +183,15 @@ service cloud.firestore {
         isAdmin()
       );
 
-      // Only authenticated students can create a reservation in 'pending' status for another student's listing
+      // Only authenticated students can create a reservation in 'pending' status for another student's active listing
       allow create: if isAuthenticated() && 
                        request.resource.data.buyerId == request.auth.uid &&
                        request.resource.data.sellerId != request.auth.uid &&
                        request.resource.data.status == 'pending' &&
                        request.resource.data.listingId is string &&
-                       request.resource.data.chatId is string;
+                       request.resource.data.chatId is string &&
+                       exists(/databases/$(database)/documents/listings/$(request.resource.data.listingId)) &&
+                       get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status in ['available', 'active'];
 
       // Updates:
       // 1. Status transitions: ONLY seller can transition from 'pending' to 'accepted' or 'rejected'

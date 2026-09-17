@@ -43,10 +43,12 @@ type AppContextType = {
   listingsLoading: boolean;
   listingsError: string | null;
   addListing: (listing: NewListingInput | Listing) => Promise<string>;
+  cancelListing: (listingId: string) => Promise<void>;
   requests: ItemRequest[];
   requestsLoading: boolean;
   requestsError: string | null;
   addRequest: (request: NewRequestInput | ItemRequest) => Promise<string>;
+  cancelRequest: (requestId: string) => Promise<void>;
   updateRequestStatus: (requestId: string, status: RequestStatus) => Promise<void>;
   savedListings: string[];
   toggleSaveListing: (id: string) => void;
@@ -292,6 +294,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const sellerId = auth.currentUser.uid;
     const docRef = doc(collection(db, 'listings'));
 
+    const isBorrowOrExchange = listingInput.type === 'Borrow' || listingInput.type === 'Exchange';
+
     const newListingData: Record<string, any> = {
       title: listingInput.title.trim(),
       description: listingInput.description.trim(),
@@ -300,9 +304,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       category: listingInput.category,
       location: listingInput.location.trim(),
       sellerId: sellerId, // strictly enforced from authenticated user
-      images: Array.isArray(listingInput.images) && listingInput.images.length > 0
-        ? listingInput.images
-        : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800'],
+      images: isBorrowOrExchange
+        ? []
+        : (Array.isArray(listingInput.images) && listingInput.images.length > 0
+            ? listingInput.images
+            : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800']),
       status: listingInput.status || 'available',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -317,6 +323,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return docRef.id;
     } catch (err: unknown) {
       handleFirestoreError(err, OperationType.CREATE, `listings/${docRef.id}`);
+    }
+  };
+
+  const cancelListing = async (listingId: string): Promise<void> => {
+    if (!auth.currentUser) {
+      throw new Error('Authentication required: please log in to cancel a listing.');
+    }
+
+    const currentUid = auth.currentUser.uid;
+    const docRef = doc(db, 'listings', listingId);
+
+    const currentListing = listings.find(l => l.id === listingId);
+    if (currentListing && currentListing.sellerId !== currentUid) {
+      throw new Error('Unauthorized: only the owner can cancel this listing.');
+    }
+    if (currentListing?.status === 'cancelled') {
+      return;
+    }
+
+    try {
+      await updateDoc(docRef, {
+        status: 'cancelled',
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err: unknown) {
+      handleFirestoreError(err, OperationType.UPDATE, `listings/${listingId}`);
     }
   };
 
@@ -352,6 +384,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const cancelRequest = async (requestId: string): Promise<void> => {
+    if (!auth.currentUser) {
+      throw new Error('Authentication required: please log in to cancel a request.');
+    }
+
+    const currentUid = auth.currentUser.uid;
+    const docRef = doc(db, 'requests', requestId);
+
+    const currentReq = requests.find(r => r.id === requestId);
+    if (currentReq && currentReq.requesterId !== currentUid) {
+      throw new Error('Unauthorized: only the requester can cancel this request.');
+    }
+    if (currentReq?.status === 'cancelled') {
+      return;
+    }
+
+    try {
+      await updateDoc(docRef, {
+        status: 'cancelled',
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err: unknown) {
+      handleFirestoreError(err, OperationType.UPDATE, `requests/${requestId}`);
+    }
+  };
+
   const updateRequestStatus = async (requestId: string, status: RequestStatus): Promise<void> => {
     if (!auth.currentUser) {
       throw new Error('Authentication required: please log in to update a request.');
@@ -381,10 +439,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         listingsLoading,
         listingsError,
         addListing,
+        cancelListing,
         requests,
         requestsLoading,
         requestsError,
         addRequest,
+        cancelRequest,
         updateRequestStatus,
         savedListings,
         toggleSaveListing,

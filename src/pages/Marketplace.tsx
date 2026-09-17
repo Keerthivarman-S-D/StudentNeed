@@ -28,7 +28,8 @@ export function Marketplace() {
   const types: (ListingType | 'All')[] = ['All', 'Sale', 'Borrow', 'Donate', 'Exchange'];
 
   const filteredListings = useMemo(() => {
-    let result = [...listings];
+    // Filter out cancelled listings from public marketplace feed
+    let result = listings.filter(l => l.status !== 'cancelled');
 
     if (search) {
       result = result.filter(l => 

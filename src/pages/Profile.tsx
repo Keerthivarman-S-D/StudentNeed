@@ -20,10 +20,10 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { auth, db, storage } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
 import { updatePassword } from 'firebase/auth';
 import { doc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadImageToCloudinary, validateImageFile } from '../lib/cloudinary';
 import { ListingCard } from '../components/ListingCard';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -33,12 +33,18 @@ import { Reservation } from '../types';
 export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' | 'saved' | 'settings' } = {}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { listings, savedListings, users } = useAppContext();
+  const { listings, savedListings, users, cancelListing } = useAppContext();
   const { currentUser, firebaseUser, logout } = useAuth();
   
   const initialTab = defaultTab || (searchParams.get('tab') as any) || 'listings';
   const [activeTab, setActiveTab] = useState<'listings' | 'reserved' | 'saved' | 'settings'>(initialTab);
   const [reservedSubView, setReservedSubView] = useState<'outgoing' | 'incoming'>('outgoing');
+
+  // Listings Management State
+  const [listingFilter, setListingFilter] = useState<'all' | 'active' | 'cancelled'>('all');
+  const [listingToCancel, setListingToCancel] = useState<any | null>(null);
+  const [isCancellingListing, setIsCancellingListing] = useState(false);
+  const [listingCancelError, setListingCancelError] = useState<string | null>(null);
 
   // Reservations State
   const [myReservations, setMyReservations] = useState<Reservation[]>([]);
@@ -77,7 +83,28 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
   }
 
   const myListings = listings.filter(l => l.sellerId === currentUser.id);
-  const mySavedListings = listings.filter(l => savedListings.includes(l.id));
+  const mySavedListings = listings.filter(l => savedListings.includes(l.id) && l.status !== 'cancelled');
+
+  const filteredMyListings = myListings.filter(l => {
+    if (listingFilter === 'active') return l.status !== 'cancelled';
+    if (listingFilter === 'cancelled') return l.status === 'cancelled';
+    return true;
+  });
+
+  const handleConfirmCancelListing = async () => {
+    if (!listingToCancel) return;
+    setIsCancellingListing(true);
+    setListingCancelError(null);
+    try {
+      await cancelListing(listingToCancel.id);
+      setListingToCancel(null);
+    } catch (err: any) {
+      console.error('Failed to cancel listing from profile:', err);
+      setListingCancelError(err?.message || 'Failed to cancel listing');
+    } finally {
+      setIsCancellingListing(false);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -131,15 +158,9 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
     const file = e.target.files?.[0];
     if (!file || !firebaseUser) return;
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (!allowedTypes.includes(file.type)) {
-      setImageMessage({ type: 'error', text: 'Unsupported image format. Please upload JPG, PNG, WEBP, or GIF.' });
-      if (e.target) e.target.value = '';
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setImageMessage({ type: 'error', text: 'Image exceeds 5MB limit. Please choose a smaller photo.' });
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      setImageMessage({ type: 'error', text: validation.error || 'Invalid image file.' });
       if (e.target) e.target.value = '';
       return;
     }
@@ -147,27 +168,17 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
     setIsUploadingImage(true);
     setImageMessage({ type: '', text: '' });
     try {
-      const ext = file.name.split('.').pop() || 'jpg';
-      const safeName = `${Date.now()}_avatar.${ext.replace(/[^a-zA-Z0-9]/g, '')}`;
-      const avatarStorageRef = ref(storage, `avatars/${firebaseUser.uid}/${safeName}`);
-
-      const metadata = {
-        contentType: file.type,
-        customMetadata: {
-          uploadedBy: firebaseUser.uid
-        }
-      };
-
-      const uploadResult = await uploadBytes(avatarStorageRef, file, metadata);
-      const downloadUrl = await getDownloadURL(uploadResult.ref);
+      const secureUrl = await uploadImageToCloudinary(file, {
+        folder: 'studentneed/avatars',
+      });
 
       await updateDoc(doc(db, 'users', firebaseUser.uid), {
-        avatarUrl: downloadUrl
+        avatarUrl: secureUrl
       });
       setImageMessage({ type: 'success', text: 'Profile image updated successfully.' });
     } catch (err: any) {
-      console.error('Failed to upload avatar to Storage:', err);
-      setImageMessage({ type: 'error', text: err.message || 'Failed to upload image to Firebase Storage.' });
+      console.error('Failed to upload avatar to Cloudinary:', err);
+      setImageMessage({ type: 'error', text: err.message || 'Failed to upload image to Cloudinary.' });
     } finally {
       setIsUploadingImage(false);
       if (e.target) e.target.value = ''; // Reset input
@@ -253,7 +264,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
             {activeTab === 'settings' && (
               <label className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
                 <Upload className="h-6 w-6" />
-                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isUploadingImage} />
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageUpload} disabled={isUploadingImage} />
               </label>
             )}
           </div>
@@ -519,13 +530,81 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
           </div>
         )}
         {activeTab === 'listings' && (
-          <div>
+          <div className="space-y-6">
             {myListings.length > 0 ? (
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {myListings.map(listing => (
-                  <ListingCard key={listing.id} listing={listing} />
-                ))}
-              </div>
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 pb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Status:</span>
+                    <button
+                      type="button"
+                      onClick={() => setListingFilter('all')}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                        listingFilter === 'all'
+                          ? 'bg-zinc-900 text-white shadow-xs'
+                          : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                      }`}
+                    >
+                      All ({myListings.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setListingFilter('active')}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                        listingFilter === 'active'
+                          ? 'bg-zinc-900 text-white shadow-xs'
+                          : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                      }`}
+                    >
+                      Active ({myListings.filter(l => l.status !== 'cancelled').length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setListingFilter('cancelled')}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                        listingFilter === 'cancelled'
+                          ? 'bg-zinc-900 text-white shadow-xs'
+                          : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                      }`}
+                    >
+                      Cancelled ({myListings.filter(l => l.status === 'cancelled').length})
+                    </button>
+                  </div>
+                  <Button size="sm" onClick={() => navigate('/create-listing')}>
+                    Post an Item
+                  </Button>
+                </div>
+
+                {filteredMyListings.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 py-16 text-center">
+                    <p className="text-sm text-zinc-500">No {listingFilter} listings found.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {filteredMyListings.map(listing => (
+                      <div key={listing.id} className="flex flex-col">
+                        <ListingCard listing={listing} />
+                        <div className="mt-2 flex items-center justify-between px-1">
+                          <span className={`text-xs font-semibold ${listing.status === 'cancelled' ? 'text-red-600' : 'text-emerald-700'}`}>
+                            {listing.status === 'cancelled' ? '• Cancelled' : '• Active'}
+                          </span>
+                          {listing.status !== 'cancelled' ? (
+                            <button
+                              type="button"
+                              onClick={() => setListingToCancel(listing)}
+                              className="text-xs text-red-600 hover:text-red-700 hover:underline font-medium"
+                            >
+                              Cancel Post
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-zinc-400">Preserved in history</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
               <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 py-24 text-center">
                 <Package className="h-12 w-12 text-zinc-300 mb-4" />
@@ -534,6 +613,55 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                   You haven't posted any items yet. Start by offering something you don't need.
                 </p>
                 <Button onClick={() => navigate('/create-listing')}>Post an Item</Button>
+              </div>
+            )}
+
+            {/* Cancel Listing Confirmation Modal */}
+            {listingToCancel && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+                <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-zinc-200 space-y-4">
+                  <div className="flex items-center gap-3 text-red-600">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+                      <AlertCircle className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-lg font-bold text-zinc-900">Cancel Listing?</h3>
+                  </div>
+                  <p className="text-sm text-zinc-600 leading-relaxed">
+                    Are you sure you want to cancel &ldquo;{listingToCancel.title}&rdquo;? It will be removed from the public marketplace feed and kept in your history as cancelled.
+                  </p>
+                  {listingCancelError && (
+                    <div className="rounded-xl bg-red-50 p-3 text-xs text-red-700 border border-red-200">
+                      {listingCancelError}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <Button 
+                      variant="ghost" 
+                      onClick={() => {
+                        setListingToCancel(null);
+                        setListingCancelError(null);
+                      }} 
+                      disabled={isCancellingListing}
+                    >
+                      Keep Listing
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      className="bg-red-600 hover:bg-red-700 text-white font-medium" 
+                      disabled={isCancellingListing}
+                      onClick={handleConfirmCancelListing}
+                    >
+                      {isCancellingListing ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Cancelling...
+                        </span>
+                      ) : (
+                        'Confirm Cancel'
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -641,9 +769,9 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                           Upload new image
                         </>
                       )}
-                      <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isUploadingImage} />
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageUpload} disabled={isUploadingImage} />
                     </label>
-                    <p className="mt-2 text-xs text-zinc-500">JPG, PNG or GIF. Max 5MB.</p>
+                    <p className="mt-2 text-xs text-zinc-500">JPG, JPEG, PNG, or WEBP. Max 5MB.</p>
                   </div>
                 </div>
               </div>
