@@ -460,6 +460,64 @@ export function ChatPage() {
     }
   };
 
+  // Legitimate Exchange Completion (Accepted -> Completed)
+  const handleCompleteExchange = async () => {
+    setReservationError(null);
+    setReservationSuccess(null);
+
+    if (!reservation || !currentUserId || isActionLoading) return;
+
+    if (reservation.status !== 'accepted') {
+      setReservationError('Only accepted reservations can be completed.');
+      return;
+    }
+
+    if (currentUserId !== reservation.buyerId && currentUserId !== reservation.sellerId) {
+      setReservationError('Only the buyer or seller can complete the exchange.');
+      return;
+    }
+
+    setIsActionLoading('completing' as any);
+
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch('/api/reservations/complete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ reservationId: reservation.id }),
+        });
+        const resData = await response.json();
+        if (!response.ok) {
+          throw new Error(resData?.error || 'Failed to mark exchange as completed.');
+        }
+      } else {
+        const resRef = doc(db, 'reservations', reservation.id);
+        await updateDoc(resRef, {
+          status: 'completed',
+          updatedAt: serverTimestamp(),
+        });
+        if (listing?.id) {
+          await updateDoc(doc(db, 'listings', listing.id), {
+            status: 'completed',
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      setReservationSuccess('Exchange successfully completed! Thank you for trading on campus.');
+    } catch (err: any) {
+      console.error('Error completing exchange:', err);
+      setReservationError(err?.message || 'Failed to complete exchange.');
+    } finally {
+      setIsActionLoading(null);
+    }
+  };
+
   // Campus Meetup Handlers (Only for Accepted Reservations)
   const handleProposeMeetup = async (locationOverride?: CampusMeetupLocation) => {
     setMeetupError(null);
@@ -849,6 +907,25 @@ export function ChatPage() {
                         <X className="h-3.5 w-3.5" />
                       )}
                       Reject
+                    </Button>
+                  </div>
+                )}
+
+                {/* Complete Exchange Action (Only when Accepted) */}
+                {reservation?.status === 'accepted' && (currentUserId === reservation.buyerId || currentUserId === reservation.sellerId) && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleCompleteExchange}
+                      disabled={isActionLoading !== null}
+                      className="gap-1.5 text-xs h-8 px-3 font-semibold bg-zinc-900 text-white hover:bg-zinc-800"
+                    >
+                      {isActionLoading === ('completing' as any) ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                      )}
+                      Complete Exchange
                     </Button>
                   </div>
                 )}

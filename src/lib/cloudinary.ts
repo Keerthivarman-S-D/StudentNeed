@@ -9,6 +9,8 @@
  * - No API Secrets exposed in client-side code
  */
 
+import { auth } from './firebase';
+
 export const CLOUDINARY_CLOUD_NAME = 
   (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string) || 'ddc64bq61';
 
@@ -217,6 +219,48 @@ export async function uploadImageToCloudinary(
 
   if (options.signal?.aborted) {
     throw new UploadCancelledError();
+  }
+
+  // Helper to convert Blob/File to Data URL
+  const toDataUrl = (blob: Blob | File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // If user is authenticated, route via backend image upload proxy with token verification
+  const currentUser = auth.currentUser;
+  if (currentUser) {
+    try {
+      const idToken = await currentUser.getIdToken();
+      const base64Data = await toDataUrl(uploadPayload);
+      const res = await fetch('/api/upload/image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          file: base64Data,
+          folder: options.folder
+        }),
+        signal: options.signal
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.secure_url) {
+          return data.secure_url;
+        }
+      }
+    } catch (err) {
+      if (options.signal?.aborted) {
+        throw new UploadCancelledError();
+      }
+      console.warn('Backend proxy upload error, attempting direct upload:', err);
+    }
   }
 
   // 3. Construct FormData for Cloudinary Unsigned Upload

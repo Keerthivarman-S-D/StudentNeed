@@ -13,41 +13,67 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return isAuthenticated() && (
+        request.auth.token.email == 'admin@student.annauniv.edu' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
     }
 
     match /users/{userId} {
       allow read: if isAuthenticated();
       
       // Creating a user profile:
-      // - Must be own UID
-      // - Must match college email
-      // - Default role must be 'student' (cannot self-assign admin)
-      allow create: if isAuthenticated() && 
-                       request.auth.uid == userId && 
-                       isAnnaUnivStudent() &&
-                       (!('role' in request.resource.data) || request.resource.data.role == 'student');
+      // Restricted to verified admin/server system account after OTP verification
+      allow create: if isAdmin();
       
       // Updating user profile:
-      // - Owner can update, but cannot alter protected fields: role, isVerified, email, id
+      // - Owner can update, but cannot alter protected fields:
+      //   role, isVerified, email, id, rating, exchangesCompleted, completedTransactions,
+      //   successfulExchanges, ratingCount, reviewCount, trustScore, reputation, badges, statistics, createdAt
+      // - Rating and exchangesCompleted must strictly match existing values if provided
       // - Admin can update any profile
       allow update: if isAuthenticated() && (
-        (request.auth.uid == userId && 
-         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isVerified', 'email', 'id'])) &&
-         request.resource.data.id == resource.data.id &&
-         request.resource.data.email == resource.data.email &&
-         request.resource.data.role == resource.data.role) ||
+        (
+          request.auth.uid == userId && 
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'role', 'isVerified', 'email', 'id', 'rating', 
+            'exchangesCompleted', 'completedTransactions', 'successfulExchanges', 
+            'ratingCount', 'reviewCount', 'trustScore', 'reputation', 
+            'badges', 'statistics', 'createdAt'
+          ])) &&
+          request.resource.data.get('id', resource.data.get('id', '')) == resource.data.get('id', '') &&
+          request.resource.data.get('role', resource.data.get('role', 'student')) == resource.data.get('role', 'student') &&
+          request.resource.data.get('rating', resource.data.get('rating', 0)) == resource.data.get('rating', 0) &&
+          request.resource.data.get('exchangesCompleted', resource.data.get('exchangesCompleted', 0)) == resource.data.get('exchangesCompleted', 0)
+        ) ||
         isAdmin()
       );
       
       allow delete: if false;
+
+      // Private user PII subcollection: phone, private email, sensitive preferences
+      // Strictly isolated to the document owner or system admin
+      match /private/{docId} {
+        allow read, write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      }
     }
     
+    function isValidImageUrl(url) {
+      return url is string &&
+             url.size() <= 500 &&
+             url.matches('^https://res\\.cloudinary\\.com/ddc64bq61/.*');
+    }
+
     function validListingImages(data) {
       return (data.type in ['Borrow', 'Exchange'] && (!('images' in data) || data.images == null || data.images.size() == 0)) ||
-             (!(data.type in ['Borrow', 'Exchange']) && ('images' in data) && data.images is list && data.images.size() > 0 && data.images.size() <= 5);
+             (!(data.type in ['Borrow', 'Exchange']) && ('images' in data) && data.images is list &&
+              data.images.size() > 0 && data.images.size() <= 5 &&
+              isValidImageUrl(data.images[0]) &&
+              (data.images.size() < 2 || isValidImageUrl(data.images[1])) &&
+              (data.images.size() < 3 || isValidImageUrl(data.images[2])) &&
+              (data.images.size() < 4 || isValidImageUrl(data.images[3])) &&
+              (data.images.size() < 5 || isValidImageUrl(data.images[4])));
     }
 
     match /listings/{listingId} {
@@ -62,30 +88,20 @@ service cloud.firestore {
       
       // Updates:
       // - Cannot transition if already cancelled or completed
-      // - Only owner can cancel listing, transitioning from available/active/reserved to cancelled
+      // - ONLY the listing owner (seller) or admin can modify or change listing status
+      // - Arbitrary non-owner status tampering (IDOR/DoS) is strictly forbidden
       // - Owner can modify listing details while preserving images constraint and sellerId
-      // - Reservation sync allowed between available and reserved while not cancelled
       allow update: if isAuthenticated() && (
         (
           resource.data.status != 'cancelled' &&
           resource.data.status != 'completed' &&
+          resource.data.sellerId == request.auth.uid &&
           request.resource.data.sellerId == resource.data.sellerId &&
           (
-            // Owner cancelling or editing
-            (
-              resource.data.sellerId == request.auth.uid &&
-              (
-                // Cancellation transition
-                (request.resource.data.status == 'cancelled' && resource.data.status in ['available', 'active', 'reserved']) ||
-                // Regular active/available edit
-                (request.resource.data.status in ['available', 'active', 'reserved', 'completed'] && validListingImages(request.resource.data))
-              )
-            ) ||
-            // Reservation sync (available <-> reserved)
-            (
-              resource.data.status in ['available', 'active', 'reserved'] &&
-              request.resource.data.status in ['available', 'active', 'reserved']
-            )
+            // Cancellation transition
+            (request.resource.data.status == 'cancelled' && resource.data.status in ['available', 'active', 'reserved']) ||
+            // Regular active/available/reserved/completed edit by owner
+            (request.resource.data.status in ['available', 'active', 'reserved', 'completed'] && validListingImages(request.resource.data))
           )
         ) || 
         isAdmin()
@@ -191,12 +207,16 @@ service cloud.firestore {
                        request.resource.data.listingId is string &&
                        request.resource.data.chatId is string &&
                        exists(/databases/$(database)/documents/listings/$(request.resource.data.listingId)) &&
-                       get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status in ['available', 'active'];
+                       get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status in ['available', 'active'] &&
+                       request.resource.data.sellerId == get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.sellerId;
 
       // Updates:
       // 1. Status transitions: ONLY seller can transition from 'pending' to 'accepted' or 'rejected'
-      // 2. Buyer re-request: ONLY original buyer can transition from 'rejected' to 'pending' (core IDs strictly immutable)
+      // 2. Buyer re-request: ONLY original buyer can transition from 'rejected' to 'pending' (core IDs strictly immutable and listing still active)
       // 3. Campus meetup updates: ONLY on ACCEPTED reservations by buyer or seller
+      // 4. Completion transition: ONLY from 'accepted' to 'completed' by legitimate participants (buyer or seller)
+      //    All core IDs remain strictly immutable and listing belongs to seller
+      // 5. Terminal state: Completed or cancelled reservations cannot be mutated
       allow update: if isAuthenticated() && (
         (
           resource.data.sellerId == request.auth.uid &&
@@ -214,7 +234,9 @@ service cloud.firestore {
           request.resource.data.listingId == resource.data.listingId &&
           request.resource.data.chatId == resource.data.chatId &&
           resource.data.status == 'rejected' &&
-          request.resource.data.status == 'pending'
+          request.resource.data.status == 'pending' &&
+          exists(/databases/$(database)/documents/listings/$(resource.data.listingId)) &&
+          get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status in ['available', 'active']
         ) ||
         (
           resource.data.status == 'accepted' &&
@@ -226,6 +248,18 @@ service cloud.firestore {
           isMeetupParticipant(resource.data) &&
           isValidMeetupTransition(resource.data, request.resource.data)
         ) ||
+        (
+          // Legitimate completion: accepted -> completed only
+          resource.data.status == 'accepted' &&
+          request.resource.data.status == 'completed' &&
+          request.resource.data.sellerId == resource.data.sellerId &&
+          request.resource.data.buyerId == resource.data.buyerId &&
+          request.resource.data.listingId == resource.data.listingId &&
+          request.resource.data.chatId == resource.data.chatId &&
+          isMeetupParticipant(resource.data) &&
+          exists(/databases/$(database)/documents/listings/$(resource.data.listingId)) &&
+          get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.sellerId == resource.data.sellerId
+        ) ||
         isAdmin()
       );
 
@@ -233,7 +267,10 @@ service cloud.firestore {
     }
 
     match /chats/{chatId} {
-      allow read, update: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow update: if isAuthenticated() && 
+                       request.auth.uid in resource.data.participants &&
+                       request.resource.data.participants == resource.data.participants;
       allow create: if isAuthenticated() && 
                        request.auth.uid in request.resource.data.participants &&
                        request.resource.data.participants is list &&
@@ -267,3 +304,4 @@ service cloud.firestore {
     }
   }
 }
+
