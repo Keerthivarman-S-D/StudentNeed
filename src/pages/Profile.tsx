@@ -18,7 +18,8 @@ import {
   Inbox,
   AlertCircle,
   Trash2,
-  ShieldAlert
+  ShieldAlert,
+  Edit3
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -27,10 +28,11 @@ import { updatePassword } from 'firebase/auth';
 import { doc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { uploadImageToCloudinary, validateImageFile } from '../lib/cloudinary';
 import { ListingCard } from '../components/ListingCard';
+import { EditListingModal } from '../components/EditListingModal';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
-import { Reservation } from '../types';
+import { Reservation, Listing } from '../types';
 
 export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' | 'saved' | 'settings' } = {}) {
   const navigate = useNavigate();
@@ -45,6 +47,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
   // Listings Management State
   const [listingFilter, setListingFilter] = useState<'all' | 'active' | 'completed' | 'expired' | 'cancelled'>('all');
   const [listingToCancel, setListingToCancel] = useState<any | null>(null);
+  const [listingToEdit, setListingToEdit] = useState<Listing | null>(null);
   const [isCancellingListing, setIsCancellingListing] = useState(false);
   const [listingCancelError, setListingCancelError] = useState<string | null>(null);
 
@@ -697,16 +700,24 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                               <span className="text-[11px] text-blue-700 font-medium">Exchange completed</span>
                             ) : isCancelled ? (
                               <span className="text-[11px] text-zinc-400">Preserved in history</span>
-                            ) : isExpired ? (
-                              <span className="text-[11px] text-amber-600">Pending cleanup</span>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => setListingToCancel(listing)}
-                                className="text-xs text-red-600 hover:text-red-700 hover:underline font-medium"
-                              >
-                                Cancel Post
-                              </button>
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setListingToEdit(listing)}
+                                  className="text-xs text-zinc-700 hover:text-zinc-900 hover:underline font-medium flex items-center gap-1"
+                                >
+                                  <Edit3 className="h-3 w-3" />
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setListingToCancel(listing)}
+                                  className="text-xs text-red-600 hover:text-red-700 hover:underline font-medium"
+                                >
+                                  Cancel Post
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -773,6 +784,16 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Edit Listing Modal */}
+            {listingToEdit && (
+              <EditListingModal
+                listing={listingToEdit}
+                isOpen={!!listingToEdit}
+                onClose={() => setListingToEdit(null)}
+                onSuccess={() => setListingToEdit(null)}
+              />
             )}
           </div>
         )}

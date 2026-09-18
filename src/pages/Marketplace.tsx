@@ -28,8 +28,15 @@ export function Marketplace() {
   const types: (ListingType | 'All')[] = ['All', 'Sale', 'Borrow', 'Donate', 'Exchange'];
 
   const filteredListings = useMemo(() => {
-    // Filter out cancelled listings from public marketplace feed
-    let result = listings.filter(l => l.status !== 'cancelled');
+    // Only active listings in public marketplace discovery (completed, cancelled, and expired listings are strictly hidden)
+    const now = Date.now();
+    let result = listings.filter(l => 
+      (l.status === 'active' || l.status === 'available' || l.status === 'reserved') &&
+      l.status !== 'completed' &&
+      l.status !== 'cancelled' &&
+      Boolean(l.expiresAt) &&
+      new Date(l.expiresAt).getTime() > now
+    );
 
     if (search) {
       result = result.filter(l => 

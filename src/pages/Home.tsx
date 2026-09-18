@@ -6,7 +6,15 @@ import { Button } from '../components/ui/Button';
 
 export function Home() {
   const { listings } = useAppContext();
-  const recentListings = listings.filter(l => l.status !== 'cancelled').slice(0, 4);
+  const recentListings = listings
+    .filter(l => 
+      (l.status === 'active' || l.status === 'available' || l.status === 'reserved') &&
+      l.status !== 'completed' &&
+      l.status !== 'cancelled' &&
+      Boolean(l.expiresAt) &&
+      new Date(l.expiresAt).getTime() > Date.now()
+    )
+    .slice(0, 4);
 
   const categories = [
     { name: 'Textbooks', icon: BookOpen, color: 'bg-blue-100 text-blue-600' },
@@ -86,12 +94,22 @@ export function Home() {
         </div>
         <div className="grid grid-cols-1 gap-12 sm:grid-cols-3">
           <div className="text-center space-y-4">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 text-2xl font-bold text-zinc-900">1</div>
+            <div 
+              className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900 text-2xl font-bold text-zinc-50"
+              style={{ backgroundColor: '#18181b', color: '#fafafa' }}
+            >
+              1
+            </div>
             <h3 className="text-xl font-bold text-zinc-900">Find</h3>
             <p className="text-zinc-600">Search for what you need or browse categories to see what students are offering.</p>
           </div>
           <div className="text-center space-y-4">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 text-2xl font-bold text-zinc-900">2</div>
+            <div 
+              className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900 text-2xl font-bold text-white"
+              style={{ backgroundColor: '#18181b', color: '#ffffff' }}
+            >
+              2
+            </div>
             <h3 className="text-xl font-bold text-zinc-900">Connect</h3>
             <p className="text-zinc-600">Message the student directly through the platform to agree on details.</p>
           </div>

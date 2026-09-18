@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
-import { User, Listing, ItemRequest, RequestStatus } from '../types';
+import { User, Listing, ItemRequest, RequestStatus, UpdateListingInput } from '../types';
 import { mockUsers } from '../data';
 
 export type NewListingInput = {
@@ -46,6 +46,7 @@ type AppContextType = {
   listingsLoading: boolean;
   listingsError: string | null;
   addListing: (listing: NewListingInput | Listing) => Promise<string>;
+  updateListing: (listingId: string, updates: UpdateListingInput) => Promise<void>;
   cancelListing: (listingId: string) => Promise<void>;
   requests: ItemRequest[];
   requestsLoading: boolean;
@@ -322,6 +323,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const expiresAtDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
     const expiresAtTimestamp = Timestamp.fromDate(expiresAtDate);
 
+    const rawImages = Array.isArray(listingInput.images) ? listingInput.images : [];
+    const sanitizedImages = rawImages
+      .filter((img): img is string => typeof img === 'string' && img.trim().length > 0 && img.startsWith('https://'))
+      .slice(0, 5);
+
     const newListingData: Record<string, any> = {
       title: listingInput.title.trim(),
       description: listingInput.description.trim(),
@@ -332,8 +338,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       sellerId: sellerId, // strictly enforced from authenticated user
       images: isBorrowOrExchange
         ? []
-        : (Array.isArray(listingInput.images) && listingInput.images.length > 0
-            ? listingInput.images
+        : (sanitizedImages.length > 0
+            ? sanitizedImages
             : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800']),
       status: listingInput.status || 'available',
       expirationDays: durationDays,
@@ -351,6 +357,77 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return docRef.id;
     } catch (err: unknown) {
       handleFirestoreError(err, OperationType.CREATE, `listings/${docRef.id}`);
+    }
+  };
+
+  const updateListing = async (listingId: string, updates: UpdateListingInput): Promise<void> => {
+    if (!auth.currentUser) {
+      throw new Error('Authentication required: please log in to edit a listing.');
+    }
+
+    const currentUid = auth.currentUser.uid;
+    const docRef = doc(db, 'listings', listingId);
+
+    const currentListing = listings.find(l => l.id === listingId);
+    if (currentListing && currentListing.sellerId !== currentUid) {
+      throw new Error('Unauthorized: only the owner can edit this listing.');
+    }
+    if (currentListing?.status === 'completed') {
+      throw new Error('This listing has already been completed and cannot be edited.');
+    }
+    if (currentListing?.status === 'cancelled') {
+      throw new Error('This listing has been cancelled and cannot be edited.');
+    }
+
+    // Build partial update payload with ONLY legitimate editable fields.
+    // Explicitly omit sellerId, createdAt, expiresAt, expirationDays, and status
+    // to strictly preserve security immutability rules and expiration protection.
+    const updatePayload: Record<string, any> = {
+      updatedAt: serverTimestamp(),
+    };
+
+    if (updates.title !== undefined) {
+      const trimmed = updates.title.trim();
+      if (!trimmed) throw new Error('Listing title cannot be empty.');
+      updatePayload.title = trimmed;
+    }
+
+    if (updates.description !== undefined) {
+      const trimmed = updates.description.trim();
+      if (!trimmed) throw new Error('Listing description cannot be empty.');
+      updatePayload.description = trimmed;
+    }
+
+    if (updates.category !== undefined) {
+      updatePayload.category = updates.category;
+    }
+
+    if (updates.condition !== undefined) {
+      updatePayload.condition = updates.condition;
+    }
+
+    if (updates.location !== undefined) {
+      const trimmed = updates.location.trim();
+      if (!trimmed) throw new Error('Campus/pickup location cannot be empty.');
+      updatePayload.location = trimmed;
+    }
+
+    if (updates.price !== undefined) {
+      if (updates.price === null || isNaN(Number(updates.price))) {
+        // Leave undefined or keep price
+      } else {
+        updatePayload.price = Math.max(0, Number(updates.price));
+      }
+    }
+
+    if (Array.isArray(updates.images) && updates.images.length > 0) {
+      updatePayload.images = updates.images;
+    }
+
+    try {
+      await updateDoc(docRef, updatePayload);
+    } catch (err: unknown) {
+      handleFirestoreError(err, OperationType.UPDATE, `listings/${listingId}`);
     }
   };
 
@@ -470,6 +547,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         listingsLoading,
         listingsError,
         addListing,
+        updateListing,
         cancelListing,
         requests,
         requestsLoading,

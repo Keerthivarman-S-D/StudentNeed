@@ -30,11 +30,19 @@ Sensitive operational credentials and API tokens are dynamically managed via Goo
 export PROJECT_ID="your-project-id"
 export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
 
+# Create and populate the secret for Gemini API
+gcloud secrets create GEMINI_API_KEY --replication-policy="automatic"
+echo -n "YOUR_API_KEY" | gcloud secrets versions add GEMINI_API_KEY --data-file=-
+
 # Provision Resend API Key in Secret Manager
 gcloud secrets create RESEND_API_KEY --replication-policy="automatic"
 echo -n "YOUR_RESEND_API_KEY" | gcloud secrets versions add RESEND_API_KEY --data-file=-
 
-# Grant default Cloud Run runtime service account permission to read secrets
+# Grant the default Cloud Run service account access to read the secrets
+gcloud secrets add-iam-policy-binding GEMINI_API_KEY \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
 gcloud secrets add-iam-policy-binding RESEND_API_KEY \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
@@ -50,6 +58,9 @@ Deploy the locked-down security rules supporting user data isolation and role bo
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    match /users/{userId}/interactions/{interactionId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
 
     function isAuthenticated() {
       return request.auth != null;

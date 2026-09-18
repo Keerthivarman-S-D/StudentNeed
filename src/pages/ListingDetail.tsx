@@ -12,7 +12,8 @@ import {
   Check,
   X,
   Inbox,
-  Timer
+  Timer,
+  Edit3
 } from 'lucide-react';
 import { 
   doc, 
@@ -32,6 +33,7 @@ import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { EditListingModal } from '../components/EditListingModal';
 import { cn } from '../lib/utils';
 import { Listing, User, Reservation } from '../types';
 
@@ -49,6 +51,9 @@ export function ListingDetail() {
   const [isStartingChat, setIsStartingChat] = useState(false);
   const [isReserving, setIsReserving] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+
+  // Edit Listing state
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // Cancellation state
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -529,7 +534,7 @@ export function ListingDetail() {
             </Badge>
             {listing.status === 'completed' && (
               <Badge variant="outline" className="text-sm px-3 py-1 shadow-md bg-blue-50 text-blue-700 border-blue-200">
-                Completed
+                Exchange completed
               </Badge>
             )}
             {listing.status === 'cancelled' && (
@@ -791,8 +796,8 @@ export function ListingDetail() {
           <div className="mt-auto flex flex-col sm:flex-row gap-3">
             {!isOwner ? (
               listing.status === 'completed' ? (
-                <Button size="lg" disabled className="flex-1 text-base bg-blue-50 text-blue-700 border border-blue-200 cursor-not-allowed">
-                  Item Sold / Exchange Completed
+                <Button size="lg" disabled className="flex-1 text-base bg-blue-50 text-blue-700 border border-blue-200 cursor-not-allowed font-medium">
+                  Exchange completed
                 </Button>
               ) : listing.status === 'cancelled' ? (
                 <Button size="lg" disabled className="flex-1 text-base bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed">
@@ -865,7 +870,13 @@ export function ListingDetail() {
               )
             ) : (
               <div className="flex flex-col sm:flex-row gap-3 w-full">
-                <Button size="lg" variant="outline" className="flex-1 text-base" onClick={() => navigate('/profile')}>
+                <Button 
+                  size="lg" 
+                  variant="outline" 
+                  className="text-base w-[150.688px] h-[44px]" 
+                  style={{ width: '150.688px', height: '44px' }}
+                  onClick={() => navigate('/profile')}
+                >
                   Manage in Profile
                 </Button>
                 {listing.status === 'completed' && (
@@ -874,14 +885,27 @@ export function ListingDetail() {
                   </span>
                 )}
                 {listing.status !== 'cancelled' && listing.status !== 'completed' && (
-                  <Button 
-                    size="lg" 
-                    variant="outline" 
-                    className="text-base text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-medium"
-                    onClick={() => setShowCancelModal(true)}
-                  >
-                    Cancel Post
-                  </Button>
+                  <>
+                    <Button 
+                      size="lg" 
+                      variant="outline" 
+                      className="text-base text-zinc-800 border-zinc-300 hover:bg-zinc-50 font-medium flex items-center gap-2 w-[139.725px]" 
+                      style={{ width: '139.725px' }}
+                      onClick={() => setShowEditModal(true)}
+                    >
+                      <Edit3 className="h-4 w-4 text-zinc-600" />
+                      Edit Listing
+                    </Button>
+                    <Button 
+                      size="lg" 
+                      variant="outline" 
+                      className="text-base text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-medium w-[116.875px]" 
+                      style={{ width: '116.875px' }}
+                      onClick={() => setShowCancelModal(true)}
+                    >
+                      Cancel Post
+                    </Button>
+                  </>
                 )}
               </div>
             )}
@@ -928,6 +952,18 @@ export function ListingDetail() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Edit Listing Modal */}
+      {listing && showEditModal && (
+        <EditListingModal
+          listing={listing}
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => {
+            setShowEditModal(false);
+          }}
+        />
       )}
     </div>
   );

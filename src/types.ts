@@ -49,6 +49,16 @@ export type Listing = {
   updatedAt: string;
 };
 
+export type UpdateListingInput = {
+  title?: string;
+  description?: string;
+  price?: number;
+  category?: Category;
+  condition?: Condition;
+  location?: string;
+  images?: string[];
+};
+
 export type ItemRequest = {
   id: string;
   title: string;

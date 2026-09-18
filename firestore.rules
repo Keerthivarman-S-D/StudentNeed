@@ -61,26 +61,35 @@ service cloud.firestore {
     
     function isValidImageUrl(url) {
       return url is string &&
-             url.size() <= 500 &&
-             url.matches('^https://res\\.cloudinary\\.com/ddc64bq61/.*');
+             url.size() <= 1000 &&
+             (
+               url.matches('^https://res\\.cloudinary\\.com/.*') ||
+               url.matches('^https://images\\.unsplash\\.com/.*')
+             );
     }
 
     function validListingImages(data) {
-      return (data.type in ['Borrow', 'Exchange'] && (!('images' in data) || data.images == null || data.images.size() == 0)) ||
-             (!(data.type in ['Borrow', 'Exchange']) && ('images' in data) && data.images is list &&
-              data.images.size() > 0 && data.images.size() <= 5 &&
-              isValidImageUrl(data.images[0]) &&
-              (data.images.size() < 2 || isValidImageUrl(data.images[1])) &&
-              (data.images.size() < 3 || isValidImageUrl(data.images[2])) &&
-              (data.images.size() < 4 || isValidImageUrl(data.images[3])) &&
-              (data.images.size() < 5 || isValidImageUrl(data.images[4])));
+      return !('images' in data) || data.images == null || (
+        data.images is list &&
+        data.images.size() <= 5 &&
+        (
+          data.images.size() == 0 ||
+          (
+            isValidImageUrl(data.images[0]) &&
+            (data.images.size() < 2 || isValidImageUrl(data.images[1])) &&
+            (data.images.size() < 3 || isValidImageUrl(data.images[2])) &&
+            (data.images.size() < 4 || isValidImageUrl(data.images[3])) &&
+            (data.images.size() < 5 || isValidImageUrl(data.images[4]))
+          )
+        )
+      );
     }
 
     function isValidExpiration(reqData) {
       return ('expiresAt' in reqData) &&
              reqData.expiresAt is timestamp &&
-             reqData.expiresAt > request.time &&
-             reqData.expiresAt <= request.time + duration.value(32, 'd') &&
+             reqData.expiresAt > request.time - duration.value(1, 'h') &&
+             reqData.expiresAt <= request.time + duration.value(35, 'd') &&
              (!('expirationDays' in reqData) || reqData.expirationDays in [7, 15, 30]);
     }
 
@@ -108,12 +117,13 @@ service cloud.firestore {
           resource.data.sellerId == request.auth.uid &&
           request.resource.data.sellerId == resource.data.sellerId &&
           (!('expiresAt' in resource.data) || !('expiresAt' in request.resource.data) || request.resource.data.expiresAt == resource.data.expiresAt) &&
+          (!('expirationDays' in resource.data) || !('expirationDays' in request.resource.data) || request.resource.data.expirationDays == resource.data.expirationDays) &&
           (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
           (
             // Cancellation transition
             (request.resource.data.status == 'cancelled' && resource.data.status in ['available', 'active', 'reserved']) ||
-            // Regular active/available/reserved/completed edit by owner
-            (request.resource.data.status in ['available', 'active', 'reserved', 'completed'] && validListingImages(request.resource.data))
+            // Regular active/available/reserved edit by owner (completed can only be set via legitimate reservation completion workflow / admin)
+            (request.resource.data.status in ['available', 'active', 'reserved'] && validListingImages(request.resource.data))
           )
         ) || 
         isAdmin()
