@@ -233,54 +233,59 @@ async function startServer() {
     })
   );
 
-  // Strict CORS Validation: Allows production, localhost, and verified AI Studio development environments
+  // Explicit Permissions-Policy: Restrict sensitive device APIs
+  app.use((_req, res, next) => {
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+    next();
+  });
+
+  // Strict CORS Validation: Explicit allowlist ONLY - zero suffix-based wildcard matching
+  const explicitProductionOrigins = new Set([
+    "https://studentneed.me",
+    "https://www.studentneed.me",
+  ]);
+
+  const explicitDevelopmentOrigins = new Set([
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "https://ai.studio",
+    "https://ais-dev-gti23zzly6wg7xqqzhxl5a-361860804341.asia-east1.run.app",
+    "https://ais-pre-gti23zzly6wg7xqqzhxl5a-361860804341.asia-east1.run.app",
+  ]);
+
   const isAllowedOrigin = (origin: string): boolean => {
     try {
-      const url = new URL(origin);
-      const hostname = url.hostname;
+      const normalized = origin.trim().replace(/\/$/, "");
 
       // 1. Official production domains
-      if (
-        hostname === "studentneed.me" ||
-        hostname === "www.studentneed.me" ||
-        hostname.endsWith(".studentneed.me")
-      ) {
+      if (explicitProductionOrigins.has(normalized)) {
         return true;
       }
 
-      // 2. Local development
-      if (
-        hostname === "localhost" ||
-        hostname === "127.0.0.1" ||
-        hostname === "0.0.0.0"
-      ) {
-        return true;
-      }
-
-      // 3. Google AI Studio preview & runner environment
-      if (
-        hostname === "ai.studio" ||
-        hostname.endsWith(".ai.studio") ||
-        hostname.endsWith(".google.com") ||
-        hostname.endsWith(".googleusercontent.com")
-      ) {
-        return true;
-      }
-
-      // 4. Current application development / preview URLs
-      if (
-        origin === "https://ais-dev-gti23zzly6wg7xqqzhxl5a-361860804341.asia-east1.run.app" ||
-        origin === "https://ais-pre-gti23zzly6wg7xqqzhxl5a-361860804341.asia-east1.run.app" ||
-        (process.env.APP_URL && origin === process.env.APP_URL)
-      ) {
-        return true;
-      }
-
-      // 5. Configured frontend URL
+      // 2. Configured frontend URL
       if (process.env.FRONTEND_URL) {
         try {
-          if (new URL(process.env.FRONTEND_URL).origin === origin) return true;
+          if (new URL(process.env.FRONTEND_URL).origin === normalized) return true;
         } catch {}
+      }
+
+      // 3. In development / preview mode, check explicit dev origins
+      if (isDevelopment) {
+        if (explicitDevelopmentOrigins.has(normalized)) {
+          return true;
+        }
+        if (process.env.APP_URL) {
+          try {
+            if (new URL(process.env.APP_URL).origin === normalized) return true;
+          } catch {}
+        }
+        if (process.env.AI_STUDIO_PARENT_ORIGIN) {
+          try {
+            if (new URL(process.env.AI_STUDIO_PARENT_ORIGIN).origin === normalized) return true;
+          } catch {}
+        }
       }
 
       return false;
@@ -305,9 +310,22 @@ async function startServer() {
     })
   );
 
-  // Global Body Limit: strictly 100KB to mitigate memory exhaustion/DoS attacks
-  app.use(express.json({ limit: "100kb" }));
-  app.use(express.urlencoded({ limit: "100kb", extended: true }));
+  // Route-Specific Body Limits:
+  // - /api/upload/image: dedicated 6MB limit to support compressed student listing images
+  // - All other endpoints: strictly 100KB to mitigate memory exhaustion/DoS attacks
+  app.use((req, res, next) => {
+    if (req.path === "/api/upload/image") {
+      return next();
+    }
+    express.json({ limit: "100kb" })(req, res, next);
+  });
+
+  app.use((req, res, next) => {
+    if (req.path === "/api/upload/image") {
+      return next();
+    }
+    express.urlencoded({ limit: "100kb", extended: true })(req, res, next);
+  });
 
   // Helper to lazily initialize Resend client
   const getResendClient = () => {
@@ -590,6 +608,11 @@ async function startServer() {
   // 4. Authenticated Image Upload Proxy (Validates Firebase Auth ID token and payload format)
   app.post("/api/upload/image", express.json({ limit: "6mb" }), async (req, res) => {
     try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`upload-image:${clientIp}`, 30, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many upload requests. Please wait a few minutes." });
+      }
+
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return res.status(401).json({ error: "Authentication required for image upload." });
@@ -652,9 +675,73 @@ async function startServer() {
     }
   });
 
-  // 5. Authorized Reservation Completion & Listing Status Synchronization
+  // 5. Backend Upload Signature Generator for Signed Cloudinary Uploads
+  app.post("/api/upload/signature", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`upload-sig:${clientIp}`, 30, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many upload requests. Please wait a few minutes." });
+      }
+
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required for upload signature." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken })
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid or expired authentication session." });
+      }
+
+      const { folder } = req.body;
+      const allowedFolders = ["studentneed/listings", "studentneed/avatars"];
+      const uploadFolder = allowedFolders.includes(folder) ? folder : "studentneed/listings";
+      const timestamp = Math.round(Date.now() / 1000);
+      const cloudName = process.env.VITE_CLOUDINARY_CLOUD_NAME || "ddc64bq61";
+      const apiSecret = process.env.CLOUDINARY_API_SECRET;
+      const apiKeyVal = process.env.CLOUDINARY_API_KEY;
+
+      if (!apiSecret || !apiKeyVal) {
+        // Return preset mode indicator when signed secrets are not configured in environment
+        return res.json({
+          signed: false,
+          cloudName,
+          uploadPreset: process.env.VITE_CLOUDINARY_UPLOAD_PRESET || "studentneed_images",
+          folder: uploadFolder
+        });
+      }
+
+      // Compute Cloudinary SHA-1 signature
+      const stringToSign = `folder=${uploadFolder}&timestamp=${timestamp}${apiSecret}`;
+      const signature = crypto.createHash("sha1").update(stringToSign).digest("hex");
+
+      return res.json({
+        signed: true,
+        signature,
+        timestamp,
+        apiKey: apiKeyVal,
+        cloudName,
+        folder: uploadFolder
+      });
+    } catch (err: any) {
+      console.error("Upload signature error:", err);
+      return res.status(500).json({ error: "Failed to generate upload signature." });
+    }
+  });
+
+  // 6. Authorized Reservation Completion & Listing Status Synchronization
   app.post("/api/reservations/complete", async (req, res) => {
     try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`complete-res:${clientIp}`, 20, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many completion requests. Please wait a few minutes." });
+      }
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return res.status(401).json({ error: "Authentication required." });
@@ -761,6 +848,19 @@ async function startServer() {
       console.error("Complete reservation error:", err);
       return res.status(500).json({ error: "Internal server error completing reservation." });
     }
+  });
+
+  // Graceful PayloadTooLargeError and body parser error handling for API routes
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err.type === "entity.too.large" || err.status === 413 || err.name === "PayloadTooLargeError") {
+      return res.status(413).json({
+        error: "Payload too large. The submitted request exceeds the allowed size limit."
+      });
+    }
+    if (err instanceof SyntaxError && "body" in err) {
+      return res.status(400).json({ error: "Malformed JSON payload in request." });
+    }
+    next(err);
   });
 
   // Vite middleware for development
