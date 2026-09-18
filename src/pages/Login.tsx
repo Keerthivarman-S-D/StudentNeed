@@ -46,7 +46,8 @@ export function Login() {
   }, [firebaseUser, currentUser, navigate]);
 
   const handleResetPassword = async () => {
-    if (!email) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
       setError("Please enter your email address first to reset your password.");
       return;
     }
@@ -54,10 +55,17 @@ export function Login() {
     setError(null);
     setSuccessMessage(null);
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, cleanEmail);
       setSuccessMessage("Password reset email sent! Check your inbox.");
     } catch (err: any) {
-      setError(err.message || "Failed to send reset email.");
+      console.warn("Reset password error:", err.code || err.message);
+      if (err.code === 'auth/user-not-found') {
+        setError("No account found with this email address.");
+      } else if (err.code === 'auth/invalid-email') {
+        setError("Please enter a valid email address.");
+      } else {
+        setError(err.message || "Failed to send reset email.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -70,16 +78,17 @@ export function Login() {
     setSuccessMessage(null);
     
     try {
+      const cleanEmail = email.trim().toLowerCase();
       const rawDomain = COLLEGE_EMAIL_DOMAIN.trim().replace(/^@/, '');
       const allowedDomain = `@${rawDomain}`;
-      if (!email.toLowerCase().trim().endsWith(allowedDomain)) {
+      if (!cleanEmail.endsWith(allowedDomain)) {
         throw new Error("Please use your official college email address.");
       }
       
       const res = await fetch(AUTH_ENDPOINTS.sendOtp, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() })
+        body: JSON.stringify({ email: cleanEmail })
       });
       
       if (!res.ok) {
@@ -94,7 +103,7 @@ export function Login() {
         throw new Error(errMessage);
       }
       
-      setSuccessMessage(`Verification code sent to ${email.trim()}`);
+      setSuccessMessage(`Verification code sent to ${cleanEmail}`);
       setResendCooldown(60);
       setSignupStep(2);
     } catch (err: any) {
@@ -111,10 +120,11 @@ export function Login() {
     setSuccessMessage(null);
     
     try {
+      const cleanEmail = email.trim().toLowerCase();
       const res = await fetch(AUTH_ENDPOINTS.verifyOtp, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp })
+        body: JSON.stringify({ email: cleanEmail, otp: otp.trim() })
       });
       
       if (!res.ok) {
@@ -129,7 +139,7 @@ export function Login() {
         throw new Error(errMessage);
       }
       
-      const data = await res.json();
+      await res.json();
       
       setSuccessMessage("Email verified successfully!");
       setSignupStep(3);
@@ -151,10 +161,11 @@ export function Login() {
     setError(null);
     
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const cleanEmail = email.trim().toLowerCase();
+      await createUserWithEmailAndPassword(auth, cleanEmail, password);
       // Redirect handled by useEffect
     } catch (err: any) {
-      console.error(err);
+      console.warn("Account creation error:", err.code || err.message);
       if (err.code === 'auth/email-already-in-use') {
         setError("Email is already in use. Try signing in instead, or use a different email.");
       } else if (err.code === 'auth/weak-password') {
@@ -172,12 +183,22 @@ export function Login() {
     setError(null);
     
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const cleanEmail = email.trim().toLowerCase();
+      if (!cleanEmail) {
+        setError("Please enter your college email address.");
+        setIsLoading(false);
+        return;
+      }
+      await signInWithEmailAndPassword(auth, cleanEmail, password);
       // Redirect handled by useEffect
     } catch (err: any) {
-      console.error(err);
-      if (err.code === 'auth/invalid-credential') {
-        setError("Incorrect email or password. Please try again or reset your password.");
+      console.warn("Sign-in error:", err.code || err.message);
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        setError("Incorrect email or password. Please verify your credentials or click 'Forgot Password?' to reset.");
+      } else if (err.code === 'auth/too-many-requests') {
+        setError("Too many failed attempts. Please wait a few minutes or reset your password.");
+      } else if (err.code === 'auth/invalid-email') {
+        setError("Please enter a valid email address.");
       } else {
         setError(err.message || "An error occurred. Please try again.");
       }

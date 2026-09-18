@@ -76,27 +76,39 @@ service cloud.firestore {
               (data.images.size() < 5 || isValidImageUrl(data.images[4])));
     }
 
+    function isValidExpiration(reqData) {
+      return ('expiresAt' in reqData) &&
+             reqData.expiresAt is timestamp &&
+             reqData.expiresAt > request.time &&
+             reqData.expiresAt <= request.time + duration.value(32, 'd') &&
+             (!('expirationDays' in reqData) || reqData.expirationDays in [7, 15, 30]);
+    }
+
     match /listings/{listingId} {
       allow read: if isAuthenticated();
       
       // Only authenticated users can create listings where sellerId matches their UID
-      // Must start with available/active status and satisfy image constraints
+      // Must start with available/active status, satisfy image constraints, and provide valid expiration
       allow create: if isAuthenticated() && 
                        request.resource.data.sellerId == request.auth.uid &&
                        request.resource.data.status in ['available', 'active'] &&
-                       validListingImages(request.resource.data);
+                       validListingImages(request.resource.data) &&
+                       isValidExpiration(request.resource.data);
       
       // Updates:
       // - Cannot transition if already cancelled or completed
       // - ONLY the listing owner (seller) or admin can modify or change listing status
       // - Arbitrary non-owner status tampering (IDOR/DoS) is strictly forbidden
       // - Owner can modify listing details while preserving images constraint and sellerId
+      // - Expiration date and creation date are strictly immutable by seller to prevent immortal listings
       allow update: if isAuthenticated() && (
         (
           resource.data.status != 'cancelled' &&
           resource.data.status != 'completed' &&
           resource.data.sellerId == request.auth.uid &&
           request.resource.data.sellerId == resource.data.sellerId &&
+          (!('expiresAt' in resource.data) || !('expiresAt' in request.resource.data) || request.resource.data.expiresAt == resource.data.expiresAt) &&
+          (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
           (
             // Cancellation transition
             (request.resource.data.status == 'cancelled' && resource.data.status in ['available', 'active', 'reserved']) ||
@@ -107,7 +119,7 @@ service cloud.firestore {
         isAdmin()
       );
       
-      // Preserve cancelled/completed records for history; only admins may permanently remove
+      // Preserve cancelled/completed records for history; only admins and server cleanup may permanently remove
       allow delete: if isAdmin();
     }
     

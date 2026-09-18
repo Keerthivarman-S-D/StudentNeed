@@ -43,6 +43,8 @@ export type Listing = {
   sellerId: string;
   images: string[];
   status: ListingStatus;
+  expirationDays?: number;
+  expiresAt: string;
   createdAt: string;
   updatedAt: string;
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ImagePlus, AlertCircle, X, Loader2, Info, ArrowLeft } from 'lucide-react';
+import { ImagePlus, AlertCircle, X, Loader2, Info, ArrowLeft, Clock, Calendar } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
@@ -22,6 +22,7 @@ export function CreateListing() {
   const [condition, setCondition] = useState<Condition>('Good');
   const [category, setCategory] = useState<Category>('Other');
   const [location, setLocation] = useState('');
+  const [expirationDays, setExpirationDays] = useState<7 | 15 | 30>(15);
   
   // Cloudinary image upload states
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
@@ -188,6 +189,7 @@ export function CreateListing() {
         sellerId: firebaseUser.uid,
         images: finalImages,
         status: 'available',
+        expirationDays,
       });
       
       setIsSubmitting(false);
@@ -347,6 +349,68 @@ export function CreateListing() {
                 onChange={e => setLocation(e.target.value)}
               />
             </div>
+          </div>
+        </section>
+
+        {/* Listing Duration & Expiration Section */}
+        <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-emerald-600" />
+              <h2 className="text-lg font-semibold text-zinc-900">Listing Duration</h2>
+            </div>
+            <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+              Auto-Cleanup Enabled
+            </span>
+          </div>
+
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            To keep the student marketplace active and prevent stale listings, select how long your item should remain visible. Expired listings are automatically archived and their stored assets are securely removed.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { days: 7 as const, label: '7 Days', desc: 'Urgent / Exam prep / Quick sale' },
+              { days: 15 as const, label: '15 Days', desc: 'Standard campus exchange (Recommended)' },
+              { days: 30 as const, label: '30 Days', desc: 'Extended / Semester term' },
+            ].map((opt) => (
+              <button
+                key={opt.days}
+                type="button"
+                onClick={() => setExpirationDays(opt.days)}
+                className={`flex flex-col text-left p-3.5 rounded-xl border transition-all ${
+                  expirationDays === opt.days
+                    ? 'border-zinc-900 bg-zinc-900 text-white shadow-sm ring-2 ring-zinc-900/10'
+                    : 'border-zinc-200 bg-zinc-50/60 hover:bg-zinc-100/80 text-zinc-800'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full mb-1">
+                  <span className="text-sm font-semibold">{opt.label}</span>
+                  {expirationDays === opt.days && (
+                    <span className="text-[11px] font-medium bg-white/20 px-2 py-0.5 rounded-md text-white">Active</span>
+                  )}
+                </div>
+                <span className={`text-xs ${expirationDays === opt.days ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                  {opt.desc}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg bg-zinc-50 border border-zinc-200/80 px-3.5 py-2.5 text-xs text-zinc-600">
+            <Calendar className="h-4 w-4 text-zinc-500 shrink-0" />
+            <span>
+              This listing will remain active until{' '}
+              <strong className="text-zinc-900">
+                {new Date(Date.now() + expirationDays * 86400000).toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </strong>
+              .
+            </span>
           </div>
         </section>
 

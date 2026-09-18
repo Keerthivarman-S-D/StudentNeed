@@ -17,7 +17,7 @@ const { projectId, firestoreDatabaseId, apiKey } = firebaseConfig;
 let serverToken: string | null = null;
 let serverTokenExpiry = 0;
 
-async function getServerToken(): Promise<string> {
+async function getServerToken(): Promise<string | null> {
   if (serverToken && Date.now() < serverTokenExpiry - 60000) {
     return serverToken;
   }
@@ -26,27 +26,34 @@ async function getServerToken(): Promise<string> {
   const systemPassword = process.env.INTERNAL_SYSTEM_PASSWORD?.trim();
 
   if (!systemEmail || !systemPassword) {
-    throw new Error("Internal system credentials are not configured.");
+    console.warn("[System Auth] INTERNAL_SYSTEM_EMAIL or INTERNAL_SYSTEM_PASSWORD is not set in environment.");
+    return null;
   }
 
-  const authUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`;
-  const res = await fetch(authUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: systemEmail,
-      password: systemPassword,
-      returnSecureToken: true,
-    }),
-  });
+  try {
+    const authUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`;
+    const res = await fetch(authUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: systemEmail,
+        password: systemPassword,
+        returnSecureToken: true,
+      }),
+    });
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(`Server authentication failed: ${JSON.stringify(data)}`);
+    const data = await res.json();
+    if (!res.ok) {
+      console.warn(`[System Auth] System account sign-in rejected (${res.status}):`, data?.error?.message || data);
+      return null;
+    }
+    serverToken = data.idToken;
+    serverTokenExpiry = Date.now() + (parseInt(data.expiresIn, 10) || 3600) * 1000;
+    return serverToken;
+  } catch (err: any) {
+    console.warn("[System Auth] Network error during system account sign-in:", err?.message);
+    return null;
   }
-  serverToken = data.idToken;
-  serverTokenExpiry = Date.now() + (parseInt(data.expiresIn, 10) || 3600) * 1000;
-  return serverToken!;
 }
 
 // Interface for shared persistent Firestore-backed OTP store
@@ -877,6 +884,392 @@ async function startServer() {
       return res.status(500).json({ error: "Internal server error completing reservation." });
     }
   });
+
+  // --- Listing Expiration & Automatic Cleanup System ---
+
+  function extractCloudinaryPublicId(imageUrl: string): string | null {
+    if (!imageUrl || typeof imageUrl !== "string") return null;
+    const match = imageUrl.match(/\/upload\/(?:v\d+\/)?([^\.\?\#]+)/);
+    if (match && match[1]) {
+      return match[1];
+    }
+    return null;
+  }
+
+  async function destroyCloudinaryImage(
+    publicId: string,
+    apiKeyVal?: string,
+    apiSecret?: string,
+    cloudName?: string
+  ): Promise<boolean> {
+    if (!publicId || !apiKeyVal || !apiSecret || !cloudName) {
+      return false;
+    }
+    try {
+      const timestamp = Math.round(Date.now() / 1000);
+      const toSign = `public_id=${publicId}&timestamp=${timestamp}${apiSecret}`;
+      const signature = crypto.createHash("sha1").update(toSign).digest("hex");
+
+      const params = new URLSearchParams();
+      params.append("public_id", publicId);
+      params.append("timestamp", timestamp.toString());
+      params.append("api_key", apiKeyVal);
+      params.append("signature", signature);
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
+        method: "POST",
+        body: params,
+      });
+      const data = await res.json().catch(() => ({}));
+      return data.result === "ok" || data.result === "not found";
+    } catch (err) {
+      console.warn(`[Cleanup] Failed to destroy Cloudinary image ${publicId}:`, err);
+      return false;
+    }
+  }
+
+  async function fetchFirestoreListings(systemToken: string, limit = 300): Promise<any[]> {
+    try {
+      const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents:runQuery`;
+      const res = await fetch(queryUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: "listings" }],
+            limit,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("[Cleanup Job] Failed to query listings for cleanup via runQuery:", errText);
+        return [];
+      }
+
+      const results = await res.json();
+      if (!Array.isArray(results)) {
+        return [];
+      }
+
+      return results
+        .filter((item: any) => Boolean(item.document))
+        .map((item: any) => item.document);
+    } catch (err) {
+      console.error("[Cleanup Job] Exception querying listings via runQuery:", err);
+      return [];
+    }
+  }
+
+  async function runExpiredListingsCleanup(): Promise<{ processed: number; deleted: number; imagesPurged: number }> {
+    let processed = 0;
+    let deleted = 0;
+    let imagesPurged = 0;
+
+    try {
+      const systemToken = await getServerToken();
+      if (!systemToken) {
+        console.warn("[Cleanup Job] System token unavailable, skipping expired listing cleanup.");
+        return { processed: 0, deleted: 0, imagesPurged: 0 };
+      }
+      const { apiKeyVal, apiSecret, cloudName } = getCloudinaryConfig();
+
+      const documents = await fetchFirestoreListings(systemToken, 300);
+      processed = documents.length;
+
+      const now = Date.now();
+
+      for (const doc of documents) {
+        const docName = doc.name;
+        const listingId = docName.split("/").pop();
+        const fields = doc.fields || {};
+
+        const status = fields.status?.stringValue;
+        if (status === "completed") {
+          continue;
+        }
+
+        let expiresAtMs: number | null = null;
+        if (fields.expiresAt?.timestampValue) {
+          expiresAtMs = Date.parse(fields.expiresAt.timestampValue);
+        } else if (fields.expiresAt?.stringValue) {
+          expiresAtMs = Date.parse(fields.expiresAt.stringValue);
+        }
+
+        let isExpired = false;
+        if (status === "expired") {
+          isExpired = true;
+        } else if (expiresAtMs !== null && !isNaN(expiresAtMs)) {
+          if (expiresAtMs <= now) {
+            isExpired = true;
+          }
+        } else {
+          // Legacy listing without expiresAt: check if createdAt is older than 30 days
+          let createdAtMs: number | null = null;
+          if (fields.createdAt?.timestampValue) {
+            createdAtMs = Date.parse(fields.createdAt.timestampValue);
+          } else if (fields.createdAt?.stringValue) {
+            createdAtMs = Date.parse(fields.createdAt.stringValue);
+          }
+          if (createdAtMs !== null && !isNaN(createdAtMs) && now - createdAtMs > 30 * 24 * 60 * 60 * 1000) {
+            isExpired = true;
+          }
+        }
+
+        if (isExpired && listingId) {
+          // 1. Destroy images in Cloudinary
+          const imagesList = fields.images?.arrayValue?.values || [];
+          for (const imgVal of imagesList) {
+            const imgUrl = imgVal.stringValue;
+            if (imgUrl) {
+              const publicId = extractCloudinaryPublicId(imgUrl);
+              if (publicId && apiKeyVal && apiSecret) {
+                const destroyed = await destroyCloudinaryImage(publicId, apiKeyVal, apiSecret, cloudName);
+                if (destroyed) imagesPurged++;
+              }
+            }
+          }
+
+          // 2. Delete the listing document
+          const delUrl = `https://firestore.googleapis.com/v1/${docName}`;
+          const delRes = await fetch(delUrl, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          });
+
+          if (delRes.ok) {
+            deleted++;
+          }
+        }
+      }
+
+      console.log(`[Cleanup Job] Processed ${processed} listings, purged ${deleted} expired listings and ${imagesPurged} Cloudinary assets.`);
+    } catch (err) {
+      console.error("[Cleanup Job] Error running cleanup:", err);
+    }
+
+    return { processed, deleted, imagesPurged };
+  }
+
+  async function verifyAdminOrSystem(req: express.Request): Promise<boolean> {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return false;
+    }
+    const idToken = authHeader.split(" ")[1];
+    try {
+      const lookupUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const lookupRes = await fetch(lookupUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!lookupRes.ok) return false;
+      const lookupData = await lookupRes.json();
+      const user = lookupData.users?.[0];
+      if (!user) return false;
+      if (user.email === "admin@student.annauniv.edu" || user.email === process.env.INTERNAL_SYSTEM_EMAIL) {
+        return true;
+      }
+      const systemToken = await getServerToken();
+      const userDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${user.localId}`;
+      const userDocRes = await fetch(userDocUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (userDocRes.ok) {
+        const userDoc = await userDocRes.json();
+        if (userDoc.fields?.role?.stringValue === "admin") {
+          return true;
+        }
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  // Trigger manual or scheduler-driven cleanup of expired listings
+  app.post("/api/listings/cleanup-expired", async (req, res) => {
+    try {
+      const isAdmin = await verifyAdminOrSystem(req);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+      const result = await runExpiredListingsCleanup();
+      return res.json({
+        message: "Expired listings cleanup complete.",
+        ...result,
+      });
+    } catch (err: any) {
+      console.error("Cleanup endpoint error:", err);
+      return res.status(500).json({ error: "Internal server error running cleanup." });
+    }
+  });
+
+  // One-time backfill migration for legacy listings missing expiresAt
+  app.post("/api/listings/backfill-expiration", async (req, res) => {
+    try {
+      const isAdmin = await verifyAdminOrSystem(req);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = await getServerToken();
+      if (!systemToken) {
+        return res.status(503).json({ error: "System authentication service unavailable." });
+      }
+
+      const documents = await fetchFirestoreListings(systemToken, 300);
+      let backfilledCount = 0;
+
+      for (const doc of documents) {
+        const fields = doc.fields || {};
+        if (!fields.expiresAt) {
+          let baseDate = Date.now();
+          if (fields.createdAt?.timestampValue) {
+            baseDate = Date.parse(fields.createdAt.timestampValue);
+          } else if (fields.createdAt?.stringValue) {
+            baseDate = Date.parse(fields.createdAt.stringValue);
+          }
+          const defaultExpirationIso = new Date(baseDate + 30 * 24 * 60 * 60 * 1000).toISOString();
+          const patchUrl = `https://firestore.googleapis.com/v1/${doc.name}?updateMask.fieldPaths=expiresAt&updateMask.fieldPaths=expirationDays`;
+          await fetch(patchUrl, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${systemToken}`,
+            },
+            body: JSON.stringify({
+              fields: {
+                ...fields,
+                expiresAt: { timestampValue: defaultExpirationIso },
+                expirationDays: { integerValue: "30" },
+              },
+            }),
+          });
+          backfilledCount++;
+        }
+      }
+
+      return res.json({
+        message: "Backfill migration complete.",
+        totalInspected: documents.length,
+        backfilledCount,
+      });
+    } catch (err: any) {
+      console.error("Backfill migration error:", err);
+      return res.status(500).json({ error: "Internal server error running backfill migration." });
+    }
+  });
+
+  // Account deletion endpoint: cascades delete across listings, Cloudinary assets, and Firestore data
+  app.post("/api/account/delete", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required to delete account." });
+      }
+      const idToken = authHeader.split(" ")[1];
+
+      // 1. Verify user identity
+      const lookupUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const lookupRes = await fetch(lookupUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!lookupRes.ok) {
+        return res.status(401).json({ error: "Invalid or expired session token." });
+      }
+      const lookupData = await lookupRes.json();
+      const user = lookupData.users?.[0];
+      if (!user) {
+        return res.status(401).json({ error: "User account not found." });
+      }
+
+      const uid = user.localId;
+      const systemToken = await getServerToken();
+      if (!systemToken) {
+        return res.status(503).json({ error: "System authentication service unavailable." });
+      }
+      const { apiKeyVal, apiSecret, cloudName } = getCloudinaryConfig();
+
+      // 2. Query and delete all user listings and their Cloudinary assets
+      const documents = await fetchFirestoreListings(systemToken, 300);
+      for (const doc of documents) {
+          const fields = doc.fields || {};
+          if (fields.sellerId?.stringValue === uid) {
+            // Destroy listing images
+            const imagesList = fields.images?.arrayValue?.values || [];
+            for (const imgVal of imagesList) {
+              const imgUrl = imgVal.stringValue;
+              if (imgUrl) {
+                const publicId = extractCloudinaryPublicId(imgUrl);
+                if (publicId && apiKeyVal && apiSecret) {
+                  await destroyCloudinaryImage(publicId, apiKeyVal, apiSecret, cloudName);
+                }
+              }
+            }
+            // Delete listing doc
+            await fetch(`https://firestore.googleapis.com/v1/${doc.name}`, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${systemToken}` },
+            });
+          }
+        }
+
+      // 3. Destroy custom Cloudinary avatar if present
+      const userDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${uid}`;
+      const userDocRes = await fetch(userDocUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (userDocRes.ok) {
+        const userDoc = await userDocRes.json();
+        const avatarUrl = userDoc.fields?.avatarUrl?.stringValue;
+        if (avatarUrl && avatarUrl.includes("res.cloudinary.com/ddc64bq61/")) {
+          const avatarPublicId = extractCloudinaryPublicId(avatarUrl);
+          if (avatarPublicId && apiKeyVal && apiSecret) {
+            await destroyCloudinaryImage(avatarPublicId, apiKeyVal, apiSecret, cloudName);
+          }
+        }
+      }
+
+      // 4. Delete Firestore user document & private profile
+      await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${uid}/private/profile`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      await fetch(userDocUrl, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+
+      // 5. Delete user from Firebase Auth
+      await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+
+      return res.json({ message: "Account and associated data deleted successfully." });
+    } catch (err: any) {
+      console.error("Account deletion error:", err);
+      return res.status(500).json({ error: "Internal server error during account deletion." });
+    }
+  });
+
+  // Run cleanup job 5 seconds after server start, then every 15 minutes
+  setTimeout(() => {
+    runExpiredListingsCleanup().catch((err) => console.warn("Initial cleanup notice:", err));
+  }, 5000).unref();
+
+  setInterval(() => {
+    runExpiredListingsCleanup().catch((err) => console.warn("Interval cleanup notice:", err));
+  }, 15 * 60 * 1000).unref();
 
   // Graceful PayloadTooLargeError and body parser error handling for API routes
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -7,7 +7,8 @@ import {
   updateDoc,
   serverTimestamp,
   query,
-  orderBy
+  orderBy,
+  Timestamp
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -25,6 +26,8 @@ export type NewListingInput = {
   sellerId?: string;
   images?: string[];
   status?: Listing['status'];
+  expirationDays?: number;
+  expiresAt?: any;
 };
 
 export type NewRequestInput = {
@@ -131,6 +134,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                   ? data.updatedAt
                   : new Date().toISOString();
 
+                // Compute or fallback expiresAt
+                const rawExpires = data.expiresAt;
+                let expiresAt = '';
+                if (rawExpires?.toDate) {
+                  expiresAt = rawExpires.toDate().toISOString();
+                } else if (typeof rawExpires === 'string') {
+                  expiresAt = rawExpires;
+                } else if (data.createdAt) {
+                  const cDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
+                  expiresAt = new Date(cDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+                } else {
+                  expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+                }
+
                 return {
                   id: docSnap.id,
                   title: data.title || '',
@@ -145,6 +162,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                     ? data.images
                     : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800'],
                   status: data.status || 'available',
+                  expirationDays: data.expirationDays ? Number(data.expirationDays) : 15,
+                  expiresAt,
                   createdAt,
                   updatedAt,
                 };
@@ -296,6 +315,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const isBorrowOrExchange = listingInput.type === 'Borrow' || listingInput.type === 'Exchange';
 
+    const validDays = [7, 15, 30];
+    const durationDays = validDays.includes(Number(listingInput.expirationDays))
+      ? Number(listingInput.expirationDays)
+      : 15;
+    const expiresAtDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+    const expiresAtTimestamp = Timestamp.fromDate(expiresAtDate);
+
     const newListingData: Record<string, any> = {
       title: listingInput.title.trim(),
       description: listingInput.description.trim(),
@@ -310,6 +336,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             ? listingInput.images
             : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800']),
       status: listingInput.status || 'available',
+      expirationDays: durationDays,
+      expiresAt: expiresAtTimestamp,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -340,6 +368,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     if (currentListing?.status === 'cancelled') {
       return;
+    }
+    if (currentListing?.status === 'completed') {
+      throw new Error('This listing has already been completed and cannot be cancelled.');
     }
 
     try {

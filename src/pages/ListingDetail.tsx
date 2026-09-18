@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   MapPin, 
@@ -11,7 +11,8 @@ import {
   BookmarkCheck,
   Check,
   X,
-  Inbox
+  Inbox,
+  Timer
 } from 'lucide-react';
 import { 
   doc, 
@@ -56,6 +57,11 @@ export function ListingDetail() {
 
   const handleConfirmCancelPost = async () => {
     if (!listing?.id) return;
+    if (listing.status === 'completed') {
+      setChatError('This listing has already been completed and cannot be cancelled.');
+      setShowCancelModal(false);
+      return;
+    }
     setChatError(null);
     setIsCancelling(true);
     try {
@@ -105,6 +111,11 @@ export function ListingDetail() {
               : typeof data.updatedAt === 'string'
               ? data.updatedAt
               : new Date().toISOString();
+            const expiresAt = data.expiresAt?.toDate
+              ? data.expiresAt.toDate().toISOString()
+              : typeof data.expiresAt === 'string'
+              ? data.expiresAt
+              : undefined;
 
             setFetchedListing({
               id: docSnap.id,
@@ -120,6 +131,8 @@ export function ListingDetail() {
               status: data.status,
               createdAt,
               updatedAt,
+              expiresAt,
+              expirationDays: typeof data.expirationDays === 'number' ? data.expirationDays : undefined,
             });
 
             // Fetch seller user doc directly if needed
@@ -473,6 +486,17 @@ export function ListingDetail() {
     }
   };
 
+  const isExpired = listing ? (listing.status === 'expired' || (Boolean(listing.expiresAt) && new Date(listing.expiresAt!).getTime() <= Date.now())) : false;
+  const expirationText = useMemo(() => {
+    if (!listing?.expiresAt) return null;
+    const diff = new Date(listing.expiresAt).getTime() - Date.now();
+    if (diff <= 0) return 'Expired';
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const days = Math.floor(hours / 24);
+    if (days >= 1) return `${days}d remaining`;
+    return `${Math.max(1, hours)}h remaining`;
+  }, [listing?.expiresAt]);
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
       <button 
@@ -503,10 +527,26 @@ export function ListingDetail() {
             <Badge variant={getTypeColor(listing.type) as any} className="text-sm px-3 py-1 shadow-md">
               {listing.type}
             </Badge>
+            {listing.status === 'completed' && (
+              <Badge variant="outline" className="text-sm px-3 py-1 shadow-md bg-blue-50 text-blue-700 border-blue-200">
+                Completed
+              </Badge>
+            )}
             {listing.status === 'cancelled' && (
               <Badge variant="destructive" className="text-sm px-3 py-1 shadow-md bg-red-600 text-white">
                 Cancelled
               </Badge>
+            )}
+            {isExpired && (
+              <Badge variant="destructive" className="text-sm px-3 py-1 shadow-md bg-red-700 text-white">
+                Expired
+              </Badge>
+            )}
+            {!isExpired && expirationText && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full shadow-md bg-zinc-900/80 text-white backdrop-blur-xs">
+                <Timer className="h-3.5 w-3.5" />
+                {expirationText}
+              </span>
             )}
           </div>
         </div>
@@ -526,8 +566,14 @@ export function ListingDetail() {
               </span>
               <span className="flex items-center gap-1.5">
                 <Clock className="h-4 w-4" />
-                {new Date(listing.createdAt).toLocaleDateString()}
+                Posted {new Date(listing.createdAt).toLocaleDateString()}
               </span>
+              {listing.expiresAt && (
+                <span className={`flex items-center gap-1.5 font-medium ${isExpired ? 'text-red-600' : 'text-zinc-700'}`}>
+                  <Timer className="h-4 w-4" />
+                  {isExpired ? 'Expired' : `Expires ${new Date(listing.expiresAt).toLocaleDateString()}`}
+                </span>
+              )}
               <Badge variant="outline" className="bg-zinc-50 font-medium">
                 {listing.condition}
               </Badge>
@@ -712,6 +758,20 @@ export function ListingDetail() {
             </div>
           )}
 
+          {isExpired && listing.status !== 'cancelled' && (
+            <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
+              <div className="flex items-start gap-3">
+                <Timer className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-sm text-amber-900">Listing Expired</h4>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    This listing reached its scheduled expiration date and has been archived from active search. It is no longer open for reservations.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {chatError && (
             <div className="mb-4 flex items-center justify-between rounded-xl bg-red-50 p-3 text-sm text-red-700 border border-red-200">
               <div className="flex items-center gap-2">
@@ -730,9 +790,17 @@ export function ListingDetail() {
 
           <div className="mt-auto flex flex-col sm:flex-row gap-3">
             {!isOwner ? (
-              listing.status === 'cancelled' ? (
+              listing.status === 'completed' ? (
+                <Button size="lg" disabled className="flex-1 text-base bg-blue-50 text-blue-700 border border-blue-200 cursor-not-allowed">
+                  Item Sold / Exchange Completed
+                </Button>
+              ) : listing.status === 'cancelled' ? (
                 <Button size="lg" disabled className="flex-1 text-base bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed">
                   Listing Cancelled
+                </Button>
+              ) : isExpired ? (
+                <Button size="lg" disabled className="flex-1 text-base bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed">
+                  Listing Expired
                 </Button>
               ) : (
                 <>
@@ -800,7 +868,12 @@ export function ListingDetail() {
                 <Button size="lg" variant="outline" className="flex-1 text-base" onClick={() => navigate('/profile')}>
                   Manage in Profile
                 </Button>
-                {listing.status !== 'cancelled' && (
+                {listing.status === 'completed' && (
+                  <span className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl">
+                    Exchange Completed
+                  </span>
+                )}
+                {listing.status !== 'cancelled' && listing.status !== 'completed' && (
                   <Button 
                     size="lg" 
                     variant="outline" 

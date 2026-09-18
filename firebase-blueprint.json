@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "Listing": {
+      "title": "Listing",
+      "description": "Campus marketplace listing created by a verified student with automatic expiration",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 3000 },
+        "price": { "type": "number" },
+        "type": { "type": "string", "enum": ["Sale", "Borrow", "Donate", "Exchange"] },
+        "condition": { "type": "string", "enum": ["New", "Like New", "Good", "Fair", "Poor"] },
+        "category": { "type": "string" },
+        "location": { "type": "string", "maxLength": 200 },
+        "sellerId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "images": { "type": "array" },
+        "status": { "type": "string", "enum": ["available", "active", "reserved", "completed", "cancelled", "expired"] },
+        "expirationDays": { "type": "number", "enum": [7, 15, 30] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "type", "condition", "category", "location", "sellerId", "status", "createdAt", "expiresAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Verified student account profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "format": "email" },
+        "department": { "type": "string" },
+        "campus": { "type": "string" },
+        "rating": { "type": "number" },
+        "avatarUrl": { "type": "string" },
+        "exchangesCompleted": { "type": "number" },
+        "role": { "type": "string", "enum": ["student", "admin"] },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "email", "role", "isVerified", "createdAt"]
+    },
+    "ItemRequest": {
+      "title": "ItemRequest",
+      "description": "Student peer request for item",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 3000 },
+        "category": { "type": "string" },
+        "neededBy": { "type": "string" },
+        "location": { "type": "string" },
+        "budget": { "type": "number" },
+        "status": { "type": "string", "enum": ["open", "active", "matched", "accepted", "completed", "cancelled"] },
+        "requesterId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "category", "location", "status", "requesterId", "createdAt"]
+    },
+    "Reservation": {
+      "title": "Reservation",
+      "description": "Peer reservation agreement for a listing",
+      "type": "object",
+      "properties": {
+        "listingId": { "type": "string" },
+        "buyerId": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "chatId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "completed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["listingId", "buyerId", "sellerId", "chatId", "status"]
+    }
+  },
+  "firestore": {
+    "/listings/{listingId}": {
+      "schema": { "$ref": "#/entities/Listing" },
+      "description": "Marketplace listings with automatic expiration date"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Verified student user profiles"
+    },
+    "/requests/{requestId}": {
+      "schema": { "$ref": "#/entities/ItemRequest" },
+      "description": "Student item requests"
+    },
+    "/reservations/{reservationId}": {
+      "schema": { "$ref": "#/entities/Reservation" },
+      "description": "Peer reservation agreements"
+    }
+  }
+}

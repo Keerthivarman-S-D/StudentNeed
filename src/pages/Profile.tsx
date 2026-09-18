@@ -16,7 +16,9 @@ import {
   MessageSquare,
   ExternalLink,
   Inbox,
-  AlertCircle
+  AlertCircle,
+  Trash2,
+  ShieldAlert
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -41,10 +43,16 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
   const [reservedSubView, setReservedSubView] = useState<'outgoing' | 'incoming'>('outgoing');
 
   // Listings Management State
-  const [listingFilter, setListingFilter] = useState<'all' | 'active' | 'cancelled'>('all');
+  const [listingFilter, setListingFilter] = useState<'all' | 'active' | 'completed' | 'expired' | 'cancelled'>('all');
   const [listingToCancel, setListingToCancel] = useState<any | null>(null);
   const [isCancellingListing, setIsCancellingListing] = useState(false);
   const [listingCancelError, setListingCancelError] = useState<string | null>(null);
+
+  // Delete Account State
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteConfirmEmail, setDeleteConfirmEmail] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
 
   // Reservations State
   const [myReservations, setMyReservations] = useState<Reservation[]>([]);
@@ -86,13 +94,64 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
   const mySavedListings = listings.filter(l => savedListings.includes(l.id) && l.status !== 'cancelled');
 
   const filteredMyListings = myListings.filter(l => {
-    if (listingFilter === 'active') return l.status !== 'cancelled';
-    if (listingFilter === 'cancelled') return l.status === 'cancelled';
+    const isExpired = l.status === 'expired' || (Boolean(l.expiresAt) && new Date(l.expiresAt!).getTime() <= Date.now());
+    if (listingFilter === 'active') {
+      return (l.status === 'available' || l.status === 'active' || l.status === 'reserved') && !isExpired;
+    }
+    if (listingFilter === 'completed') {
+      return l.status === 'completed';
+    }
+    if (listingFilter === 'expired') {
+      return isExpired && l.status !== 'cancelled' && l.status !== 'completed';
+    }
+    if (listingFilter === 'cancelled') {
+      return l.status === 'cancelled';
+    }
     return true;
   });
 
+  const handleDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firebaseUser || !currentUser) return;
+    if (deleteConfirmEmail.trim().toLowerCase() !== currentUser.email.toLowerCase()) {
+      setDeleteAccountError(`Please type "${currentUser.email}" exactly to confirm.`);
+      return;
+    }
+    setIsDeletingAccount(true);
+    setDeleteAccountError(null);
+    try {
+      const idToken = await firebaseUser.getIdToken();
+      const res = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete account.');
+      }
+      await logout();
+      navigate('/');
+    } catch (err: any) {
+      console.error('Account deletion error:', err);
+      setDeleteAccountError(err.message || 'Failed to delete account.');
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
+
   const handleConfirmCancelListing = async () => {
     if (!listingToCancel) return;
+    if (listingToCancel.status === 'completed') {
+      setListingCancelError('This listing is marked as completed and cannot be cancelled.');
+      return;
+    }
+    if (listingToCancel.status === 'cancelled') {
+      setListingToCancel(null);
+      return;
+    }
     setIsCancellingListing(true);
     setListingCancelError(null);
     try {
@@ -534,7 +593,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
             {myListings.length > 0 ? (
               <>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 pb-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Status:</span>
                     <button
                       type="button"
@@ -556,7 +615,29 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                           : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                       }`}
                     >
-                      Active ({myListings.filter(l => l.status !== 'cancelled').length})
+                      Active ({myListings.filter(l => (l.status === 'available' || l.status === 'active' || l.status === 'reserved') && !(Boolean(l.expiresAt) && new Date(l.expiresAt!).getTime() <= Date.now())).length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setListingFilter('completed')}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                        listingFilter === 'completed'
+                          ? 'bg-zinc-900 text-white shadow-xs'
+                          : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                      }`}
+                    >
+                      Completed ({myListings.filter(l => l.status === 'completed').length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setListingFilter('expired')}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                        listingFilter === 'expired'
+                          ? 'bg-zinc-900 text-white shadow-xs'
+                          : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                      }`}
+                    >
+                      Expired ({myListings.filter(l => l.status !== 'cancelled' && l.status !== 'completed' && (l.status === 'expired' || (Boolean(l.expiresAt) && new Date(l.expiresAt!).getTime() <= Date.now()))).length})
                     </button>
                     <button
                       type="button"
@@ -581,27 +662,56 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {filteredMyListings.map(listing => (
-                      <div key={listing.id} className="flex flex-col">
-                        <ListingCard listing={listing} />
-                        <div className="mt-2 flex items-center justify-between px-1">
-                          <span className={`text-xs font-semibold ${listing.status === 'cancelled' ? 'text-red-600' : 'text-emerald-700'}`}>
-                            {listing.status === 'cancelled' ? '• Cancelled' : '• Active'}
-                          </span>
-                          {listing.status !== 'cancelled' ? (
-                            <button
-                              type="button"
-                              onClick={() => setListingToCancel(listing)}
-                              className="text-xs text-red-600 hover:text-red-700 hover:underline font-medium"
-                            >
-                              Cancel Post
-                            </button>
-                          ) : (
-                            <span className="text-[11px] text-zinc-400">Preserved in history</span>
-                          )}
+                    {filteredMyListings.map(listing => {
+                      const isExpired = listing.status === 'expired' || (Boolean(listing.expiresAt) && new Date(listing.expiresAt!).getTime() <= Date.now());
+                      const isCompleted = listing.status === 'completed';
+                      const isCancelled = listing.status === 'cancelled';
+                      const isReserved = listing.status === 'reserved';
+
+                      return (
+                        <div key={listing.id} className="flex flex-col">
+                          <ListingCard listing={listing} />
+                          <div className="mt-2 flex items-center justify-between px-1">
+                            <span className={`text-xs font-semibold ${
+                              isCancelled
+                                ? 'text-red-600'
+                                : isCompleted
+                                ? 'text-blue-600'
+                                : isExpired
+                                ? 'text-amber-600'
+                                : isReserved
+                                ? 'text-purple-600'
+                                : 'text-emerald-700'
+                            }`}>
+                              {isCancelled
+                                ? '• Cancelled'
+                                : isCompleted
+                                ? '• Completed'
+                                : isExpired
+                                ? '• Expired'
+                                : isReserved
+                                ? '• Reserved'
+                                : '• Active'}
+                            </span>
+                            {isCompleted ? (
+                              <span className="text-[11px] text-blue-700 font-medium">Exchange completed</span>
+                            ) : isCancelled ? (
+                              <span className="text-[11px] text-zinc-400">Preserved in history</span>
+                            ) : isExpired ? (
+                              <span className="text-[11px] text-amber-600">Pending cleanup</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setListingToCancel(listing)}
+                                className="text-xs text-red-600 hover:text-red-700 hover:underline font-medium"
+                              >
+                                Cancel Post
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </>
@@ -816,10 +926,106 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                   </Button>
                 </form>
               </div>
+
+              {/* Danger Zone: Account Deletion */}
+              <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-red-900 flex items-center gap-2">
+                      <ShieldAlert className="h-5 w-5 text-red-600" />
+                      Danger Zone
+                    </h3>
+                    <p className="mt-1 text-sm text-red-700">
+                      Permanently delete your student account, all published marketplace listings, and remove uploaded photos.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setShowDeleteAccountModal(true)}
+                    className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Account
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center gap-3 text-red-600 mb-4">
+              <div className="p-3 bg-red-100 rounded-xl">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-zinc-900">Delete Account?</h3>
+                <p className="text-xs text-zinc-500">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-zinc-600 mb-4 leading-relaxed">
+              Deleting your account will permanently purge your student profile, all active and expired listings, remove uploaded photos from Cloudinary, and cancel any pending reservations.
+            </p>
+
+            {deleteAccountError && (
+              <div className="mb-4 rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-700 border border-red-200">
+                {deleteAccountError}
+              </div>
+            )}
+
+            <form onSubmit={handleDeleteAccount} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Type your institutional email <span className="font-mono text-red-600 select-all">{currentUser?.email}</span> to confirm:
+                </label>
+                <Input
+                  type="email"
+                  required
+                  placeholder={currentUser?.email || ''}
+                  value={deleteConfirmEmail}
+                  onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isDeletingAccount}
+                  onClick={() => {
+                    setShowDeleteAccountModal(false);
+                    setDeleteAccountError(null);
+                    setDeleteConfirmEmail('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  disabled={isDeletingAccount || deleteConfirmEmail.trim().toLowerCase() !== currentUser?.email?.toLowerCase()}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {isDeletingAccount ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    'Permanently Delete'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

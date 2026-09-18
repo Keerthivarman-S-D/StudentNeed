@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Heart, MapPin, Clock } from 'lucide-react';
+import { Heart, MapPin, Clock, Timer } from 'lucide-react';
 import { Listing } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { Badge } from './ui/Badge';
@@ -29,6 +29,23 @@ export function ListingCard({ listing }: { listing: Listing }) {
     if (hours < 24) return `${hours}h ago`;
     return `${Math.floor(hours / 24)}d ago`;
   }, [listing.createdAt]);
+
+  const expirationInfo = useMemo(() => {
+    if (listing.status === 'expired') {
+      return { text: 'Expired', isExpired: true, isUrgent: true };
+    }
+    if (!listing.expiresAt) return null;
+    const diff = new Date(listing.expiresAt).getTime() - Date.now();
+    if (diff <= 0) {
+      return { text: 'Expired', isExpired: true, isUrgent: true };
+    }
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const days = Math.floor(hours / 24);
+    if (days >= 1) {
+      return { text: `${days}d left`, isExpired: false, isUrgent: days <= 2 };
+    }
+    return { text: `${Math.max(1, hours)}h left`, isExpired: false, isUrgent: true };
+  }, [listing.expiresAt, listing.status]);
 
   return (
     <Link 
@@ -69,6 +86,22 @@ export function ListingCard({ listing }: { listing: Listing }) {
             <Badge variant="destructive" className="bg-red-600 text-white shadow-sm">
               Cancelled
             </Badge>
+          )}
+          {expirationInfo?.isExpired && (
+            <Badge variant="destructive" className="bg-red-700 text-white shadow-sm">
+              Expired
+            </Badge>
+          )}
+          {!expirationInfo?.isExpired && expirationInfo?.text && (
+            <span className={cn(
+              "text-[11px] font-semibold px-2 py-0.5 rounded-md shadow-xs backdrop-blur-xs flex items-center gap-1 border",
+              expirationInfo.isUrgent
+                ? "bg-amber-500/90 text-white border-amber-600/30"
+                : "bg-black/60 text-white border-white/20"
+            )}>
+              <Timer className="h-3 w-3" />
+              {expirationInfo.text}
+            </span>
           )}
         </div>
       </div>
