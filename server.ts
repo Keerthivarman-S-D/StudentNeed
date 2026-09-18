@@ -215,6 +215,7 @@ async function startServer() {
             "https://*.firebaseio.com",
             "https://api.cloudinary.com",
             "https://res.cloudinary.com",
+            "https://studentneed-backend.onrender.com",
           ],
           frameAncestors,
           frameSrc: ["'self'"],
