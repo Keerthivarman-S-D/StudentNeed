@@ -10,6 +10,7 @@
  */
 
 import { auth } from './firebase';
+import { API_BASE_URL } from '../config/api';
 
 export const CLOUDINARY_CLOUD_NAME = 
   (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string) || 'ddc64bq61';
@@ -221,7 +222,52 @@ export async function uploadImageToCloudinary(
     throw new UploadCancelledError();
   }
 
-  // Helper to convert Blob/File to Data URL
+  // Ensure user is authenticated before attempting upload
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Authentication required to upload photos. Please sign in with your student account.');
+  }
+
+  const idToken = await currentUser.getIdToken();
+  const apiBase = API_BASE_URL;
+
+  // 3. First Attempt: Signed Direct Upload
+  // Request Cloudinary cryptographic signature from authenticated backend
+  try {
+    const sigRes = await fetch(`${apiBase}/api/upload/signature`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ folder: options.folder }),
+      signal: options.signal
+    });
+
+    if (sigRes.ok) {
+      const sigData = await sigRes.json();
+      if (sigData.signed === true && sigData.signature && sigData.apiKey && sigData.timestamp) {
+        const formData = new FormData();
+        formData.append('file', uploadPayload, file.name);
+        formData.append('api_key', sigData.apiKey);
+        formData.append('timestamp', sigData.timestamp.toString());
+        formData.append('signature', sigData.signature);
+        formData.append('folder', sigData.folder || options.folder);
+
+        const targetCloud = sigData.cloudName || cloudName;
+        const endpoint = `https://api.cloudinary.com/v1_1/${targetCloud}/image/upload`;
+        return await uploadToCloudinaryEndpoint(endpoint, formData, options);
+      }
+    }
+  } catch (sigErr) {
+    if (options.signal?.aborted) {
+      throw new UploadCancelledError();
+    }
+    console.warn('Signed upload negotiation failed, falling back to authenticated backend proxy:', sigErr);
+  }
+
+  // 4. Second Attempt: Route via backend image upload proxy
+  // Helper to convert Blob/File to Data URL for backend proxy
   const toDataUrl = (blob: Blob | File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -231,47 +277,48 @@ export async function uploadImageToCloudinary(
     });
   };
 
-  // If user is authenticated, route via backend image upload proxy with token verification
-  const currentUser = auth.currentUser;
-  if (currentUser) {
-    try {
-      const idToken = await currentUser.getIdToken();
-      const base64Data = await toDataUrl(uploadPayload);
-      const res = await fetch('/api/upload/image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({
-          file: base64Data,
-          folder: options.folder
-        }),
-        signal: options.signal
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.secure_url) {
-          return data.secure_url;
-        }
+  try {
+    const base64Data = await toDataUrl(uploadPayload);
+    const proxyRes = await fetch(`${apiBase}/api/upload/image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify({
+        file: base64Data,
+        folder: options.folder
+      }),
+      signal: options.signal
+    });
+
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data?.secure_url) {
+        return data.secure_url;
       }
-    } catch (err) {
-      if (options.signal?.aborted) {
-        throw new UploadCancelledError();
-      }
-      console.warn('Backend proxy upload error, attempting direct upload:', err);
+    } else {
+      const errorData = await proxyRes.json().catch(() => ({}));
+      throw new Error(errorData.error || `Upload proxy failed (HTTP ${proxyRes.status}).`);
     }
+  } catch (proxyErr: any) {
+    if (options.signal?.aborted) {
+      throw new UploadCancelledError();
+    }
+    throw new Error(proxyErr.message || 'Failed to upload photo to storage. Please try again.');
   }
 
-  // 3. Construct FormData for Cloudinary Unsigned Upload
-  const formData = new FormData();
-  formData.append('file', uploadPayload, file.name);
-  formData.append('upload_preset', uploadPreset);
-  formData.append('folder', options.folder);
+  throw new Error('Failed to upload photo. Storage service unavailable.');
+}
 
-  // 4. Send directly to Cloudinary REST endpoint with abort & progress handling
-  const endpoint = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
-  
+/**
+ * Sends FormData to Cloudinary upload REST endpoint with abort signal and progress tracking
+ */
+function uploadToCloudinaryEndpoint(
+  endpoint: string,
+  formData: FormData,
+  options: CloudinaryUploadOptions
+): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', endpoint);

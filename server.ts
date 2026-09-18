@@ -606,6 +606,30 @@ async function startServer() {
     }
   });
 
+  // Helper to retrieve Cloudinary configuration securely from environment variables
+  const getCloudinaryConfig = () => {
+    let apiKeyVal = process.env.CLOUDINARY_API_KEY || process.env.CLOUDINARY_KEY;
+    let apiSecret = process.env.CLOUDINARY_API_SECRET || process.env.CLOUDINARY_SECRET;
+    let cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.VITE_CLOUDINARY_CLOUD_NAME || "ddc64bq61";
+
+    if ((!apiKeyVal || !apiSecret) && process.env.CLOUDINARY_URL) {
+      try {
+        const parsed = new URL(process.env.CLOUDINARY_URL);
+        if (!apiKeyVal && parsed.username) apiKeyVal = decodeURIComponent(parsed.username);
+        if (!apiSecret && parsed.password) apiSecret = decodeURIComponent(parsed.password);
+        if (parsed.hostname) cloudName = parsed.hostname;
+      } catch (e) {
+        console.warn("Could not parse CLOUDINARY_URL:", e);
+      }
+    }
+
+    apiKeyVal = apiKeyVal ? apiKeyVal.trim().replace(/^["']|["']$/g, "") : undefined;
+    apiSecret = apiSecret ? apiSecret.trim().replace(/^["']|["']$/g, "") : undefined;
+    cloudName = cloudName ? cloudName.trim().replace(/^["']|["']$/g, "") : "ddc64bq61";
+
+    return { apiKeyVal, apiSecret, cloudName };
+  };
+
   // 4. Authenticated Image Upload Proxy (Validates Firebase Auth ID token and payload format)
   app.post("/api/upload/image", express.json({ limit: "6mb" }), async (req, res) => {
     try {
@@ -651,13 +675,22 @@ async function startServer() {
         return res.status(400).json({ error: "Invalid image format. Only JPEG, PNG, and WebP are allowed." });
       }
 
-      const cloudName = process.env.VITE_CLOUDINARY_CLOUD_NAME || "ddc64bq61";
-      const uploadPreset = process.env.VITE_CLOUDINARY_UPLOAD_PRESET || "studentneed_images";
+      const { apiKeyVal, apiSecret, cloudName } = getCloudinaryConfig();
+
+      if (!apiSecret || !apiKeyVal) {
+        return res.status(500).json({ error: "Storage service configuration error: Cloudinary signing credentials missing on the server." });
+      }
+
+      const timestamp = Math.round(Date.now() / 1000);
+      const stringToSign = `folder=${uploadFolder}&timestamp=${timestamp}${apiSecret}`;
+      const signature = crypto.createHash("sha1").update(stringToSign).digest("hex");
 
       const formData = new URLSearchParams();
       formData.append("file", file);
-      formData.append("upload_preset", uploadPreset);
       formData.append("folder", uploadFolder);
+      formData.append("timestamp", timestamp.toString());
+      formData.append("api_key", apiKeyVal);
+      formData.append("signature", signature);
 
       const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
         method: "POST",
@@ -703,22 +736,16 @@ async function startServer() {
       const { folder } = req.body;
       const allowedFolders = ["studentneed/listings", "studentneed/avatars"];
       const uploadFolder = allowedFolders.includes(folder) ? folder : "studentneed/listings";
-      const timestamp = Math.round(Date.now() / 1000);
-      const cloudName = process.env.VITE_CLOUDINARY_CLOUD_NAME || "ddc64bq61";
-      const apiSecret = process.env.CLOUDINARY_API_SECRET;
-      const apiKeyVal = process.env.CLOUDINARY_API_KEY;
+      const { apiKeyVal, apiSecret, cloudName } = getCloudinaryConfig();
 
       if (!apiSecret || !apiKeyVal) {
-        // Return preset mode indicator when signed secrets are not configured in environment
-        return res.json({
-          signed: false,
-          cloudName,
-          uploadPreset: process.env.VITE_CLOUDINARY_UPLOAD_PRESET || "studentneed_images",
-          folder: uploadFolder
+        return res.status(500).json({
+          error: "Cloudinary signing credentials are not configured on the server."
         });
       }
 
       // Compute Cloudinary SHA-1 signature
+      const timestamp = Math.round(Date.now() / 1000);
       const stringToSign = `folder=${uploadFolder}&timestamp=${timestamp}${apiSecret}`;
       const signature = crypto.createHash("sha1").update(stringToSign).digest("hex");
 
