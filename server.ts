@@ -8,6 +8,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { Resend } from "resend";
 import fs from "fs";
+import { GoogleGenAI } from "@google/genai";
 
 // Load Firebase Config for REST API
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf8"));
@@ -344,6 +345,200 @@ async function startServer() {
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // --- StudentNeed Campus Assistant & Knowledge Base ---
+
+  const STUDENTNEED_SYSTEM_INSTRUCTION = `You are the friendly, helpful AI Campus Assistant for StudentNeed — the verified peer-to-peer marketplace exclusively for Anna University students (@student.annauniv.edu).
+
+CORE PRODUCT KNOWLEDGE & RULES:
+1. StudentNeed is a campus-only platform where verified Anna University students can buy, borrow, donate, or exchange textbooks, lab essentials, electronics, hostel essentials, and college wear without courier fees or strangers.
+2. The core exchange flow is "Find → Connect → Meet":
+   - Find: Browse the marketplace (/marketplace) or post an item request (/create-request) if looking for something specific.
+   - Connect: Message the student via built-in 1-on-1 real-time chat (/chat/:chatId) to discuss condition, price, or submit an item reservation.
+   - Meet: Coordinate safe in-person campus meetups at approved campus spots and mark the exchange completed in the app.
+3. Supported Listing Types (strictly 4):
+   - Sale: Student sells an item at a specified price in ₹.
+   - Borrow: Item requested or lent on loan (photos are strictly not permitted for Borrow).
+   - Donate: Student gives away an item for free.
+   - Exchange: Direct item swap with a peer (photos are strictly not permitted for Exchange).
+4. Supported Categories (strictly 8):
+   - Textbooks
+   - Electronics
+   - Stationery
+   - Lab Essentials
+   - Hostel Essentials
+   - Sports
+   - College Wear
+   - Other
+5. Creating Listings (/create-listing):
+   - Requires verified student account.
+   - Requires title (max 80 chars), category, condition (New, Like New, Good, Fair, Poor), location, description.
+   - Expiration period must be chosen: 7, 15, or 30 days (listings automatically expire to avoid outdated posts).
+   - Photo limits: Up to 4 photos (JPG, PNG, WEBP up to 5MB each) for Sale and Donate. Photos are strictly NOT permitted for Borrow and Exchange listings.
+6. Contacting & Reservations:
+   - On /listing/:id, buyers can click "Contact Student" to open a direct chat, or "Reserve Item" to submit a pending reservation.
+   - When a reservation is accepted by the seller, the listing status updates to 'reserved'.
+   - Once accepted, participants coordinate a campus meetup at one of the approved campus locations:
+     * Main Gate
+     * Central Library
+     * Food Court
+     * Hostel
+     * CSE Block
+     * ECE Block
+   - One student proposes the meetup location, the other confirms.
+   - After meetup, either participant clicks "Complete Exchange" to finalize.
+7. Requests (/requests & /create-request):
+   - Students can post wanted items with title, category, description, needed-by date, preferred location, and optional budget.
+   - Other students can view and reach out if they have the item.
+   - Requesters can mark requests as found (completed) or cancel them.
+8. Saved Listings:
+   - Saved/bookmarked listings use browser localStorage (stored locally on the user's current browser/device, NOT synced to the cloud profile or across devices).
+9. Account & Verification:
+   - Only @student.annauniv.edu emails are allowed.
+   - Verified via 6-digit email OTP (5-minute expiry).
+10. STRICT BOUNDARIES & INTEGRITY:
+   - NO online payment processing (no credit card/debit card/Stripe/gateway). Payments are handled directly between students at the meetup (cash or student UPI).
+   - NO courier/delivery shipping. All exchanges happen in-person on campus.
+   - NO external or guest accounts.
+   - Do NOT invent features that do not exist in StudentNeed.
+   - If the user asks about something outside this knowledge base, clearly state: "This information is currently unavailable in the StudentNeed knowledge base."
+   - Keep answers concise, direct, accurate, and student-friendly.`;
+
+  function getDeterministicKnowledgeResponse(userQuery: string): string {
+    const q = userQuery.toLowerCase().trim();
+
+    if (!q || q.length < 2) {
+      return "Hi there! I am your StudentNeed Campus Assistant. Ask me anything about how StudentNeed works, browsing listings, posting items, categories, or campus meetups!";
+    }
+
+    if (q.includes("what is studentneed") || q.includes("about studentneed") || (q.includes("what") && q.includes("studentneed")) || q.includes("overview")) {
+      return "StudentNeed is a verified campus-only peer-to-peer exchange platform exclusively for Anna University students (@student.annauniv.edu). Students can buy, borrow, donate, or exchange textbooks, lab essentials, electronics, hostel supplies, and college wear securely without courier fees or strangers.";
+    }
+
+    if (q.includes("find connect meet") || q.includes("how it work") || q.includes("how does it work") || q.includes("workflow") || q.includes("steps")) {
+      return "StudentNeed works in 3 simple campus-focused steps:\n\n1. **Find**: Browse items on the Marketplace (/marketplace) with filters, or post an Item Request (/create-request) if you can't find what you need.\n2. **Connect**: Chat 1-on-1 with fellow students in real-time (/chat) to discuss details or submit an item reservation.\n3. **Meet**: Coordinate a safe in-person campus meetup at approved spots (like Central Library or Main Gate) and complete the exchange.";
+    }
+
+    if (q.includes("browse") || q.includes("search") || q.includes("find item") || q.includes("filter") || q.includes("sort")) {
+      return "To browse and search for items:\n- Head to **Marketplace** (/marketplace).\n- Use the search bar to find keywords across titles and descriptions.\n- Filter by **Listing Type** (Sale, Borrow, Donate, Exchange) and **Category**.\n- Sort results by **Newest**, **Price: Low to High**, or **Price: High to Low**.\n- Click the heart icon to save listings to your browser's local storage for easy access.";
+    }
+
+    if (q.includes("post") || q.includes("create listing") || q.includes("list an item") || q.includes("sell an item") || q.includes("how to list") || q.includes("publish")) {
+      return "To post an item on StudentNeed:\n1. Log in with your verified student account and click **Post Item** (/create-listing).\n2. Enter the title (up to 80 chars), category, condition (New, Like New, Good, Fair, Poor), campus pickup location, and description.\n3. Select a listing expiration period: **7, 15, or 30 days** (listings expire automatically to prevent stale posts).\n4. **Photos**: For **Sale** and **Donate**, upload **up to 4 photos** (JPG/PNG/WEBP under 5MB). Photos are **strictly not permitted** for Borrow or Exchange listings.\n5. If selling, specify your price in ₹, then submit!";
+    }
+
+    if ((q.includes("category") || q.includes("categories")) && (q.includes("type") || q.includes("types") || q.includes("listing"))) {
+      return "StudentNeed supports **4 Listing Types** and **8 Categories**:\n\n**Listing Types**:\n- **Sale**: Offer items for purchase at a fixed price in ₹ (up to 4 photos allowed).\n- **Borrow**: Request or lend items temporarily on loan (photos are strictly not permitted).\n- **Donate**: Offer items for free to campus peers.\n- **Exchange**: Direct item-for-item peer swaps (photos are strictly not permitted).\n\n**Categories**:\nTextbooks, Electronics, Stationery, Lab Essentials, Hostel Essentials, Sports, College Wear, and Other.";
+    }
+
+    if (q.includes("category") || q.includes("categories")) {
+      return "StudentNeed currently supports **8 verified categories**:\n1. **Textbooks**\n2. **Electronics**\n3. **Stationery**\n4. **Lab Essentials**\n5. **Hostel Essentials**\n6. **Sports**\n7. **College Wear**\n8. **Other**";
+    }
+
+    if (q.includes("listing type") || q.includes("types of listing") || (q.includes("type") && (q.includes("sale") || q.includes("borrow") || q.includes("donate") || q.includes("exchange")))) {
+      return "StudentNeed supports **4 listing types**:\n- **Sale**: Offer items for purchase at a fixed price in ₹ (requires up to 4 photos).\n- **Borrow**: Request or lend items temporarily on loan (**photos not permitted**).\n- **Donate**: Offer useful items for free to fellow campus peers.\n- **Exchange**: Direct item-for-item peer swaps (**photos not permitted**).";
+    }
+
+    if (q.includes("contact") || q.includes("reserve") || q.includes("reservation") || q.includes("meetup") || q.includes("location") || q.includes("spot") || q.includes("where to meet")) {
+      return "Contacting Sellers & Campus Meetups:\n- On any listing page (/listing/:id), click **Contact Student** to chat or **Reserve Item** to submit a hold request.\n- When the seller accepts the reservation, the item status changes to 'reserved'.\n- Either student can propose an approved campus meetup location:\n  * **Main Gate**\n  * **Central Library**\n  * **Food Court**\n  * **Hostel**\n  * **CSE Block**\n  * **ECE Block**\n  * The other student confirms the location. After completing the in-person exchange on campus, either student clicks **Complete Exchange**.";
+    }
+
+    if (q.includes("request") || q.includes("can't find") || q.includes("looking for")) {
+      return "Looking for something not yet listed?\n- Go to **Requests** (/requests) and click **Create Request** (/create-request).\n- Specify title, category, description, needed-by date, preferred campus location, and optional budget in ₹.\n- Other campus peers can see your request and reach out.\n- Once you obtain the item, you can mark the request as found or cancel it anytime.";
+    }
+
+    if (q.includes("saved") || q.includes("bookmark") || q.includes("favorite") || q.includes("heart")) {
+      return "Saved Listings:\n- You can save items by clicking the heart icon on any listing card.\n- Saved items are stored in your browser's **localStorage** (`sn_saved_listings`) and can be viewed under **Profile → Saved Items**.\n- Note: Saved items are local to your current browser and are **not** synced across devices or saved to your cloud profile.";
+    }
+
+    if (q.includes("pay") || q.includes("payment") || q.includes("upi") || q.includes("cash") || q.includes("delivery") || q.includes("shipping")) {
+      return "Payments & Delivery Guidelines:\n- **No Online Payment Gateway**: StudentNeed does not process in-app credit card or digital payments. Payment is settled directly between students in person at the meetup (via cash or student UPI).\n- **No Courier Delivery**: There is no doorstep or parcel shipping. All exchanges must take place in person at designated campus meetup spots.";
+    }
+
+    if (q.includes("register") || q.includes("sign up") || q.includes("signup") || q.includes("login") || q.includes("otp") || q.includes("verify email")) {
+      return "Registration & Verification:\n- Only official **@student.annauniv.edu** email addresses are permitted.\n- A 6-digit OTP code is sent to your college inbox (5-minute expiry) to verify student identity.\n- Once verified, you create a password and set your name, department, and avatar during onboarding.";
+    }
+
+    if (q.includes("photo") || q.includes("image") || q.includes("upload") || q.includes("picture")) {
+      return "Photo Rules on StudentNeed:\n- **Sale & Donate listings**: Up to **4 photos** allowed (JPG, PNG, WEBP; max 5MB each).\n- **Borrow & Exchange listings**: Photos are **strictly not permitted**.\n- All photos are securely optimized and hosted via Cloudinary.";
+    }
+
+    return "This information is currently unavailable in the StudentNeed knowledge base. I can help you with:\n- What StudentNeed is and the **Find → Connect → Meet** flow\n- How to browse, search, and save items\n- How to post listings (photo rules & expiration periods)\n- Supported listing types (Sale, Borrow, Donate, Exchange) and categories\n- Item reservations and approved campus meetup spots\n- How to create and fulfill campus item requests";
+  }
+
+  // 0. StudentNeed Campus AI Assistant Endpoint (Rate-limited, grounded in knowledge base)
+  app.post("/api/chat/assistant", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`chat-assistant:${clientIp}`, 30, 10 * 60 * 1000)) {
+        return res.status(429).json({
+          error: "Too many assistant requests from this IP address. Please wait a few minutes before asking more questions.",
+        });
+      }
+
+      const { message, history } = req.body;
+      if (!message || typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ error: "Message is required." });
+      }
+
+      const trimmedMessage = message.trim();
+      if (trimmedMessage.length > 600) {
+        return res.status(400).json({ error: "Message is too long. Please keep your question under 600 characters." });
+      }
+
+      const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
+
+      // If GEMINI_API_KEY is configured, attempt generation with @google/genai
+      if (geminiApiKey) {
+        try {
+          const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+          const modelName = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+
+          // Format recent history (up to 6 turns)
+          const formattedContents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+          if (Array.isArray(history)) {
+            for (const turn of history.slice(-6)) {
+              if (turn && typeof turn.text === "string" && turn.text.trim() && (turn.role === "user" || turn.role === "assistant")) {
+                formattedContents.push({
+                  role: turn.role === "assistant" ? "model" : "user",
+                  parts: [{ text: turn.text.slice(0, 600) }],
+                });
+              }
+            }
+          }
+          formattedContents.push({
+            role: "user",
+            parts: [{ text: trimmedMessage }],
+          });
+
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: formattedContents as any,
+            config: {
+              systemInstruction: STUDENTNEED_SYSTEM_INSTRUCTION,
+              maxOutputTokens: 800,
+              temperature: 0.2,
+            },
+          });
+
+          const replyText = response.text?.trim();
+          if (replyText) {
+            return res.json({ reply: replyText, source: "ai" });
+          }
+        } catch (aiErr: any) {
+          // Log safe diagnostic notice without exposing any keys or credentials
+          console.warn("[Campus Assistant Notice] Upstream AI dispatch failed, using verified knowledge base fallback:", aiErr?.status || aiErr?.code || "Generation unavailable");
+        }
+      }
+
+      // Safe deterministic knowledge base fallback (always available even if GEMINI_API_KEY is unset or fails)
+      const fallbackReply = getDeterministicKnowledgeResponse(trimmedMessage);
+      return res.json({ reply: fallbackReply, source: "knowledge_base" });
+    } catch (err: any) {
+      console.error("[Campus Assistant Endpoint Error]:", err?.message || "Internal error");
+      return res.status(500).json({ error: "Unable to process assistant request at this time. Please try again." });
+    }
   });
 
   // 1. Send OTP (Rate-limited via trusted req.ip)

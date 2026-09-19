@@ -30,3 +30,9 @@ export const AUTH_ENDPOINTS = {
   },
 };
 
+export const CHAT_ENDPOINTS = {
+  get assistant() {
+    return `${getApiBaseUrl()}/api/chat/assistant`;
+  },
+};
+

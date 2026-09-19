@@ -3,6 +3,7 @@ import { AppProvider } from './context/AppContext';
 import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { StudentNeedChatbot } from './components/StudentNeedChatbot';
 
 // Page Imports
 import { Home } from './pages/Home';
@@ -82,6 +83,7 @@ export default function App() {
                 />
               </Routes>
             </main>
+            <StudentNeedChatbot />
           </div>
         </BrowserRouter>
       </AppProvider>
