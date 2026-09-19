@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { auth } from '../lib/firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { AUTH_ENDPOINTS, COLLEGE_EMAIL_DOMAIN } from '../config/api';
@@ -49,24 +49,41 @@ export function Login() {
   const handleResetPassword = async () => {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
-      setError("Please enter your email address first to reset your password.");
+      setError("Please enter your college email address first to reset your password.");
       return;
     }
+
+    const rawDomain = COLLEGE_EMAIL_DOMAIN.trim().replace(/^@/, '');
+    const allowedDomain = `@${rawDomain}`;
+    if (!cleanEmail.endsWith(allowedDomain)) {
+      setError("Please use your official college email address.");
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setSuccessMessage(null);
     try {
-      await sendPasswordResetEmail(auth, cleanEmail);
+      const res = await fetch(AUTH_ENDPOINTS.forgotPassword, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+
+      if (!res.ok) {
+        let errMessage = "Unable to send password reset email. Please try again.";
+        try {
+          const data = await res.json();
+          if (data.error) {
+            errMessage = data.error;
+          }
+        } catch (_) {}
+        throw new Error(errMessage);
+      }
+
       setSuccessMessage("Password reset email sent! Check your inbox.");
     } catch (err: any) {
-      console.warn("Reset password error:", err.code || err.message);
-      if (err.code === 'auth/user-not-found') {
-        setError("No account found with this email address.");
-      } else if (err.code === 'auth/invalid-email') {
-        setError("Please enter a valid email address.");
-      } else {
-        setError(err.message || "Failed to send reset email.");
-      }
+      setError(err.message || "Unable to send password reset email. Please try again.");
     } finally {
       setIsLoading(false);
     }

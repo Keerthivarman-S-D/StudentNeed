@@ -25,6 +25,9 @@ export const AUTH_ENDPOINTS = {
   get finalizeAccount() {
     return `${getApiBaseUrl()}/api/auth/finalize-account`;
   },
+  get forgotPassword() {
+    return `${getApiBaseUrl()}/api/auth/forgot-password`;
+  },
   get health() {
     return `${getApiBaseUrl()}/api/health`;
   },
