@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { auth } from '../lib/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
@@ -16,6 +16,7 @@ export function Login() {
   const [otp, setOtp] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   const [isLoading, setIsLoading] = useState(false);
   const [isSignup, setIsSignup] = useState(false);
@@ -214,6 +215,7 @@ export function Login() {
     setPassword('');
     setConfirmPassword('');
     setOtp('');
+    setShowPassword(false);
   };
 
   return (
@@ -254,7 +256,7 @@ export function Login() {
                 <Input 
                   type="email" 
                   required 
-                  placeholder="e.g. 2023503014@student.annauniv.edu"
+                  placeholder="1234567@student.annauniv.edu"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -270,13 +272,28 @@ export function Login() {
                     Forgot Password?
                   </button>
                 </div>
-                <Input 
-                  type="password" 
-                  required 
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <div className="relative flex items-center">
+                  <Input 
+                    type={showPassword ? "text" : "password"} 
+                    required 
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="pr-11"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-0 flex h-full items-center justify-center px-3 text-zinc-400 hover:text-zinc-600 focus:outline-none focus-visible:text-zinc-600 transition-colors"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5" aria-hidden="true" />
+                    ) : (
+                      <Eye className="h-5 w-5" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Signing in...' : 'Sign in'}
@@ -292,7 +309,7 @@ export function Login() {
                     <Input 
                       type="email" 
                       required 
-                      placeholder="e.g. 2023503014@student.annauniv.edu"
+                      placeholder="1234567@student.annauniv.edu"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                     />
