@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
-import { Chat, ChatMessage, User, Listing, Reservation, CAMPUS_MEETUP_LOCATIONS, CampusMeetupLocation } from '../types';
+import { Chat, ChatMessage, User, Listing, Reservation, CAMPUS_MEETUP_LOCATIONS, CampusMeetupLocation, ItemRequest } from '../types';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
@@ -36,7 +36,8 @@ import {
   Tag,
   MapPin,
   Building2,
-  CheckCircle2
+  CheckCircle2,
+  IndianRupee
 } from 'lucide-react';
 
 export function ChatPage() {
@@ -48,6 +49,7 @@ export function ChatPage() {
   const [chat, setChat] = useState<Chat | null>(null);
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const [listing, setListing] = useState<Listing | null>(null);
+  const [itemRequest, setItemRequest] = useState<ItemRequest | null>(null);
   const [reservation, setReservation] = useState<Reservation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   
@@ -59,6 +61,7 @@ export function ChatPage() {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const lastSentTimestampRef = useRef<number>(0);
 
   // Reservation action states
   const [isActionLoading, setIsActionLoading] = useState<'reserving' | 'accepting' | 'rejecting' | null>(null);
@@ -117,6 +120,7 @@ export function ChatPage() {
           id: docSnap.id,
           participants,
           listingId: data.listingId,
+          requestId: data.requestId,
           reservationId: data.reservationId,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
@@ -145,6 +149,18 @@ export function ChatPage() {
             }
           } catch (err) {
             console.error('Failed to load listing info:', err);
+          }
+        }
+
+        // Fetch request details if attached
+        if (data.requestId) {
+          try {
+            const requestSnap = await getDoc(doc(db, 'requests', data.requestId));
+            if (requestSnap.exists()) {
+              setItemRequest({ id: requestSnap.id, ...requestSnap.data() } as ItemRequest);
+            }
+          } catch (err) {
+            console.error('Failed to load request info:', err);
           }
         }
       },
@@ -284,6 +300,17 @@ export function ChatPage() {
     e.preventDefault();
     const trimmed = inputText.trim();
     if (!trimmed || isSending || !chatId || !currentUserId) return;
+
+    if (trimmed.length > 2000) {
+      setSendError('Message is too long (maximum 2,000 characters).');
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastSentTimestampRef.current < 350) {
+      return;
+    }
+    lastSentTimestampRef.current = now;
 
     setIsSending(true);
     setSendError(null);
@@ -780,6 +807,18 @@ export function ChatPage() {
               <ExternalLink className="h-3.5 w-3.5 text-zinc-400" />
             </Link>
           )}
+
+          {/* Attached Request Preview Pill */}
+          {itemRequest && (
+            <Link
+              to="/requests"
+              className="hidden sm:flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+              title="View campus requests"
+            >
+              <span className="max-w-[150px] truncate">Request: {itemRequest.title}</span>
+              <ExternalLink className="h-3.5 w-3.5 text-zinc-400" />
+            </Link>
+          )}
         </div>
 
         {/* Attached Listing Mobile Pill */}
@@ -788,6 +827,16 @@ export function ChatPage() {
             <span className="text-zinc-500 truncate mr-2">Regarding: <strong className="text-zinc-800">{listing.title}</strong></span>
             <Link to={`/listing/${listing.id}`} className="text-zinc-900 font-medium underline shrink-0">
               View Item
+            </Link>
+          </div>
+        )}
+
+        {/* Attached Request Mobile Pill */}
+        {itemRequest && (
+          <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-50 px-4 py-1.5 sm:hidden text-xs">
+            <span className="text-zinc-500 truncate mr-2">Regarding Request: <strong className="text-zinc-800">{itemRequest.title}</strong></span>
+            <Link to="/requests" className="text-zinc-900 font-medium underline shrink-0">
+              View Requests
             </Link>
           </div>
         )}
@@ -1228,6 +1277,78 @@ export function ChatPage() {
           </div>
         )}
 
+        {/* Request Context Bar */}
+        {itemRequest && (
+          <div className="border-b border-zinc-200 bg-zinc-50/90 px-4 py-3 sm:px-6">
+            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700 mt-0.5">
+                  <MessageSquare className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-zinc-900 truncate max-w-[180px] sm:max-w-[260px]">
+                      {itemRequest.title}
+                    </span>
+                    {itemRequest.budget && (
+                      <span className="flex items-center text-xs font-bold text-green-700 bg-green-50 px-1.5 py-0.5 rounded">
+                        <IndianRupee className="h-3 w-3 mr-0.5" />
+                        Budget: ₹{itemRequest.budget}
+                      </span>
+                    )}
+                    <Badge
+                      variant={itemRequest.status === 'open' ? 'default' : itemRequest.status === 'matched' ? 'success' : 'secondary'}
+                      className="text-[10px] py-0 px-1.5 font-medium"
+                    >
+                      {itemRequest.status.charAt(0).toUpperCase() + itemRequest.status.slice(1)}
+                    </Badge>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 mt-1">
+                    {itemRequest.location && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3 text-zinc-400" />
+                        {itemRequest.location}
+                      </span>
+                    )}
+                    {itemRequest.neededBy && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3 text-zinc-400" />
+                        Needed by: {itemRequest.neededBy}
+                      </span>
+                    )}
+                    <span className="text-zinc-400">• Campus Request</span>
+                  </div>
+
+                  {itemRequest.description && (
+                    <p className="text-[11px] text-zinc-600 line-clamp-1 italic mt-1">
+                      "{itemRequest.description}"
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="self-end sm:self-auto shrink-0">
+                <Link to="/requests">
+                  <Button size="sm" variant="outline" className="text-xs h-7 px-2.5 text-zinc-700 border-zinc-200 hover:bg-zinc-100">
+                    Back to Requests
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* In-Chat Safety Notice Banner */}
+        <div className="border-b border-amber-200/80 bg-amber-50/70 px-4 py-2 sm:px-6">
+          <div className="flex items-center gap-2 text-[11px] sm:text-xs text-amber-900 leading-snug">
+            <span className="text-sm shrink-0 select-none">⚠️</span>
+            <p>
+              <strong>Safety Notice:</strong> StudentNeed only connects students. We do not guarantee the product or money involved in a transaction. Please meet in person, inspect the item, and complete the deal safely.
+            </p>
+          </div>
+        </div>
+
         {/* Messages List Area */}
         <div 
           ref={messageListRef}
@@ -1290,6 +1411,7 @@ export function ChatPage() {
             onChange={(e) => setInputText(e.target.value)}
             placeholder="Type your message..."
             disabled={isSending}
+            maxLength={2000}
             className="flex-1 bg-zinc-50 border-zinc-200 focus:bg-white text-sm"
             autoFocus
           />

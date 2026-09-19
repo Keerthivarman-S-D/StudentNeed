@@ -1,24 +1,97 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Search, MapPin, Clock, Plus, IndianRupee, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Search, MapPin, Clock, Plus, IndianRupee, Loader2, AlertCircle, MessageSquare } from 'lucide-react';
+import { collection, doc, getDoc, setDoc, query, where, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { ItemRequest, Chat } from '../types';
 
 export function Requests() {
+  const navigate = useNavigate();
   const { requests, requestsLoading, requestsError, updateRequestStatus, cancelRequest, users } = useAppContext();
   const { currentUser, firebaseUser } = useAuth();
+  const currentUserId = firebaseUser?.uid || currentUser?.id;
   
   const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
-  const [contactedId, setContactedId] = useState<string | null>(null);
+  const [startingChatId, setStartingChatId] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [userChats, setUserChats] = useState<Chat[]>([]);
+
+  // Subscribe to authenticated user's conversations to display request inquiries
+  useEffect(() => {
+    if (!currentUserId) {
+      setUserChats([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', currentUserId)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const liveChats: Chat[] = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          participants: data.participants || [],
+          listingId: data.listingId,
+          requestId: data.requestId,
+          reservationId: data.reservationId,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        };
+      });
+      setUserChats(liveChats);
+    }, (err) => console.warn('User chats query notice in requests:', err));
+
+    return () => unsubscribe();
+  }, [currentUserId]);
 
   const displayedRequests = activeTab === 'all' 
     ? requests.filter(r => r.status === 'open')
-    : requests.filter(r => r.requesterId === (firebaseUser?.uid || currentUser?.id));
+    : requests.filter(r => r.requesterId === currentUserId);
+
+  const handleStartChat = async (request: ItemRequest) => {
+    setChatError(null);
+    if (!currentUserId) {
+      navigate('/login', { state: { from: '/requests' } });
+      return;
+    }
+
+    if (currentUserId === request.requesterId) {
+      return;
+    }
+
+    setStartingChatId(request.id);
+    try {
+      const chatId = `req_${request.id}_${[currentUserId, request.requesterId].sort().join('_')}`;
+      const chatDocRef = doc(db, 'chats', chatId);
+
+      const chatDocSnap = await getDoc(chatDocRef);
+      if (!chatDocSnap.exists()) {
+        await setDoc(chatDocRef, {
+          participants: [currentUserId, request.requesterId],
+          requestId: request.id,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      navigate(`/chat/${chatId}`);
+    } catch (err: unknown) {
+      console.error('Failed to initialize request chat:', err);
+      setChatError('Could not start conversation. Please try again.');
+    } finally {
+      setStartingChatId(null);
+    }
+  };
 
   const handleMarkAsFound = async (requestId: string) => {
     setUpdatingId(requestId);
@@ -58,6 +131,32 @@ export function Requests() {
           </Button>
         </Link>
       </div>
+
+      {/* Transaction Safety Warning Banner */}
+      <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/90 p-4 sm:p-5 text-amber-900 shadow-xs">
+        <div className="flex items-start gap-3">
+          <div className="text-xl shrink-0 select-none">⚠️</div>
+          <div className="space-y-2 text-xs sm:text-sm text-amber-900 leading-relaxed">
+            <h2 className="font-bold text-amber-950 text-sm sm:text-base">Safety Notice</h2>
+            <p>
+              StudentNeed only connects students. We do not guarantee the quality, condition, authenticity, delivery, payment, or successful completion of any transaction.
+            </p>
+            <p>
+              Please verify the product and details yourself. For your safety, meet the other student in person at a safe campus location and inspect the product before making any payment or completing the exchange.
+            </p>
+            <p className="font-semibold text-amber-950">
+              Happy & safe exchanging! 🤝
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {chatError && (
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs sm:text-sm text-red-700 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+          <span>{chatError}</span>
+        </div>
+      )}
 
       <div className="mb-6 flex space-x-1 rounded-xl bg-zinc-100 p-1 w-fit">
         <button
@@ -105,111 +204,149 @@ export function Requests() {
           {displayedRequests.map(request => {
             const requester = users.find(u => u.id === request.requesterId);
             const isOwner = (firebaseUser?.uid || currentUser?.id) === request.requesterId;
+            const existingChat = userChats.find(c => c.requestId === request.id);
+            const requestInquiries = userChats.filter(c => c.requestId === request.id);
             
             return (
-              <div key={request.id} className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-5 transition-shadow hover:shadow-md sm:flex-row sm:items-center">
-                <div className="flex-1 space-y-2">
-                  <div className="flex items-start justify-between">
-                    <h3 className="text-lg font-bold text-zinc-900">{request.title}</h3>
-                    {request.status !== 'open' && (
-                      <Badge 
-                        variant={request.status === 'matched' ? 'success' : request.status === 'cancelled' ? 'destructive' : 'secondary'} 
-                        className={`ml-2 ${request.status === 'cancelled' ? 'bg-red-600 text-white' : ''}`}
-                      >
-                        {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-zinc-600 line-clamp-2">{request.description}</p>
-                  
-                  <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-zinc-500 pt-2">
-                    <span className="flex items-center gap-1 bg-zinc-50 px-2 py-1 rounded-md">
-                      <Clock className="h-3.5 w-3.5" />
-                      Needed by: {request.neededBy}
-                    </span>
-                    <span className="flex items-center gap-1 bg-zinc-50 px-2 py-1 rounded-md">
-                      <MapPin className="h-3.5 w-3.5" />
-                      {request.location}
-                    </span>
-                    {request.budget && (
-                      <span className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded-md">
-                        <IndianRupee className="h-3.5 w-3.5" />
-                        Budget: ₹{request.budget}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="flex flex-col items-start gap-4 border-t border-zinc-100 pt-4 sm:items-end sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 shrink-0">
-                  <div className="flex items-center gap-2">
-                    {requester?.avatarUrl ? (
-                      <img src={requester.avatarUrl} alt={requester.name} className="h-8 w-8 rounded-full object-cover bg-zinc-100" />
-                    ) : (
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-semibold text-white">
-                        {requester?.name ? requester.name.charAt(0).toUpperCase() : 'S'}
-                      </div>
-                    )}
-                    <span className="text-sm font-medium text-zinc-900">{requester?.name || (isOwner ? currentUser?.name || 'You' : 'Student Requester')}</span>
-                  </div>
-                  {!isOwner && request.status === 'open' ? (
-                    contactedId === request.id ? (
-                      <div className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg">
-                        <CheckCircle2 className="h-4 w-4" />
-                        Offer sent!
-                      </div>
-                    ) : (
-                      <Button 
-                        variant="outline" 
-                        className="w-full sm:w-auto text-xs h-9"
-                        onClick={() => setContactedId(request.id)}
-                      >
-                        I have this
-                      </Button>
-                    )
-                  ) : isOwner && request.status === 'open' ? (
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-                      <Button 
-                        variant="secondary" 
-                        className="text-xs h-8"
-                        disabled={updatingId === request.id || cancellingId === request.id}
-                        onClick={() => handleMarkAsFound(request.id)}
-                      >
-                        {updatingId === request.id ? 'Updating...' : 'Mark as Found'}
-                      </Button>
-                      {confirmCancelId === request.id ? (
-                        <div className="flex items-center justify-end gap-1.5 bg-red-50 p-1 rounded-lg border border-red-200">
-                          <span className="text-[11px] font-medium text-red-800 px-1">Cancel?</span>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-6 px-2 text-[11px] bg-red-600 hover:bg-red-700 text-white"
-                            disabled={cancellingId === request.id}
-                            onClick={() => handleConfirmCancelRequest(request.id)}
-                          >
-                            {cancellingId === request.id ? '...' : 'Yes'}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 px-1.5 text-[11px] text-zinc-600"
-                            onClick={() => setConfirmCancelId(null)}
-                          >
-                            No
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button 
-                          variant="outline" 
-                          className="text-xs h-8 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-medium"
-                          disabled={updatingId === request.id || cancellingId === request.id}
-                          onClick={() => setConfirmCancelId(request.id)}
+              <div key={request.id} className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-5 transition-shadow hover:shadow-md">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-start justify-between">
+                      <h3 className="text-lg font-bold text-zinc-900">{request.title}</h3>
+                      {request.status !== 'open' && (
+                        <Badge 
+                          variant={request.status === 'matched' ? 'success' : request.status === 'cancelled' ? 'destructive' : 'secondary'} 
+                          className={`ml-2 ${request.status === 'cancelled' ? 'bg-red-600 text-white' : ''}`}
                         >
-                          Cancel Request
-                        </Button>
+                          {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                        </Badge>
                       )}
                     </div>
-                  ) : null}
+                    <p className="text-sm text-zinc-600 line-clamp-2">{request.description}</p>
+                    
+                    <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-zinc-500 pt-2">
+                      <span className="flex items-center gap-1 bg-zinc-50 px-2 py-1 rounded-md">
+                        <Clock className="h-3.5 w-3.5" />
+                        Needed by: {request.neededBy}
+                      </span>
+                      <span className="flex items-center gap-1 bg-zinc-50 px-2 py-1 rounded-md">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {request.location}
+                      </span>
+                      {request.budget && (
+                        <span className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded-md">
+                          <IndianRupee className="h-3.5 w-3.5" />
+                          Budget: ₹{request.budget}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col items-start gap-4 border-t border-zinc-100 pt-4 sm:items-end sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 shrink-0">
+                    <div className="flex items-center gap-2">
+                      {requester?.avatarUrl ? (
+                        <img src={requester.avatarUrl} alt={requester.name} className="h-8 w-8 rounded-full object-cover bg-zinc-100" />
+                      ) : (
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-semibold text-white">
+                          {requester?.name ? requester.name.charAt(0).toUpperCase() : 'S'}
+                        </div>
+                      )}
+                      <span className="text-sm font-medium text-zinc-900">{requester?.name || (isOwner ? currentUser?.name || 'You' : 'Student Requester')}</span>
+                    </div>
+                    {!isOwner && request.status === 'open' ? (
+                      <Button 
+                        className="w-full sm:w-auto text-xs h-9 gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white font-medium"
+                        disabled={startingChatId === request.id}
+                        onClick={() => handleStartChat(request)}
+                      >
+                        {startingChatId === request.id ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Opening Chat...
+                          </>
+                        ) : (
+                          <>
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            {existingChat ? 'Continue Chat' : 'Chat / Contact'}
+                          </>
+                        )}
+                      </Button>
+                    ) : isOwner && request.status === 'open' ? (
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                        <Button 
+                          variant="secondary" 
+                          className="text-xs h-8"
+                          disabled={updatingId === request.id || cancellingId === request.id}
+                          onClick={() => handleMarkAsFound(request.id)}
+                        >
+                          {updatingId === request.id ? 'Updating...' : 'Mark as Found'}
+                        </Button>
+                        {confirmCancelId === request.id ? (
+                          <div className="flex items-center justify-end gap-1.5 bg-red-50 p-1 rounded-lg border border-red-200">
+                            <span className="text-[11px] font-medium text-red-800 px-1">Cancel?</span>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="h-6 px-2 text-[11px] bg-red-600 hover:bg-red-700 text-white"
+                              disabled={cancellingId === request.id}
+                              onClick={() => handleConfirmCancelRequest(request.id)}
+                            >
+                              {cancellingId === request.id ? '...' : 'Yes'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-1.5 text-[11px] text-zinc-600"
+                              onClick={() => setConfirmCancelId(null)}
+                            >
+                              No
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button 
+                            variant="outline" 
+                            className="text-xs h-8 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-medium"
+                            disabled={updatingId === request.id || cancellingId === request.id}
+                            onClick={() => setConfirmCancelId(request.id)}
+                          >
+                            Cancel Request
+                          </Button>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
+
+                {/* Show incoming inquiries from other students if user is the request owner */}
+                {isOwner && requestInquiries.length > 0 && (
+                  <div className="border-t border-zinc-100 pt-3 mt-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-zinc-700 flex items-center gap-1.5">
+                        <MessageSquare className="h-3.5 w-3.5 text-zinc-500" />
+                        Student Responses ({requestInquiries.length})
+                      </span>
+                      <span className="text-[11px] text-zinc-400 hidden sm:inline">Tap to open direct chat</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {requestInquiries.map((chatItem) => {
+                        const otherParticipantId = chatItem.participants.find(p => p !== currentUserId);
+                        const responder = users.find(u => u.id === otherParticipantId);
+                        return (
+                          <Button
+                            key={chatItem.id}
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-8 gap-1.5 border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-800"
+                            onClick={() => navigate(`/chat/${chatItem.id}`)}
+                          >
+                            <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                            <span>Chat with {responder?.name || 'Student'}</span>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

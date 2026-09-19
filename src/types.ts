@@ -109,6 +109,7 @@ export type Chat = {
   id: string;
   participants: string[];
   listingId?: string;
+  requestId?: string;
   reservationId?: string;
   createdAt: any;
   updatedAt: any;
