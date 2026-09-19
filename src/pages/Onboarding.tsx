@@ -235,7 +235,7 @@ export function Onboarding() {
               <label className="block text-sm font-medium text-zinc-700 mb-1">Full Name</label>
               <Input 
                 required 
-                placeholder="Keerthi V." 
+                placeholder="Enter your full name" 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
