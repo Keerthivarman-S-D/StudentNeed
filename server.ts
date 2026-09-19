@@ -558,7 +558,7 @@ CORE PRODUCT KNOWLEDGE & RULES:
       const normalizedEmail = email.toLowerCase().trim();
       const rawDomain = (process.env.COLLEGE_EMAIL_DOMAIN || "student.annauniv.edu").trim().replace(/^@/, '');
       const allowedDomain = `@${rawDomain}`;
-      
+
       if (!normalizedEmail.endsWith(allowedDomain)) {
         return res.status(403).json({ error: "Please use your official college email address." });
       }
@@ -736,7 +736,7 @@ CORE PRODUCT KNOWLEDGE & RULES:
       // Use Firestore REST API with system privileges to securely create verified public profile
       const systemToken = await getServerToken();
       const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users?documentId=${uid}`;
-      
+
       const firestorePayload = {
         fields: {
           id: { stringValue: uid },
@@ -753,7 +753,7 @@ CORE PRODUCT KNOWLEDGE & RULES:
       };
 
       const firestoreRes = await fetch(firestoreUrl, {
-        method: "POST", 
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${systemToken}`
@@ -772,7 +772,7 @@ CORE PRODUCT KNOWLEDGE & RULES:
           },
           body: JSON.stringify(firestorePayload)
         });
-        
+
         if (!patchRes.ok) {
            const errText = await patchRes.text();
            console.error("Firestore REST Error:", errText);
@@ -825,7 +825,7 @@ CORE PRODUCT KNOWLEDGE & RULES:
       const normalizedEmail = email.toLowerCase().trim();
       const rawDomain = (process.env.COLLEGE_EMAIL_DOMAIN || "student.annauniv.edu").trim().replace(/^@/, '');
       const allowedDomain = `@${rawDomain}`;
-      
+
       if (!normalizedEmail.endsWith(allowedDomain)) {
         return res.status(403).json({ error: "Please use your official college email address." });
       }
@@ -1410,7 +1410,59 @@ CORE PRODUCT KNOWLEDGE & RULES:
     return { processed, deleted, imagesPurged };
   }
 
+  async function verifyAdminCaller(req: express.Request): Promise<{ uid: string; email: string } | null> {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return null;
+    }
+    const idToken = authHeader.split(" ")[1];
+    try {
+      const lookupUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const lookupRes = await fetch(lookupUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!lookupRes.ok) return null;
+      const lookupData = await lookupRes.json();
+      const user = lookupData.users?.[0];
+      if (!user || !user.email) return null;
+      const email = user.email.toLowerCase().trim();
+      if (email === "admin@student.annauniv.edu") {
+        return { uid: user.localId, email };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function verifyStudentCaller(req: express.Request): Promise<{ uid: string; email: string } | null> {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return null;
+    }
+    const idToken = authHeader.split(" ")[1];
+    try {
+      const lookupUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const lookupRes = await fetch(lookupUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!lookupRes.ok) return null;
+      const lookupData = await lookupRes.json();
+      const user = lookupData.users?.[0];
+      if (!user || !user.email) return null;
+      return { uid: user.localId, email: user.email.toLowerCase().trim() };
+    } catch {
+      return null;
+    }
+  }
+
   async function verifyAdminOrSystem(req: express.Request): Promise<boolean> {
+    const admin = await verifyAdminCaller(req);
+    if (admin) return true;
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return false;
@@ -1427,19 +1479,8 @@ CORE PRODUCT KNOWLEDGE & RULES:
       const lookupData = await lookupRes.json();
       const user = lookupData.users?.[0];
       if (!user) return false;
-      if (user.email === "admin@student.annauniv.edu" || user.email === process.env.INTERNAL_SYSTEM_EMAIL) {
+      if (user.email === process.env.INTERNAL_SYSTEM_EMAIL) {
         return true;
-      }
-      const systemToken = await getServerToken();
-      const userDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${user.localId}`;
-      const userDocRes = await fetch(userDocUrl, {
-        headers: { Authorization: `Bearer ${systemToken}` },
-      });
-      if (userDocRes.ok) {
-        const userDoc = await userDocRes.json();
-        if (userDoc.fields?.role?.stringValue === "admin") {
-          return true;
-        }
       }
       return false;
     } catch {
@@ -1614,6 +1655,1202 @@ CORE PRODUCT KNOWLEDGE & RULES:
     } catch (err: any) {
       console.error("Account deletion error:", err);
       return res.status(500).json({ error: "Internal server error during account deletion." });
+    }
+  });
+
+  // =========================================================================
+  // --- Admin Moderation, Prohibited Content, Reporting & Audit System ---
+  // =========================================================================
+
+  function getEffectiveToken(req: express.Request, sysToken: string | null): string | null {
+    if (sysToken) return sysToken;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      return authHeader.split(" ")[1];
+    }
+    return null;
+  }
+
+  function parseFirestoreDoc(doc: any): any {
+    if (!doc) return null;
+    const id = doc.name ? doc.name.split("/").pop() : "";
+    const fields = doc.fields || {};
+    const result: any = { id };
+    for (const [key, val] of Object.entries(fields) as [string, any][]) {
+      if (val.stringValue !== undefined) result[key] = val.stringValue;
+      else if (val.integerValue !== undefined) result[key] = parseInt(val.integerValue, 10);
+      else if (val.doubleValue !== undefined) result[key] = parseFloat(val.doubleValue);
+      else if (val.booleanValue !== undefined) result[key] = val.booleanValue;
+      else if (val.timestampValue !== undefined) result[key] = val.timestampValue;
+      else if (val.arrayValue !== undefined) {
+        result[key] = (val.arrayValue.values || []).map((v: any) => {
+          if (v.stringValue !== undefined) return v.stringValue;
+          if (v.mapValue !== undefined) return parseFirestoreDoc({ fields: v.mapValue.fields });
+          return v;
+        });
+      } else if (val.mapValue !== undefined) {
+        result[key] = parseFirestoreDoc({ fields: val.mapValue.fields });
+      }
+    }
+    return result;
+  }
+
+  function toFirestoreFields(data: Record<string, any>): Record<string, any> {
+    const fields: Record<string, any> = {};
+    for (const [key, val] of Object.entries(data)) {
+      if (val === undefined || val === null) continue;
+      if (typeof val === "string") {
+        fields[key] = { stringValue: val };
+      } else if (typeof val === "number") {
+        if (Number.isInteger(val)) {
+          fields[key] = { integerValue: String(val) };
+        } else {
+          fields[key] = { doubleValue: val };
+        }
+      } else if (typeof val === "boolean") {
+        fields[key] = { booleanValue: val };
+      } else if (Array.isArray(val)) {
+        fields[key] = {
+          arrayValue: {
+            values: val.map((item) => {
+              if (typeof item === "string") return { stringValue: item };
+              if (typeof item === "object" && item !== null) {
+                return { mapValue: { fields: toFirestoreFields(item) } };
+              }
+              return { stringValue: String(item) };
+            }),
+          },
+        };
+      } else if (typeof val === "object") {
+        fields[key] = { mapValue: { fields: toFirestoreFields(val) } };
+      }
+    }
+    return fields;
+  }
+
+  async function fetchFirestoreCollection(systemToken: string, collectionId: string, limit = 300): Promise<any[]> {
+    try {
+      const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents:runQuery`;
+      const res = await fetch(queryUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId }],
+            limit,
+          },
+        }),
+      });
+
+      if (!res.ok) return [];
+      const results = await res.json();
+      if (!Array.isArray(results)) return [];
+      return results
+        .filter((item: any) => Boolean(item.document))
+        .map((item: any) => parseFirestoreDoc(item.document));
+    } catch (err) {
+      console.error(`[Admin API] Error querying collection ${collectionId}:`, err);
+      return [];
+    }
+  }
+
+  async function logAdminAudit(
+    systemToken: string,
+    entry: {
+      adminId: string;
+      adminEmail: string;
+      action: string;
+      targetType: "listing" | "user" | "report";
+      targetId: string;
+      targetUserId?: string;
+      reason: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<void> {
+    try {
+      const logId = `audit_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/admin_audit_logs?documentId=${logId}`;
+      await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: toFirestoreFields({
+            id: logId,
+            adminId: entry.adminId,
+            adminEmail: entry.adminEmail,
+            action: entry.action,
+            targetType: entry.targetType,
+            targetId: entry.targetId,
+            targetUserId: entry.targetUserId || "",
+            reason: entry.reason,
+            timestamp: new Date().toISOString(),
+            metadata: entry.metadata || {},
+          }),
+        }),
+      });
+    } catch (err) {
+      console.warn("Failed to log admin audit:", err);
+    }
+  }
+
+  async function logActivity(
+    systemToken: string,
+    entry: {
+      userId: string;
+      userEmail?: string;
+      action: string;
+      targetType: string;
+      targetId: string;
+      details?: Record<string, any>;
+    }
+  ): Promise<void> {
+    try {
+      const logId = `act_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/activity_logs?documentId=${logId}`;
+      await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: toFirestoreFields({
+            id: logId,
+            userId: entry.userId,
+            userEmail: entry.userEmail || "",
+            action: entry.action,
+            targetType: entry.targetType,
+            targetId: entry.targetId,
+            timestamp: new Date().toISOString(),
+            details: entry.details || {},
+          }),
+        }),
+      });
+    } catch (err) {
+      console.warn("Failed to log activity:", err);
+    }
+  }
+
+  // Content moderation scanner (Tier 1: Block, Tier 2: Flag, Tier 3: Allow)
+  function scanContentDeterministic(title: string, description: string): {
+    decision: "allow" | "flag" | "block";
+    reason?: string;
+    category?: string;
+    confidence?: "high" | "medium" | "low";
+  } {
+    const combined = `${title} ${description}`.toLowerCase();
+
+    // 1. Illegal Drugs & Controlled Substances
+    const drugPatterns = [
+      /\b(weed|marijuana|ganja|charas|cannabis|hashish|pot|bhang)\b/i,
+      /\b(cocaine|heroin|meth|lsd|mdma|ecstasy|shrooms|ketamine)\b/i,
+      /\b(vape|juul|e-cigarette|nicotine|cigarette|bidi|tobacco|hookah)\b/i,
+      /\b(prescription\s+drug|xanax|adderall|tramadol|oxycodone|codeine|sleeping\s+pills)\b/i,
+      /\b(alcohol|vodka|whiskey|rum|beer|wine|liquor)\b/i,
+    ];
+    for (const p of drugPatterns) {
+      if (p.test(combined)) {
+        return {
+          decision: "block",
+          reason: "Illegal substances, drugs, alcohol, or controlled tobacco/vape products are strictly prohibited on StudentNeed.",
+          category: "Drugs & Controlled Substances",
+          confidence: "high",
+        };
+      }
+    }
+
+    // Replace legitimate student tools (e.g. glue gun, staple gun, nerf gun, water gun) before weapon scanning
+    const benignSupplyPattern = /\b(glue\s+gun|hot\s+glue\s+gun|staple\s+gun|heat\s+gun|nerf\s+gun|water\s+gun|massage\s+gun|barcode\s+gun|tag\s+gun|spray\s+gun)\b/gi;
+    const sanitizedCombined = combined.replace(benignSupplyPattern, " benign_craft_supply ");
+
+    // 2. Weapons & Harmful Instruments
+    const weaponPatterns = [
+      /\b(gun|firearm|pistol|revolver|rifle|shotgun|ammunition|bullets|ammo)\b/i,
+      /\b(taser|stun\s*gun|pepper\s*spray|knuckle\s*duster|brass\s*knuckles)\b/i,
+      /\b(switchblade|dagger|machete|katana|hunting\s+knife|combat\s+knife)\b/i,
+      /\b(explosive|bomb|grenade|dynamite|firecrackers|crackers)\b/i,
+    ];
+    for (const p of weaponPatterns) {
+      if (p.test(sanitizedCombined)) {
+        return {
+          decision: "block",
+          reason: "Weapons, ammunition, explosives, and dangerous items are strictly prohibited on campus.",
+          category: "Weapons & Dangerous Items",
+          confidence: "high",
+        };
+      }
+    }
+
+    // 3. Exam Leaks & Academic Malpractice
+    const examPatterns = [
+      /\b(leaked\s+question\s+paper|exam\s+paper\s+leak|leaked\s+exam|anna\s+univ\s+paper\s+leak)\b/i,
+      /\b(paid\s+proxy|exam\s+cheating\s+device|proxy\s+attendance|forged\s+certificate)\b/i,
+      /\b(hall\s+ticket\s+forgery|fake\s+marksheet|fake\s+degree)\b/i,
+    ];
+    for (const p of examPatterns) {
+      if (p.test(combined)) {
+        return {
+          decision: "block",
+          reason: "Academic dishonesty, exam paper leaks, and forged university documents are strictly illegal.",
+          category: "Academic Malpractice",
+          confidence: "high",
+        };
+      }
+    }
+
+    // 4. Financial Scams & Fraud
+    const scamPatterns = [
+      /\b(free\s+money|easy\s+cash|double\s+your\s+money|get\s+rich\s+quick|pyramid\s+scheme)\b/i,
+      /\b(crypto\s+investment|bitcoin\s+multiplier|binance\s+investment|telegram\s+signals)\b/i,
+      /\b(earn\s+from\s+home\s+daily|earn\s+5000\s+daily|instant\s+withdrawal)\b/i,
+      /\b(send\s+otp|share\s+otp|credit\s+card\s+hack|upi\s+hack|atm\s+cloning)\b/i,
+    ];
+    for (const p of scamPatterns) {
+      if (p.test(combined)) {
+        return {
+          decision: "block",
+          reason: "Financial scams, fraudulent investment schemes, and deceptive listings are strictly prohibited.",
+          category: "Scam & Fraud",
+          confidence: "high",
+        };
+      }
+    }
+
+    // 5. Hazardous Chemicals
+    const hazardPatterns = [
+      /\b(concentrated\s+cyanide|mercury|radioactive|uranium|thorium)\b/i,
+      /\b(sulfuric\s+acid\s+pure|nitric\s+acid\s+pure|hydrochloric\s+acid\s+bulk)\b/i,
+      /\b(poisons|venom|toxic\s+waste)\b/i,
+    ];
+    for (const p of hazardPatterns) {
+      if (p.test(combined)) {
+        return {
+          decision: "block",
+          reason: "Dangerous, hazardous, or toxic chemicals are prohibited on StudentNeed.",
+          category: "Hazardous Materials",
+          confidence: "high",
+        };
+      }
+    }
+
+    // 6. Sexually Explicit / Adult Services
+    const adultPatterns = [
+      /\b(porn|adult\s+video|xxx|sex\s+toy|escort|dating\s+service)\b/i,
+    ];
+    for (const p of adultPatterns) {
+      if (p.test(combined)) {
+        return {
+          decision: "block",
+          reason: "Adult content and sexually explicit items are prohibited.",
+          category: "Adult Content",
+          confidence: "high",
+        };
+      }
+    }
+
+    // Tier 2: Uncertain / Suspicious (Flag for admin review)
+    const suspiciousPatterns = [
+      /\b(whatsapp\s+me\s+at|contact\s+telegram|telegram\s*:\s*@|call\s+me\s+on\s+whatsapp)\b/i,
+      /\b(dm\s+on\s+insta|instagram\s*:\s*@|external\s+payment|pay\s+outside)\b/i,
+      /\b(no\s+meetup|advance\s+payment\s+only|courier\s+available)\b/i,
+    ];
+    for (const p of suspiciousPatterns) {
+      if (p.test(combined)) {
+        return {
+          decision: "flag",
+          reason: "Listing references off-platform communication or shipping, which flags potential scam risk.",
+          category: "Off-platform risk",
+          confidence: "medium",
+        };
+      }
+    }
+
+    return { decision: "allow" };
+  }
+
+  // Endpoint: Check Listing Content Safety
+  app.post("/api/moderation/check-listing", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`check-listing:${clientIp}`, 30, 10 * 60 * 1000)) {
+        const systemToken = await getServerToken();
+        if (systemToken) {
+          await logActivity(systemToken, {
+            userId: "anonymous",
+            action: "suspicious_rate_limit",
+            targetType: "security",
+            targetId: clientIp,
+            details: { endpoint: "/api/moderation/check-listing" }
+          });
+        }
+        return res.status(429).json({ error: "Too many checks requested. Please wait a few minutes." });
+      }
+
+      const { title, description } = req.body;
+      if (!title || typeof title !== "string") {
+        return res.status(400).json({ error: "Title is required." });
+      }
+
+      const deterministic = scanContentDeterministic(title, description || "");
+      return res.json(deterministic);
+    } catch (err: any) {
+      console.error("Moderation check error:", err);
+      return res.status(500).json({ error: "Internal server error during content check." });
+    }
+  });
+
+  // Endpoint: Submit User Report
+  app.post("/api/reports/submit", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`report-submit:${clientIp}`, 10, 10 * 60 * 1000)) {
+        const systemToken = await getServerToken();
+        if (systemToken) {
+          await logActivity(systemToken, {
+            userId: "anonymous",
+            action: "suspicious_rate_limit",
+            targetType: "security",
+            targetId: clientIp,
+            details: { endpoint: "/api/reports/submit" }
+          });
+        }
+        return res.status(429).json({ error: "Too many report requests from this IP. Please wait a few minutes." });
+      }
+
+      const caller = await verifyStudentCaller(req);
+      if (!caller) {
+        return res.status(401).json({ error: "Authentication required to report a listing." });
+      }
+
+      const { listingId, reason, description } = req.body;
+      if (!listingId || !reason) {
+        return res.status(400).json({ error: "Listing ID and report reason are required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      // Check caller account status
+      const userDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${caller.uid}`;
+      const userDocRes = await fetch(userDocUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (userDocRes.ok) {
+        const userDoc = parseFirestoreDoc(await userDocRes.json());
+        if (userDoc.status === "suspended" || userDoc.status === "banned") {
+          return res.status(403).json({ error: "Your account is suspended. You cannot submit reports." });
+        }
+      }
+
+      // 1. Fetch listing details
+      const listingUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/listings/${listingId}`;
+      const listingRes = await fetch(listingUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (!listingRes.ok) {
+        return res.status(404).json({ error: "Reported listing not found." });
+      }
+      const rawListingDoc = await listingRes.json();
+      const listingData = parseFirestoreDoc(rawListingDoc);
+      const reportedUserId = listingData.sellerId || "";
+      const listingTitle = listingData.title || "";
+
+      // 2. Prevent duplicate reports from the same user for the same listing while pending or reviewing
+      const allReports = await fetchFirestoreCollection(systemToken, "reports", 500);
+      const existingReport = allReports.find((r) =>
+        r.reporterId === caller.uid &&
+        r.listingId === listingId &&
+        (r.status === "pending" || r.status === "reviewing")
+      );
+
+      if (existingReport) {
+        return res.status(400).json({
+          error: "You have already submitted an active report for this listing. Our admin moderation team is currently reviewing it.",
+          isDuplicate: true,
+        });
+      }
+
+      // 3. Create report document
+      const reportId = `rep_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+      const createReportUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/reports?documentId=${reportId}`;
+      const nowIso = new Date().toISOString();
+
+      await fetch(createReportUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: toFirestoreFields({
+            id: reportId,
+            reporterId: caller.uid,
+            reporterEmail: caller.email,
+            reportedUserId,
+            listingId,
+            listingTitle,
+            reason,
+            description: description || "",
+            status: "pending",
+            createdAt: nowIso,
+          }),
+        }),
+      });
+
+      // 4. Increment reportCount on listing (if permitted)
+      try {
+        const currentReportCount = typeof listingData.reportCount === "number" ? listingData.reportCount : 0;
+        const patchListingUrl = `https://firestore.googleapis.com/v1/${rawListingDoc.name}?updateMask.fieldPaths=reportCount`;
+        await fetch(patchListingUrl, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${systemToken}`,
+          },
+          body: JSON.stringify({
+            fields: {
+              ...rawListingDoc.fields,
+              reportCount: { integerValue: String(currentReportCount + 1) },
+            },
+          }),
+        });
+      } catch (patchErr) {
+        console.warn("Could not increment listing reportCount:", patchErr);
+      }
+
+      // 5. Log activity
+      await logActivity(systemToken, {
+        userId: caller.uid,
+        userEmail: caller.email,
+        action: "report_submitted",
+        targetType: "listing",
+        targetId: listingId,
+        details: { reportId, reason },
+      });
+
+      return res.json({
+        message: "Report submitted successfully. Thank you for helping keep our campus marketplace safe.",
+        reportId,
+      });
+    } catch (err: any) {
+      console.error("Report submit error:", err);
+      return res.status(500).json({ error: "Internal server error submitting report." });
+    }
+  });
+
+  // Admin Endpoint: Overview Statistics
+  app.get("/api/admin/overview", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const [users, listings, reports] = await Promise.all([
+        fetchFirestoreCollection(systemToken, "users", 500),
+        fetchFirestoreCollection(systemToken, "listings", 500),
+        fetchFirestoreCollection(systemToken, "reports", 500),
+      ]);
+
+      const totalUsers = users.length;
+      const suspendedUsers = users.filter((u) => u.status === "suspended").length;
+      const bannedUsers = users.filter((u) => u.status === "banned").length;
+      const activeUsers = totalUsers - suspendedUsers - bannedUsers;
+
+      const totalListings = listings.length;
+      const activeListings = listings.filter((l) => l.status === "available" || l.status === "active").length;
+      const reportedListings = listings.filter((l) => typeof l.reportCount === "number" && l.reportCount > 0).length;
+      const pendingReports = reports.filter((r) => r.status === "pending").length;
+
+      return res.json({
+        totalUsers,
+        activeUsers,
+        suspendedUsers,
+        bannedUsers,
+        totalListings,
+        activeListings,
+        reportedListings,
+        pendingReports,
+      });
+    } catch (err: any) {
+      console.error("Admin overview error:", err);
+      return res.status(500).json({ error: "Internal server error fetching admin overview." });
+    }
+  });
+
+  // Admin Endpoint: Users List with Moderation Info
+  app.get("/api/admin/users", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const [users, listings, reports] = await Promise.all([
+        fetchFirestoreCollection(systemToken, "users", 500),
+        fetchFirestoreCollection(systemToken, "listings", 500),
+        fetchFirestoreCollection(systemToken, "reports", 500),
+      ]);
+
+      const listingsCountMap = new Map<string, number>();
+      for (const l of listings) {
+        if (l.sellerId) {
+          listingsCountMap.set(l.sellerId, (listingsCountMap.get(l.sellerId) || 0) + 1);
+        }
+      }
+
+      const reportsReceivedMap = new Map<string, number>();
+      for (const r of reports) {
+        if (r.reportedUserId) {
+          reportsReceivedMap.set(r.reportedUserId, (reportsReceivedMap.get(r.reportedUserId) || 0) + 1);
+        }
+      }
+
+      const enhancedUsers = users.map((u) => {
+        return {
+          ...u,
+          status: u.status || "active",
+          warningCount: typeof u.warningCount === "number" ? u.warningCount : 0,
+          warnings: Array.isArray(u.warnings) ? u.warnings : [],
+          listingsCount: listingsCountMap.get(u.id) || 0,
+          reportsReceivedCount: reportsReceivedMap.get(u.id) || 0,
+        };
+      });
+
+      return res.json({ users: enhancedUsers });
+    } catch (err: any) {
+      console.error("Admin users error:", err);
+      return res.status(500).json({ error: "Internal server error fetching users." });
+    }
+  });
+
+  // Admin Endpoint: Warn User
+  app.post("/api/admin/users/warn", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const { userId, reason } = req.body;
+      if (!userId || !reason || typeof reason !== "string" || !reason.trim()) {
+        return res.status(400).json({ error: "User ID and warning reason are required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const userUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${userId}`;
+      const userRes = await fetch(userUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (!userRes.ok) {
+        return res.status(404).json({ error: "User not found." });
+      }
+      const rawUserDoc = await userRes.json();
+      const userData = parseFirestoreDoc(rawUserDoc);
+
+      const currentCount = typeof userData.warningCount === "number" ? userData.warningCount : 0;
+      const currentWarnings = Array.isArray(userData.warnings) ? userData.warnings : [];
+      const newWarning = {
+        reason: reason.trim(),
+        date: new Date().toISOString(),
+        adminEmail: admin.email,
+      };
+      const updatedWarnings = [...currentWarnings, newWarning];
+
+      const patchUrl = `${userUrl}?updateMask.fieldPaths=warningCount&updateMask.fieldPaths=warnings&updateMask.fieldPaths=lastActivityAt`;
+      await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            ...rawUserDoc.fields,
+            warningCount: { integerValue: String(currentCount + 1) },
+            warnings: {
+              arrayValue: {
+                values: updatedWarnings.map((w) => ({
+                  mapValue: { fields: toFirestoreFields(w) },
+                })),
+              },
+            },
+            lastActivityAt: { stringValue: new Date().toISOString() },
+          },
+        }),
+      });
+
+      await logAdminAudit(systemToken, {
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        action: "USER_WARNED",
+        targetType: "user",
+        targetId: userId,
+        targetUserId: userId,
+        reason: reason.trim(),
+        metadata: { warningNumber: currentCount + 1 },
+      });
+
+      await logActivity(systemToken, {
+        userId,
+        action: "moderation_action",
+        targetType: "user",
+        targetId: userId,
+        details: { action: "USER_WARNED", reason: reason.trim() },
+      });
+
+      return res.json({ message: "Warning successfully issued to user." });
+    } catch (err: any) {
+      console.error("Admin warn error:", err);
+      return res.status(500).json({ error: "Internal server error warning user." });
+    }
+  });
+
+  // Admin Endpoint: Suspend User
+  app.post("/api/admin/users/suspend", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const { userId, reason } = req.body;
+      if (!userId || !reason || typeof reason !== "string" || !reason.trim()) {
+        return res.status(400).json({ error: "User ID and suspension reason are required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const userUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${userId}`;
+      const userRes = await fetch(userUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (!userRes.ok) {
+        return res.status(404).json({ error: "User not found." });
+      }
+      const rawUserDoc = await userRes.json();
+      const nowIso = new Date().toISOString();
+
+      const patchUrl = `${userUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=statusReason&updateMask.fieldPaths=suspendedAt&updateMask.fieldPaths=statusUpdatedAt`;
+      await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            ...rawUserDoc.fields,
+            status: { stringValue: "suspended" },
+            statusReason: { stringValue: reason.trim() },
+            suspendedAt: { stringValue: nowIso },
+            statusUpdatedAt: { stringValue: nowIso },
+          },
+        }),
+      });
+
+      await logAdminAudit(systemToken, {
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        action: "USER_SUSPENDED",
+        targetType: "user",
+        targetId: userId,
+        targetUserId: userId,
+        reason: reason.trim(),
+      });
+
+      await logActivity(systemToken, {
+        userId,
+        action: "moderation_action",
+        targetType: "user",
+        targetId: userId,
+        details: { action: "USER_SUSPENDED", reason: reason.trim() },
+      });
+
+      return res.json({ message: "User suspended successfully." });
+    } catch (err: any) {
+      console.error("Admin suspend error:", err);
+      return res.status(500).json({ error: "Internal server error suspending user." });
+    }
+  });
+
+  // Admin Endpoint: Ban User
+  app.post("/api/admin/users/ban", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const { userId, reason } = req.body;
+      if (!userId || !reason || typeof reason !== "string" || !reason.trim()) {
+        return res.status(400).json({ error: "User ID and ban reason are required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const userUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${userId}`;
+      const userRes = await fetch(userUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (!userRes.ok) {
+        return res.status(404).json({ error: "User not found." });
+      }
+      const rawUserDoc = await userRes.json();
+      const nowIso = new Date().toISOString();
+
+      const patchUrl = `${userUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=statusReason&updateMask.fieldPaths=bannedAt&updateMask.fieldPaths=statusUpdatedAt`;
+      await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            ...rawUserDoc.fields,
+            status: { stringValue: "banned" },
+            statusReason: { stringValue: reason.trim() },
+            bannedAt: { stringValue: nowIso },
+            statusUpdatedAt: { stringValue: nowIso },
+          },
+        }),
+      });
+
+      await logAdminAudit(systemToken, {
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        action: "USER_BANNED",
+        targetType: "user",
+        targetId: userId,
+        targetUserId: userId,
+        reason: reason.trim(),
+      });
+
+      await logActivity(systemToken, {
+        userId,
+        action: "moderation_action",
+        targetType: "user",
+        targetId: userId,
+        details: { action: "USER_BANNED", reason: reason.trim() },
+      });
+
+      return res.json({ message: "User banned successfully." });
+    } catch (err: any) {
+      console.error("Admin ban error:", err);
+      return res.status(500).json({ error: "Internal server error banning user." });
+    }
+  });
+
+  // Admin Endpoint: Restore User
+  app.post("/api/admin/users/restore", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const { userId, reason } = req.body;
+      if (!userId || !reason || typeof reason !== "string" || !reason.trim()) {
+        return res.status(400).json({ error: "User ID and restoration reason are required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const userUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${userId}`;
+      const userRes = await fetch(userUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (!userRes.ok) {
+        return res.status(404).json({ error: "User not found." });
+      }
+      const rawUserDoc = await userRes.json();
+      const nowIso = new Date().toISOString();
+
+      const patchUrl = `${userUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=statusReason&updateMask.fieldPaths=restoredAt&updateMask.fieldPaths=statusUpdatedAt`;
+      await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            ...rawUserDoc.fields,
+            status: { stringValue: "active" },
+            statusReason: { stringValue: reason.trim() },
+            restoredAt: { stringValue: nowIso },
+            statusUpdatedAt: { stringValue: nowIso },
+          },
+        }),
+      });
+
+      await logAdminAudit(systemToken, {
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        action: "USER_RESTORED",
+        targetType: "user",
+        targetId: userId,
+        targetUserId: userId,
+        reason: reason.trim(),
+      });
+
+      await logActivity(systemToken, {
+        userId,
+        action: "moderation_action",
+        targetType: "user",
+        targetId: userId,
+        details: { action: "USER_RESTORED", reason: reason.trim() },
+      });
+
+      return res.json({ message: "User restored successfully." });
+    } catch (err: any) {
+      console.error("Admin restore user error:", err);
+      return res.status(500).json({ error: "Internal server error restoring user." });
+    }
+  });
+
+  // Admin Endpoint: Listings List
+  app.get("/api/admin/listings", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const [listings, users] = await Promise.all([
+        fetchFirestoreCollection(systemToken, "listings", 500),
+        fetchFirestoreCollection(systemToken, "users", 500),
+      ]);
+
+      const userMap = new Map<string, any>();
+      for (const u of users) {
+        userMap.set(u.id, u);
+      }
+
+      const enhancedListings = listings.map((l) => {
+        const seller = userMap.get(l.sellerId);
+        return {
+          ...l,
+          sellerName: seller?.name || "Student",
+          sellerEmail: seller?.email || "",
+          reportCount: typeof l.reportCount === "number" ? l.reportCount : 0,
+        };
+      });
+
+      return res.json({ listings: enhancedListings });
+    } catch (err: any) {
+      console.error("Admin listings error:", err);
+      return res.status(500).json({ error: "Internal server error fetching listings." });
+    }
+  });
+
+  // Admin Endpoint: Moderate Listing (Hide, Remove, Restore)
+  app.post("/api/admin/listings/moderate", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const { listingId, action, reason } = req.body;
+      if (!listingId || !action || !reason || typeof reason !== "string" || !reason.trim()) {
+        return res.status(400).json({ error: "Listing ID, action, and moderation reason are required." });
+      }
+
+      if (!["hide", "remove", "restore"].includes(action)) {
+        return res.status(400).json({ error: "Invalid action. Must be 'hide', 'remove', or 'restore'." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const listingUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/listings/${listingId}`;
+      const listingRes = await fetch(listingUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (!listingRes.ok) {
+        return res.status(404).json({ error: "Listing not found." });
+      }
+      const rawListingDoc = await listingRes.json();
+      const listingData = parseFirestoreDoc(rawListingDoc);
+
+      const targetStatus = action === "hide" ? "hidden" : action === "remove" ? "removed" : "active";
+      const auditAction = action === "hide" ? "LISTING_HIDDEN" : action === "remove" ? "LISTING_REMOVED" : "LISTING_RESTORED";
+      const nowIso = new Date().toISOString();
+
+      const patchUrl = `${listingUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=moderationReason&updateMask.fieldPaths=moderatedAt&updateMask.fieldPaths=moderatedBy`;
+      await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            ...rawListingDoc.fields,
+            status: { stringValue: targetStatus },
+            moderationReason: { stringValue: reason.trim() },
+            moderatedAt: { stringValue: nowIso },
+            moderatedBy: { stringValue: admin.email },
+          },
+        }),
+      });
+
+      await logAdminAudit(systemToken, {
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        action: auditAction,
+        targetType: "listing",
+        targetId: listingId,
+        targetUserId: listingData.sellerId,
+        reason: reason.trim(),
+        metadata: { newStatus: targetStatus },
+      });
+
+      await logActivity(systemToken, {
+        userId: listingData.sellerId || admin.uid,
+        action: "moderation_action",
+        targetType: "listing",
+        targetId: listingId,
+        details: { action: auditAction, reason: reason.trim(), newStatus: targetStatus },
+      });
+
+      return res.json({ message: `Listing successfully ${targetStatus === 'active' ? 'restored' : targetStatus}.` });
+    } catch (err: any) {
+      console.error("Admin moderate listing error:", err);
+      return res.status(500).json({ error: "Internal server error moderating listing." });
+    }
+  });
+
+  // Admin Endpoint: Reports List
+  app.get("/api/admin/reports", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const allReports = await fetchFirestoreCollection(systemToken, "reports", 500);
+      const { status } = req.query;
+
+      let filtered = allReports;
+      if (status && typeof status === "string" && status !== "all") {
+        filtered = allReports.filter((r) => r.status === status);
+      }
+
+      filtered.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      return res.json({ reports: filtered });
+    } catch (err: any) {
+      console.error("Admin reports error:", err);
+      return res.status(500).json({ error: "Internal server error fetching reports." });
+    }
+  });
+
+  // Admin Endpoint: Resolve/Dismiss Report
+  app.post("/api/admin/reports/resolve", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const { reportId, resolution, actionTaken } = req.body;
+      if (!reportId || !actionTaken) {
+        return res.status(400).json({ error: "Report ID and actionTaken are required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const reportUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/reports/${reportId}`;
+      const reportRes = await fetch(reportUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (!reportRes.ok) {
+        return res.status(404).json({ error: "Report not found." });
+      }
+      const rawReportDoc = await reportRes.json();
+      const reportData = parseFirestoreDoc(rawReportDoc);
+
+      const targetReportStatus = actionTaken === "dismiss" ? "dismissed" : "resolved";
+      const nowIso = new Date().toISOString();
+
+      // 1. Update the report document
+      const patchUrl = `${reportUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=resolution&updateMask.fieldPaths=actionTaken&updateMask.fieldPaths=reviewedBy&updateMask.fieldPaths=reviewedAt`;
+      await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            ...rawReportDoc.fields,
+            status: { stringValue: targetReportStatus },
+            resolution: { stringValue: (resolution || "").trim() },
+            actionTaken: { stringValue: actionTaken },
+            reviewedBy: { stringValue: admin.email },
+            reviewedAt: { stringValue: nowIso },
+          },
+        }),
+      });
+
+      // 2. Cascade actions if specified
+      if (actionTaken === "hide_listing" || actionTaken === "remove_listing") {
+        if (reportData.listingId) {
+          const listUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/listings/${reportData.listingId}`;
+          const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${systemToken}` } });
+          if (listRes.ok) {
+            const rawListDoc = await listRes.json();
+            const listStatus = actionTaken === "hide_listing" ? "hidden" : "removed";
+            await fetch(`${listUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=moderationReason&updateMask.fieldPaths=moderatedAt&updateMask.fieldPaths=moderatedBy`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${systemToken}` },
+              body: JSON.stringify({
+                fields: {
+                  ...rawListDoc.fields,
+                  status: { stringValue: listStatus },
+                  moderationReason: { stringValue: resolution || "Moderated via report" },
+                  moderatedAt: { stringValue: nowIso },
+                  moderatedBy: { stringValue: admin.email },
+                },
+              }),
+            });
+          }
+        }
+      }
+
+      await logAdminAudit(systemToken, {
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        action: actionTaken === "dismiss" ? "REPORT_DISMISSED" : "REPORT_RESOLVED",
+        targetType: "report",
+        targetId: reportId,
+        targetUserId: reportData.reportedUserId,
+        reason: (resolution || actionTaken).trim(),
+        metadata: { actionTaken, listingId: reportData.listingId },
+      });
+
+      return res.json({ message: `Report successfully ${targetReportStatus}.` });
+    } catch (err: any) {
+      console.error("Admin resolve report error:", err);
+      return res.status(500).json({ error: "Internal server error resolving report." });
+    }
+  });
+
+  // Admin Endpoint: Audit Logs
+  app.get("/api/admin/audit-logs", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const logs = await fetchFirestoreCollection(systemToken, "admin_audit_logs", 500);
+      logs.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+      return res.json({ logs });
+    } catch (err: any) {
+      console.error("Admin audit logs error:", err);
+      return res.status(500).json({ error: "Internal server error fetching audit logs." });
+    }
+  });
+
+  // Admin Endpoint: Activity Logs
+  app.get("/api/admin/activity-logs", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const logs = await fetchFirestoreCollection(systemToken, "activity_logs", 500);
+      const { user, action, date } = req.query;
+
+      let filtered = logs;
+      if (user && typeof user === "string" && user.trim()) {
+        const q = user.toLowerCase().trim();
+        filtered = filtered.filter((l) =>
+          (l.userId && l.userId.toLowerCase().includes(q)) ||
+          (l.userEmail && l.userEmail.toLowerCase().includes(q))
+        );
+      }
+
+      if (action && typeof action === "string" && action !== "all") {
+        filtered = filtered.filter((l) => l.action === action);
+      }
+
+      if (date && typeof date === "string" && date !== "all") {
+        const now = Date.now();
+        if (date === "today") {
+          filtered = filtered.filter((l) => now - new Date(l.timestamp || 0).getTime() <= 24 * 60 * 60 * 1000);
+        } else if (date === "7days") {
+          filtered = filtered.filter((l) => now - new Date(l.timestamp || 0).getTime() <= 7 * 24 * 60 * 60 * 1000);
+        } else if (date === "30days") {
+          filtered = filtered.filter((l) => now - new Date(l.timestamp || 0).getTime() <= 30 * 24 * 60 * 60 * 1000);
+        }
+      }
+
+      filtered.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+      return res.json({ logs: filtered });
+    } catch (err: any) {
+      console.error("Admin activity logs error:", err);
+      return res.status(500).json({ error: "Internal server error fetching activity logs." });
     }
   });
 

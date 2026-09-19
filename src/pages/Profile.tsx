@@ -94,7 +94,13 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
   }
 
   const myListings = listings.filter(l => l.sellerId === currentUser.id);
-  const mySavedListings = listings.filter(l => savedListings.includes(l.id) && l.status !== 'cancelled');
+  const mySavedListings = listings.filter(
+    l =>
+      savedListings.includes(l.id) &&
+      l.status !== 'cancelled' &&
+      l.status !== 'hidden' &&
+      l.status !== 'removed'
+  );
 
   const filteredMyListings = myListings.filter(l => {
     const isExpired = l.status === 'expired' || (Boolean(l.expiresAt) && new Date(l.expiresAt!).getTime() <= Date.now());

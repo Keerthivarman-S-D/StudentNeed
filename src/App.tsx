@@ -17,6 +17,8 @@ import { Onboarding } from './pages/Onboarding';
 import { Profile } from './pages/Profile';
 import { Requests } from './pages/Requests';
 import { ChatPage } from './pages/Chat';
+import { AdminDashboard } from './pages/AdminDashboard';
+import { AdminRoute } from './components/AdminRoute';
 
 export default function App() {
   return (
@@ -79,6 +81,14 @@ export default function App() {
                     <ProtectedRoute>
                       <ChatPage />
                     </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin"
+                  element={
+                    <AdminRoute>
+                      <AdminDashboard />
+                    </AdminRoute>
                   }
                 />
               </Routes>

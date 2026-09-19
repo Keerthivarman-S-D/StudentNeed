@@ -9,8 +9,6 @@ export function Home() {
   const recentListings = listings
     .filter(l => 
       (l.status === 'active' || l.status === 'available' || l.status === 'reserved') &&
-      l.status !== 'completed' &&
-      l.status !== 'cancelled' &&
       Boolean(l.expiresAt) &&
       new Date(l.expiresAt).getTime() > Date.now()
     )

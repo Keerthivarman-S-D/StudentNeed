@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Category, ListingType, Condition } from '../types';
 import { uploadImageToCloudinary, validateImageFile, UploadCancelledError } from '../lib/cloudinary';
+import { MODERATION_ENDPOINTS } from '../config/api';
 
 const MAX_IMAGES = 4;
 
@@ -158,9 +159,40 @@ export function CreateListing() {
     e.preventDefault();
     if (!currentUser || !firebaseUser) return navigate('/login');
 
+    if (currentUser.status === 'suspended' || currentUser.status === 'banned') {
+      setError(`Your account has been ${currentUser.status}. You are not permitted to publish listings.`);
+      return;
+    }
+
     if (isUploading) {
       setError('Please wait for your image upload to complete or cancel it.');
       return;
+    }
+
+    // Pre-screen content against prohibited items
+    try {
+      const token = await firebaseUser.getIdToken();
+      const modRes = await fetch(MODERATION_ENDPOINTS.checkListing, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim()
+        })
+      });
+
+      if (modRes.ok) {
+        const modData = await modRes.json();
+        if (modData.success && modData.data?.action === 'block') {
+          setError(`Listing blocked by moderation: This listing appears to contain prohibited items or content (${modData.data.reason || 'prohibited'}). Please review campus marketplace guidelines.`);
+          return;
+        }
+      }
+    } catch (modErr) {
+      console.warn('Moderation pre-check failed or skipped:', modErr);
     }
 
     // Enforce empty images for Borrow & Exchange; require image for Sale / Donate
@@ -240,6 +272,16 @@ export function CreateListing() {
         <h1 className="text-3xl font-bold text-zinc-900">Post an Item</h1>
         <p className="text-zinc-600 mt-1">Fill out the details to list your item on the campus marketplace.</p>
       </div>
+
+      {(currentUser?.status === 'suspended' || currentUser?.status === 'banned') && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-300 bg-red-50 p-4 text-red-800 text-sm">
+          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-red-600" />
+          <div>
+            <span className="font-semibold block capitalize">Account {currentUser.status}</span>
+            <span>Your account is currently restricted from publishing items to the marketplace. Please contact campus administration if you believe this is an error.</span>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
@@ -506,7 +548,7 @@ export function CreateListing() {
           <Button type="button" variant="ghost" onClick={() => navigate(-1)} disabled={isSubmitting || isUploading}>
             Cancel
           </Button>
-          <Button type="submit" size="lg" disabled={isSubmitting || isUploading} className="min-w-[170px]">
+          <Button type="submit" size="lg" disabled={isSubmitting || isUploading || currentUser?.status === 'suspended' || currentUser?.status === 'banned'} className="min-w-[170px]">
             {isSubmitting ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />

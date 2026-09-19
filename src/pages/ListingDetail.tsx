@@ -1,30 +1,32 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  MapPin, 
-  Clock, 
-  Heart, 
-  MessageSquare, 
-  ChevronLeft, 
-  AlertCircle, 
+import {
+  MapPin,
+  Clock,
+  Heart,
+  MessageSquare,
+  ChevronLeft,
+  AlertCircle,
   Loader2,
   BookmarkCheck,
   Check,
   X,
   Inbox,
   Timer,
-  Edit3
+  Edit3,
+  Flag,
+  ShieldAlert
 } from 'lucide-react';
-import { 
-  doc, 
-  getDoc, 
+import {
+  doc,
+  getDoc,
   getDocs,
-  setDoc, 
-  updateDoc, 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
+  setDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  onSnapshot,
   serverTimestamp,
   limit
 } from 'firebase/firestore';
@@ -34,6 +36,7 @@ import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { EditListingModal } from '../components/EditListingModal';
+import { ReportListingModal } from '../components/ReportListingModal';
 import { cn } from '../lib/utils';
 import { Listing, User, Reservation } from '../types';
 
@@ -43,7 +46,7 @@ export function ListingDetail() {
   const { listings, listingsLoading, users, savedListings, toggleSaveListing, cancelListing } = useAppContext();
   const { currentUser } = useAuth();
   const currentUserId = auth.currentUser?.uid || currentUser?.id;
-  
+
   const [fetchedListing, setFetchedListing] = useState<Listing | null>(null);
   const [fetchedSeller, setFetchedSeller] = useState<User | null>(null);
   const [isFetchingDirect, setIsFetchingDirect] = useState(false);
@@ -59,6 +62,9 @@ export function ListingDetail() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelSuccessMsg, setCancelSuccessMsg] = useState<string | null>(null);
+
+  // Report Listing state
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const handleConfirmCancelPost = async () => {
     if (!listing?.id) return;
@@ -504,7 +510,7 @@ export function ListingDetail() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-      <button 
+      <button
         onClick={() => navigate(-1)}
         className="group flex items-center gap-1 text-sm font-medium text-zinc-500 hover:text-zinc-900 mb-6 transition-colors"
       >
@@ -516,9 +522,9 @@ export function ListingDetail() {
         {/* Image Gallery */}
         <div className="relative aspect-square overflow-hidden rounded-3xl bg-zinc-100 border border-zinc-200 flex items-center justify-center">
           {listing.images && listing.images.length > 0 ? (
-            <img 
-              src={listing.images[0]} 
-              alt={listing.title} 
+            <img
+              src={listing.images[0]}
+              alt={listing.title}
               className="h-full w-full object-cover"
             />
           ) : (
@@ -563,7 +569,7 @@ export function ListingDetail() {
             {listing.price !== undefined && (
               <p className="text-3xl font-extrabold text-zinc-900 mb-4">₹{listing.price}</p>
             )}
-            
+
             <div className="flex flex-wrap items-center gap-4 text-sm text-zinc-600">
               <span className="flex items-center gap-1.5">
                 <MapPin className="h-4 w-4" />
@@ -598,9 +604,9 @@ export function ListingDetail() {
           <div className="mb-6 flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
             <div className="flex items-center gap-3">
               {seller.avatarUrl ? (
-                <img 
-                  src={seller.avatarUrl} 
-                  alt={seller.name} 
+                <img
+                  src={seller.avatarUrl}
+                  alt={seller.name}
                   className="h-12 w-12 rounded-full object-cover border border-zinc-200 bg-white"
                 />
               ) : (
@@ -649,7 +655,7 @@ export function ListingDetail() {
                   <p className="text-xs text-emerald-900 leading-relaxed">
                     The seller has accepted your reservation! Please coordinate campus pickup details in chat.
                   </p>
-                  
+
                   {/* Meetup status info if available */}
                   {userReservation.meetup?.status === 'confirmed' && (
                     <div className="flex items-center gap-2 rounded-lg bg-emerald-100/90 px-3 py-2 text-xs font-semibold text-emerald-900 border border-emerald-300/60">
@@ -706,8 +712,8 @@ export function ListingDetail() {
               </div>
               <div className="space-y-2 mt-2">
                 {incomingReservations.map((res) => (
-                  <div 
-                    key={res.id} 
+                  <div
+                    key={res.id}
                     className="flex items-center justify-between rounded-xl bg-white p-3 border border-blue-100 shadow-2xs"
                   >
                     <div className="flex items-center gap-2 flex-wrap">
@@ -763,6 +769,48 @@ export function ListingDetail() {
             </div>
           )}
 
+          {listing.status === 'hidden' && (
+            <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
+              <div className="flex items-start gap-3">
+                <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-sm text-amber-900">Listing Under Campus Review</h4>
+                  <p className="text-xs text-amber-800 mt-0.5">
+                    This post is temporarily hidden while being reviewed by campus moderation.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {listing.status === 'removed' && (
+            <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-sm text-red-900">Listing Removed by Moderation</h4>
+                  <p className="text-xs text-red-700 mt-0.5">
+                    This post has been removed by campus moderators for violating community safety guidelines.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(currentUser?.status === 'suspended' || currentUser?.status === 'banned') && (
+            <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-sm text-red-900">Account Restricted</h4>
+                  <p className="text-xs text-red-700 mt-0.5">
+                    Your student account is currently suspended. You cannot reserve items or initiate chats.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {isExpired && listing.status !== 'cancelled' && (
             <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
               <div className="flex items-start gap-3">
@@ -783,9 +831,9 @@ export function ListingDetail() {
                 <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
                 <span>{chatError}</span>
               </div>
-              <button 
+              <button
                 type="button"
-                onClick={() => setChatError(null)} 
+                onClick={() => setChatError(null)}
                 className="text-xs font-semibold underline hover:text-red-800 ml-2 shrink-0"
               >
                 Dismiss
@@ -803,6 +851,18 @@ export function ListingDetail() {
                 <Button size="lg" disabled className="flex-1 text-base bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed">
                   Listing Cancelled
                 </Button>
+              ) : listing.status === 'hidden' ? (
+                <Button size="lg" disabled className="flex-1 text-base bg-amber-50 text-amber-700 border border-amber-200 cursor-not-allowed font-medium">
+                  Under Moderation Review
+                </Button>
+              ) : listing.status === 'removed' ? (
+                <Button size="lg" disabled className="flex-1 text-base bg-red-50 text-red-700 border border-red-200 cursor-not-allowed font-medium">
+                  Listing Removed by Moderation
+                </Button>
+              ) : (currentUser?.status === 'suspended' || currentUser?.status === 'banned') ? (
+                <Button size="lg" disabled className="flex-1 text-base bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed font-medium">
+                  Account Suspended
+                </Button>
               ) : isExpired ? (
                 <Button size="lg" disabled className="flex-1 text-base bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed">
                   Listing Expired
@@ -811,8 +871,8 @@ export function ListingDetail() {
                 <>
                   {/* Primary Reservation / Chat Action */}
                   {userReservation && (userReservation.status === 'pending' || userReservation.status === 'accepted') ? (
-                    <Button 
-                      size="lg" 
+                    <Button
+                      size="lg"
                       className="flex-1 text-base gap-2 bg-zinc-900 text-white"
                       disabled={isStartingChat}
                       onClick={handleContactStudent}
@@ -826,8 +886,8 @@ export function ListingDetail() {
                     </Button>
                   ) : (
                     <>
-                      <Button 
-                        size="lg" 
+                      <Button
+                        size="lg"
                         className="flex-1 text-base gap-2 bg-zinc-900 text-white hover:bg-zinc-800"
                         disabled={isReserving || isStartingChat}
                         onClick={handleReserveItem}
@@ -840,9 +900,9 @@ export function ListingDetail() {
                         {isReserving ? 'Reserving...' : 'Reserve Item'}
                       </Button>
 
-                      <Button 
-                        size="lg" 
-                        variant="outline" 
+                      <Button
+                        size="lg"
+                        variant="outline"
                         className="text-base gap-2"
                         disabled={isStartingChat || isReserving}
                         onClick={handleContactStudent}
@@ -857,23 +917,36 @@ export function ListingDetail() {
                     </>
                   )}
 
-                  <Button 
-                    size="icon" 
-                    variant="outline" 
+                  <Button
+                    size="icon"
+                    variant="outline"
                     className={cn("h-11 w-11 shrink-0 transition-colors self-end sm:self-auto", isSaved && "border-red-500 bg-red-50")}
                     onClick={() => toggleSaveListing(listing.id)}
                     title={isSaved ? "Saved" : "Save Listing"}
                   >
                     <Heart className={cn("h-5 w-5", isSaved && "fill-red-500 text-red-500")} />
                   </Button>
+
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-11 w-11 shrink-0 transition-colors text-zinc-500 hover:text-red-600 hover:border-red-200 self-end sm:self-auto"
+                    onClick={() => {
+                      if (!currentUser) return navigate('/login');
+                      setShowReportModal(true);
+                    }}
+                    title="Report Listing"
+                  >
+                    <Flag className="h-5 w-5" />
+                  </Button>
                 </>
               )
             ) : (
               <div className="flex flex-col sm:flex-row gap-3 w-full">
-                <Button 
-                  size="lg" 
-                  variant="outline" 
-                  className="text-base w-[150.688px] h-[44px]" 
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="text-base w-[150.688px] h-[44px]"
                   style={{ width: '150.688px', height: '44px' }}
                   onClick={() => navigate('/profile')}
                 >
@@ -886,20 +959,20 @@ export function ListingDetail() {
                 )}
                 {listing.status !== 'cancelled' && listing.status !== 'completed' && (
                   <>
-                    <Button 
-                      size="lg" 
-                      variant="outline" 
-                      className="text-base text-zinc-800 border-zinc-300 hover:bg-zinc-50 font-medium flex items-center gap-2 w-[139.725px]" 
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="text-base text-zinc-800 border-zinc-300 hover:bg-zinc-50 font-medium flex items-center gap-2 w-[139.725px]"
                       style={{ width: '139.725px' }}
                       onClick={() => setShowEditModal(true)}
                     >
                       <Edit3 className="h-4 w-4 text-zinc-600" />
                       Edit Listing
                     </Button>
-                    <Button 
-                      size="lg" 
-                      variant="outline" 
-                      className="text-base text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-medium w-[116.875px]" 
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="text-base text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-medium w-[116.875px]"
                       style={{ width: '116.875px' }}
                       onClick={() => setShowCancelModal(true)}
                     >
@@ -927,16 +1000,16 @@ export function ListingDetail() {
               Are you sure you want to cancel &ldquo;{listing.title}&rdquo;? It will be marked as cancelled and removed from the active marketplace feed.
             </p>
             <div className="flex items-center justify-end gap-3 pt-2">
-              <Button 
-                variant="ghost" 
-                onClick={() => setShowCancelModal(false)} 
+              <Button
+                variant="ghost"
+                onClick={() => setShowCancelModal(false)}
                 disabled={isCancelling}
               >
                 Keep Listing
               </Button>
-              <Button 
-                variant="destructive" 
-                className="bg-red-600 hover:bg-red-700 text-white font-medium" 
+              <Button
+                variant="destructive"
+                className="bg-red-600 hover:bg-red-700 text-white font-medium"
                 disabled={isCancelling}
                 onClick={handleConfirmCancelPost}
               >
@@ -963,6 +1036,16 @@ export function ListingDetail() {
           onSuccess={() => {
             setShowEditModal(false);
           }}
+        />
+      )}
+
+      {/* Report Listing Modal */}
+      {listing && showReportModal && (
+        <ReportListingModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          listingId={listing.id}
+          listingTitle={listing.title}
         />
       )}
     </div>

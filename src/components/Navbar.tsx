@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Plus, UserCircle2, MessageSquare, LayoutGrid } from 'lucide-react';
+import { Search, Plus, UserCircle2, MessageSquare, LayoutGrid, ShieldAlert } from 'lucide-react';
 import { collection, query, where, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { cn } from '../lib/utils';
@@ -10,6 +10,8 @@ export function Navbar() {
   const { currentUser } = useAuth();
   const location = useLocation();
   const [hasActiveReservation, setHasActiveReservation] = useState(false);
+
+  const isAdmin = currentUser?.email?.toLowerCase() === 'admin@student.annauniv.edu';
 
   // Lightweight active reservation listener strictly limited to 1 doc each
   useEffect(() => {
@@ -54,6 +56,7 @@ export function Navbar() {
   const navLinks = [
     { name: 'Marketplace', path: '/marketplace', icon: LayoutGrid },
     { name: 'Requests', path: '/requests', icon: MessageSquare },
+    ...(isAdmin ? [{ name: 'Admin', path: '/admin', icon: ShieldAlert }] : []),
   ];
 
   return (
@@ -171,6 +174,12 @@ export function Navbar() {
             </div>
             <span className="text-[10px] font-medium">Profile</span>
           </Link>
+          {isAdmin && (
+            <Link to="/admin" className={cn("flex flex-col items-center gap-1 p-2 text-purple-600", location.pathname === '/admin' && "text-purple-900 font-bold")}>
+              <ShieldAlert className="h-5 w-5" />
+              <span className="text-[10px] font-medium">Admin</span>
+            </Link>
+          )}
         </nav>
       </div>
     </>
