@@ -1,11 +1,12 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { StudentNeedChatbot } from './components/StudentNeedChatbot';
 
 // Page Imports
+import { Launch } from './pages/Launch';
 import { Home } from './pages/Home';
 import { Marketplace } from './pages/Marketplace';
 import { ListingDetail } from './pages/ListingDetail';
@@ -20,81 +21,109 @@ import { ChatPage } from './pages/Chat';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { AdminRoute } from './components/AdminRoute';
 
+function AppContent() {
+  const { firebaseUser, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50 space-y-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-900 text-white font-bold text-2xl shadow-sm">
+          S
+        </div>
+        <div className="flex items-center gap-2 text-sm font-medium text-zinc-500">
+          <div className="h-4 w-4 rounded-full border-2 border-zinc-900 border-t-transparent animate-spin" />
+          <span>Loading StudentNeed...</span>
+        </div>
+      </div>
+    );
+  }
+
+  const isLaunchExplicit = location.pathname === '/launch';
+  const isRootLaunch = location.pathname === '/' && !firebaseUser;
+  const isLaunchActive = isLaunchExplicit || isRootLaunch;
+
+  return (
+    <div className={`flex min-h-screen flex-col bg-zinc-50 ${isLaunchActive ? '' : 'pb-16 md:pb-0'}`}>
+      {!isLaunchActive && <Navbar />}
+      <main className="flex-1">
+        <Routes>
+          <Route path="/" element={firebaseUser ? <Home /> : <Launch />} />
+          <Route path="/launch" element={<Launch />} />
+          <Route path="/marketplace" element={<Marketplace />} />
+          <Route path="/listing/:id" element={<ListingDetail />} />
+          <Route
+            path="/create-listing"
+            element={
+              <ProtectedRoute>
+                <CreateListing />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/create-request"
+            element={
+              <ProtectedRoute>
+                <CreateRequest />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/login" element={<Login />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route
+            path="/onboarding"
+            element={
+              <ProtectedRoute>
+                <Onboarding />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reserved"
+            element={
+              <ProtectedRoute>
+                <Profile defaultTab="reserved" />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/requests" element={<Requests />} />
+          <Route
+            path="/chat/:chatId"
+            element={
+              <ProtectedRoute>
+                <ChatPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminDashboard />
+              </AdminRoute>
+            }
+          />
+        </Routes>
+      </main>
+      {!isLaunchActive && <StudentNeedChatbot />}
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <AppProvider>
         <BrowserRouter>
-          <div className="flex min-h-screen flex-col bg-zinc-50 pb-16 md:pb-0">
-            <Navbar />
-            <main className="flex-1">
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/marketplace" element={<Marketplace />} />
-                <Route path="/listing/:id" element={<ListingDetail />} />
-                <Route
-                  path="/create-listing"
-                  element={
-                    <ProtectedRoute>
-                      <CreateListing />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/create-request"
-                  element={
-                    <ProtectedRoute>
-                      <CreateRequest />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="/login" element={<Login />} />
-                <Route path="/verify-email" element={<VerifyEmail />} />
-                <Route
-                  path="/onboarding"
-                  element={
-                    <ProtectedRoute>
-                      <Onboarding />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/profile"
-                  element={
-                    <ProtectedRoute>
-                      <Profile />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/reserved"
-                  element={
-                    <ProtectedRoute>
-                      <Profile defaultTab="reserved" />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="/requests" element={<Requests />} />
-                <Route
-                  path="/chat/:chatId"
-                  element={
-                    <ProtectedRoute>
-                      <ChatPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin"
-                  element={
-                    <AdminRoute>
-                      <AdminDashboard />
-                    </AdminRoute>
-                  }
-                />
-              </Routes>
-            </main>
-            <StudentNeedChatbot />
-          </div>
+          <AppContent />
         </BrowserRouter>
       </AppProvider>
     </AuthProvider>

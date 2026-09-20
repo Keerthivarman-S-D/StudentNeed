@@ -3,6 +3,7 @@ import { ArrowRight, BookOpen, Laptop, Beaker, Backpack, ShieldCheck, Zap, Hands
 import { useAppContext } from '../context/AppContext';
 import { ListingCard } from '../components/ListingCard';
 import { Button } from '../components/ui/Button';
+import { AppFooter } from '../components/AppFooter';
 
 export function Home() {
   const { listings } = useAppContext();
@@ -141,6 +142,9 @@ export function Home() {
           </div>
         </div>
       </section>
+
+      {/* Professional App Footer */}
+      <AppFooter />
     </div>
   );
 }
