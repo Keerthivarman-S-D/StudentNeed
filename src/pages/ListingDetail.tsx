@@ -214,7 +214,7 @@ export function ListingDetail() {
     createdAt: new Date().toISOString(),
   } : null);
 
-  const isOwner = Boolean(currentUserId && seller?.id && currentUserId === seller.id);
+  const isOwner = Boolean(currentUserId && listing?.sellerId && currentUserId === listing.sellerId);
   const isSaved = listing ? savedListings.includes(listing.id) : false;
 
   // 3. Listen to prospective buyer's own reservation for this listing
@@ -350,7 +350,7 @@ export function ListingDetail() {
       return null;
     }
 
-    const chatId = [currentUserId, sellerId].sort().join('_');
+    const chatId = `listing_${listing.id}_${[currentUserId, sellerId].sort().join('_')}`;
     const chatDocRef = doc(db, 'chats', chatId);
 
     try {
@@ -421,7 +421,7 @@ export function ListingDetail() {
 
     // Check for duplicate active reservation
     if (userReservation && (userReservation.status === 'pending' || userReservation.status === 'accepted')) {
-      const chatId = userReservation.chatId || [currentUserId, listing.sellerId].sort().join('_');
+      const chatId = userReservation.chatId || `listing_${listing.id}_${[currentUserId, listing.sellerId].sort().join('_')}`;
       navigate(`/chat/${chatId}`);
       return;
     }

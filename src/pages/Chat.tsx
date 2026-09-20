@@ -174,9 +174,9 @@ export function ChatPage() {
     return () => unsubscribeChat();
   }, [chatId, currentUserId]);
 
-  // Determine roles
-  const sellerId = listing?.sellerId;
-  const buyerId = chat?.participants.find((p) => p !== sellerId);
+  // Determine roles based on reservation if present, falling back to listing
+  const sellerId = reservation?.sellerId || listing?.sellerId;
+  const buyerId = reservation?.buyerId || chat?.participants.find((p) => p !== sellerId);
   const isSeller = Boolean(currentUserId && sellerId && currentUserId === sellerId);
   const isBuyer = Boolean(currentUserId && buyerId && currentUserId === buyerId);
 
@@ -225,7 +225,7 @@ export function ChatPage() {
       : query(
           collection(db, 'reservations'),
           where('sellerId', '==', currentUserId),
-          where('chatId', '==', chat.id),
+          where('listingId', '==', listing.id),
           limit(1)
         );
 
@@ -426,7 +426,7 @@ export function ChatPage() {
       setReservationSuccess('Reservation request submitted! Waiting for seller confirmation.');
     } catch (err: any) {
       console.error('Error creating reservation:', err);
-      setReservationError(err?.message || 'Failed to request reservation. Please try again.');
+      setReservationError("Couldn't request reservation. Please try again.");
     } finally {
       setIsActionLoading(null);
     }
@@ -481,7 +481,11 @@ export function ChatPage() {
       );
     } catch (err: any) {
       console.error(`Error updating reservation to ${targetStatus}:`, err);
-      setReservationError(err?.message || `Failed to ${targetStatus} reservation.`);
+      setReservationError(
+        targetStatus === 'accepted'
+          ? "Couldn't accept the reservation. Please try again."
+          : "Couldn't reject the reservation. Please try again."
+      );
     } finally {
       setIsActionLoading(null);
     }
@@ -539,7 +543,7 @@ export function ChatPage() {
       setReservationSuccess('Exchange successfully completed! Thank you for trading on campus.');
     } catch (err: any) {
       console.error('Error completing exchange:', err);
-      setReservationError(err?.message || 'Failed to complete exchange.');
+      setReservationError("Couldn't complete exchange. Please try again.");
     } finally {
       setIsActionLoading(null);
     }
@@ -606,7 +610,7 @@ export function ChatPage() {
       setReservationSuccess('Reservation successfully cancelled.');
     } catch (err: any) {
       console.error('Error cancelling reservation:', err);
-      setReservationError(err?.message || 'Failed to cancel reservation.');
+      setReservationError("Couldn't cancel reservation. Please try again.");
     } finally {
       setIsActionLoading(null);
     }

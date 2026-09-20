@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Listen to the user profile document in real-time
         unsubscribeDoc = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
           if (docSnap.exists()) {
-            setCurrentUser({ ...(docSnap.data() as User), email: user.email || '' });
+            setCurrentUser({ id: user.uid, ...(docSnap.data() as User), email: user.email || '' });
           } else {
             setCurrentUser(null);
           }

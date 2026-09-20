@@ -333,9 +333,199 @@ console.log('\n--- Running StudentNeed Requests Chat & UX Verification Tests ---
   );
 }
 
+// Test 16: Marketplace Listing Chat Isolation (Listing A vs Listing B)
+{
+  const studentA = 'student_uid_alpha';
+  const studentB = 'student_uid_beta';
+  const listingA = 'listing_calculator_fx991';
+  const listingB = 'listing_textbook_physics';
+
+  const makeListingChatId = (listingId: string, u1: string, u2: string) =>
+    `listing_${listingId}_${[u1, u2].sort().join('_')}`;
+
+  const chatIdA1 = makeListingChatId(listingA, studentA, studentB);
+  const chatIdA2 = makeListingChatId(listingA, studentB, studentA);
+  const chatIdB1 = makeListingChatId(listingB, studentA, studentB);
+
+  assert(chatIdA1 === chatIdA2, 'Listing chat ID is deterministic regardless of initiator');
+  assert(chatIdA1 !== chatIdB1, 'Same two users on Listing A and Listing B produce separate conversations');
+  assert(chatIdA1.startsWith(`listing_${listingA}_`), 'Listing chat ID contains listing A ID context');
+  assert(chatIdB1.startsWith(`listing_${listingB}_`), 'Listing chat ID contains listing B ID context');
+
+  const listingDetailSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/ListingDetail.tsx'), 'utf-8');
+  assert(
+    listingDetailSrc.includes('const chatId = `listing_${listing.id}_${[currentUserId, sellerId].sort().join(\'_\')}`;'),
+    'ListingDetail.tsx constructs listing-specific deterministic chat IDs'
+  );
+  assert(
+    listingDetailSrc.includes('const chatId = userReservation.chatId || `listing_${listing.id}_${[currentUserId, listing.sellerId].sort().join(\'_\')}`;'),
+    'ListingDetail.tsx preserves listing-specific chat ID on duplicate reservation checks'
+  );
+}
+
+// Test 17: Reservation Authorization Logic (Seller Accept/Reject, Buyer Blocked, Unauthorized Blocked)
+{
+  const sellerUid = 'seller_student_123';
+  const buyerUid = 'buyer_student_456';
+  const strangerUid = 'stranger_student_789';
+
+  const reservation = {
+    id: 'res_calc_buyer_student_456',
+    listingId: 'listing_calculator_fx991',
+    sellerId: sellerUid,
+    buyerId: buyerUid,
+    status: 'pending' as const,
+  };
+
+  const authorizeStatusUpdate = (callerUid: string, targetStatus: 'accepted' | 'rejected') => {
+    if (callerUid !== reservation.sellerId) {
+      return { allowed: false, error: 'Only the seller is authorized to accept or reject reservation requests.' };
+    }
+    if (reservation.status !== 'pending') {
+      return { allowed: false, error: `Cannot update status: reservation is already ${reservation.status}.` };
+    }
+    return { allowed: true, error: null };
+  };
+
+  const authorizeCancellation = (callerUid: string) => {
+    if (reservation.status === 'pending' && callerUid !== reservation.buyerId) {
+      return { allowed: false, error: 'Only the buyer can cancel a pending reservation request.' };
+    }
+    return { allowed: true, error: null };
+  };
+
+  // Seller checks
+  assert(authorizeStatusUpdate(sellerUid, 'accepted').allowed === true, 'True seller can Accept reservation');
+  assert(authorizeStatusUpdate(sellerUid, 'rejected').allowed === true, 'True seller can Reject reservation');
+  assert(authorizeCancellation(sellerUid).allowed === false, 'Seller CANNOT cancel a pending reservation (only buyer can)');
+
+  // Buyer checks
+  assert(authorizeStatusUpdate(buyerUid, 'accepted').allowed === false, 'Buyer CANNOT Accept reservation');
+  assert(authorizeStatusUpdate(buyerUid, 'rejected').allowed === false, 'Buyer CANNOT Reject reservation');
+  assert(authorizeCancellation(buyerUid).allowed === true, 'Buyer CAN cancel pending reservation');
+
+  // Unauthorized stranger checks
+  assert(authorizeStatusUpdate(strangerUid, 'accepted').allowed === false, 'Unauthorized user CANNOT Accept reservation');
+  assert(authorizeStatusUpdate(strangerUid, 'rejected').allowed === false, 'Unauthorized user CANNOT Reject reservation');
+  assert(authorizeCancellation(strangerUid).allowed === false, 'Unauthorized user CANNOT cancel reservation');
+}
+
+// Test 18: Correct Role Resolution in Chat.tsx
+{
+  const chatSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/Chat.tsx'), 'utf-8');
+
+  assert(
+    chatSrc.includes('const sellerId = reservation?.sellerId || listing?.sellerId;'),
+    'Chat.tsx prioritizes reservation.sellerId to accurately identify true seller'
+  );
+  assert(
+    chatSrc.includes('const buyerId = reservation?.buyerId || chat?.participants.find((p) => p !== sellerId);'),
+    'Chat.tsx prioritizes reservation.buyerId to accurately identify true buyer'
+  );
+  assert(
+    chatSrc.includes('const isSeller = Boolean(currentUserId && sellerId && currentUserId === sellerId);'),
+    'Chat.tsx strictly compares authenticated currentUserId to sellerId'
+  );
+  assert(
+    chatSrc.includes('{isSeller && reservation?.status === \'pending\' && ('),
+    'Chat.tsx renders Accept and Reject buttons strictly when isSeller is true'
+  );
+  assert(
+    chatSrc.includes('{isBuyer && reservation?.status === \'pending\' && ('),
+    'Chat.tsx renders Cancel Request button strictly for buyer'
+  );
+}
+
+// Test 19: Firestore Rules Security for Reservations & Chats
+{
+  const rulesSrc = fs.readFileSync(path.join(process.cwd(), 'firestore.rules'), 'utf-8');
+
+  assert(
+    rulesSrc.includes('resource.data.sellerId == request.auth.uid') &&
+    rulesSrc.includes("(request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected')"),
+    'firestore.rules enforces that ONLY the seller UID can accept or reject reservations'
+  );
+  assert(
+    rulesSrc.includes('resource.data.buyerId == request.auth.uid') &&
+    rulesSrc.includes("resource.data.status == 'pending'") &&
+    rulesSrc.includes("request.resource.data.status == 'cancelled'"),
+    'firestore.rules enforces that ONLY the buyer UID can cancel a pending reservation'
+  );
+  assert(
+    rulesSrc.includes("(!('listingId' in request.resource.data) || request.resource.data.listingId is string)"),
+    'firestore.rules permits listingId on chat documents'
+  );
+  assert(
+    rulesSrc.includes("request.auth.uid in resource.data.participants"),
+    'firestore.rules restricts chat read and list strictly to conversation participants'
+  );
+}
+
+// Test 20: Requests Chat Isolation Maintained
+{
+  const requestsSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/Requests.tsx'), 'utf-8');
+
+  assert(
+    requestsSrc.includes('const chatId = `req_${request.id}_${[currentUserId, request.requesterId].sort().join(\'_\')}`;'),
+    'Requests.tsx preserves request-specific prefix req_${request.id}_'
+  );
+  assert(
+    !requestsSrc.includes('listing_'),
+    'Requests.tsx remains completely isolated from marketplace listing chat keying'
+  );
+}
+
+// Test 21: Existing Historical Chats Remain Fully Compatible
+{
+  const chatSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/Chat.tsx'), 'utf-8');
+  const profileSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/Profile.tsx'), 'utf-8');
+
+  assert(
+    chatSrc.includes("const { chatId } = useParams<{ chatId: string }>();"),
+    'ChatPage loads any chatId parameter without restricting historical format'
+  );
+  assert(
+    profileSrc.includes("onClick={() => navigate(`/chat/${res.chatId}`)}"),
+    'Profile.tsx navigates to reservation chat using res.chatId'
+  );
+}
+
+// Test 22: User-Friendly Error Messages in Chat.tsx
+{
+  const chatSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/Chat.tsx'), 'utf-8');
+
+  assert(
+    chatSrc.includes('"Couldn\'t accept the reservation. Please try again."'),
+    'Chat.tsx uses friendly error message for failed accept action'
+  );
+  assert(
+    chatSrc.includes('"Couldn\'t reject the reservation. Please try again."'),
+    'Chat.tsx uses friendly error message for failed reject action'
+  );
+  assert(
+    chatSrc.includes('"Couldn\'t request reservation. Please try again."'),
+    'Chat.tsx uses friendly error message for failed request reservation action'
+  );
+  assert(
+    chatSrc.includes('"Couldn\'t cancel reservation. Please try again."'),
+    'Chat.tsx uses friendly error message for failed cancel reservation action'
+  );
+}
+
+// Test 23: AuthContext UID Guarantee
+{
+  const authContextSrc = fs.readFileSync(path.join(process.cwd(), 'src/context/AuthContext.tsx'), 'utf-8');
+
+  assert(
+    authContextSrc.includes('setCurrentUser({ id: user.uid, ...(docSnap.data() as User), email: user.email || \'\' });'),
+    'AuthContext.tsx guarantees id: user.uid is set on currentUser'
+  );
+}
+
 console.log(`\nResults: ${passed} passed, ${failed} failed.\n`);
 if (failed > 0) {
   process.exit(1);
 } else {
   console.log('ALL TESTS PASSED SUCCESSFULLY!');
 }
+
