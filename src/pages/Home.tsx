@@ -31,7 +31,7 @@ export function Home() {
             Everything students need. From students who have it.
           </h1>
           <p className="mx-auto max-w-2xl text-lg text-zinc-400 sm:text-xl">
-            Buy, borrow, donate, exchange or request college essentials securely within the MIT campus.
+            Buy, donate, exchange or request college essentials securely within the MIT campus.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link to="/marketplace">

@@ -34,6 +34,7 @@ export type User = {
 };
 
 export type ListingType = 'Sale' | 'Borrow' | 'Donate' | 'Exchange';
+export type ActiveListingType = 'Sale' | 'Donate' | 'Exchange';
 
 export type Condition = 'New' | 'Like New' | 'Good' | 'Fair' | 'Poor';
 
@@ -74,6 +75,7 @@ export type UpdateListingInput = {
   title?: string;
   description?: string;
   price?: number;
+  type?: ListingType;
   category?: Category;
   condition?: Condition;
   location?: string;

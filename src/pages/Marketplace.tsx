@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Search, SlidersHorizontal, AlertCircle, Loader2, GraduationCap, ShieldCheck, ArrowRight } from 'lucide-react';
+import { ListingType, ActiveListingType, Category } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { ListingCard } from '../components/ListingCard';
 import { Button } from '../components/ui/Button';
-import { Category, ListingType } from '../types';
 
 export function Marketplace() {
   const { listings, listingsLoading, listingsError, hasMoreListings, loadMoreListings } = useAppContext();
@@ -25,7 +25,7 @@ export function Marketplace() {
     'All', 'Textbooks', 'Electronics', 'Stationery', 'Lab Essentials', 'Hostel Essentials', 'Sports', 'College Wear', 'Other'
   ];
 
-  const types: (ListingType | 'All')[] = ['All', 'Sale', 'Borrow', 'Donate', 'Exchange'];
+  const types: (ActiveListingType | 'All')[] = ['All', 'Sale', 'Donate', 'Exchange'];
 
   const filteredListings = useMemo(() => {
     // Only active listings in public marketplace discovery (completed, cancelled, and expired listings are strictly hidden)
@@ -144,7 +144,7 @@ export function Marketplace() {
                     onChange={() => setSelectedType(type)}
                     className="text-zinc-900 focus:ring-zinc-900 h-4 w-4 border-zinc-300"
                   />
-                  <span className="text-sm text-zinc-700">{type}</span>
+                  <span className="text-sm text-zinc-700">{type === 'Sale' ? 'For Sale' : type}</span>
                 </label>
               ))}
             </div>

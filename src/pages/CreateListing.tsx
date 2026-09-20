@@ -5,7 +5,7 @@ import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Category, ListingType, Condition } from '../types';
+import { Category, ActiveListingType, Condition } from '../types';
 import { uploadImageToCloudinary, validateImageFile, UploadCancelledError } from '../lib/cloudinary';
 import { MODERATION_ENDPOINTS } from '../config/api';
 
@@ -17,7 +17,7 @@ export function CreateListing() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
-  const [type, setType] = useState<ListingType>('Sale');
+  const [type, setType] = useState<ActiveListingType>('Sale');
   const [condition, setCondition] = useState<Condition>('Good');
   const [category, setCategory] = useState<Category>('Other');
   const [location, setLocation] = useState('');
@@ -49,7 +49,7 @@ export function CreateListing() {
   }, []);
 
   // Handle switching listing types (preserve optional photo state)
-  const handleTypeChange = (newType: ListingType) => {
+  const handleTypeChange = (newType: ActiveListingType) => {
     setType(newType);
   };
 
@@ -180,7 +180,7 @@ export function CreateListing() {
         description: description.trim(),
         price: type === 'Sale' && price ? Number(price) : undefined,
         type,
-        condition: type === 'Borrow' ? undefined : condition,
+        condition,
         category,
         location: location.trim(),
         images: finalImages,
@@ -201,7 +201,7 @@ export function CreateListing() {
     }
   };
 
-  const types: ListingType[] = ['Sale', 'Borrow', 'Donate', 'Exchange'];
+  const types: ActiveListingType[] = ['Sale', 'Donate', 'Exchange'];
   const categories: Category[] = ['Textbooks', 'Electronics', 'Stationery', 'Lab Essentials', 'Hostel Essentials', 'Sports', 'College Wear', 'Other'];
   const conditions: Condition[] = ['New', 'Like New', 'Good', 'Fair', 'Poor'];
 
@@ -256,7 +256,7 @@ export function CreateListing() {
         {/* Type Selection */}
         <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-zinc-900">What are you offering?</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-3 gap-3">
             {types.map(t => (
               <label 
                 key={t}
@@ -273,7 +273,7 @@ export function CreateListing() {
                   checked={type === t} 
                   onChange={() => handleTypeChange(t)} 
                 />
-                {t}
+                {t === 'Sale' ? 'Sell' : t}
               </label>
             ))}
           </div>
@@ -294,7 +294,7 @@ export function CreateListing() {
               />
             </div>
 
-            <div className={type === 'Borrow' ? "" : "grid grid-cols-1 gap-4 sm:grid-cols-2"}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-zinc-700">Category</label>
                 <select 
@@ -306,18 +306,16 @@ export function CreateListing() {
                 </select>
               </div>
               
-              {type !== 'Borrow' && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-zinc-700">Condition</label>
-                  <select 
-                    className="flex h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                    value={condition}
-                    onChange={e => setCondition(e.target.value as Condition)}
-                  >
-                    {conditions.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              )}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-zinc-700">Condition</label>
+                <select 
+                  className="flex h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                  value={condition}
+                  onChange={e => setCondition(e.target.value as Condition)}
+                >
+                  {conditions.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
             </div>
 
             {type === 'Sale' && (

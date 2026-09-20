@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Loader2, AlertCircle, ShieldAlert, CheckCircle2, ImagePlus } from 'lucide-react';
-import { Listing, Category, Condition, UpdateListingInput } from '../types';
+import { Listing, Category, Condition, UpdateListingInput, ActiveListingType, ListingType } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -18,6 +18,7 @@ const CATEGORIES: Category[] = [
 ];
 
 const CONDITIONS: Condition[] = ['New', 'Like New', 'Good', 'Fair', 'Poor'];
+const ACTIVE_TYPES: ActiveListingType[] = ['Sale', 'Donate', 'Exchange'];
 
 interface EditListingModalProps {
   listing: Listing;
@@ -32,6 +33,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
   const [title, setTitle] = useState(listing.title);
   const [description, setDescription] = useState(listing.description);
   const [price, setPrice] = useState(listing.price !== undefined ? String(listing.price) : '');
+  const [type, setType] = useState<ListingType>(listing.type);
   const [category, setCategory] = useState<Category>(listing.category);
   const [condition, setCondition] = useState<Condition>(listing.condition || 'Good');
   const [location, setLocation] = useState(listing.location);
@@ -103,7 +105,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
       return;
     }
 
-    if (listing.type === 'Sale') {
+    if (type === 'Sale') {
       const parsedPrice = Number(price);
       if (isNaN(parsedPrice) || parsedPrice <= 0) {
         setError('Please enter a valid price greater than 0.');
@@ -121,11 +123,15 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         images: image ? [image] : [],
       };
 
-      if (listing.type !== 'Borrow') {
+      if (type !== listing.type) {
+        updates.type = type;
+      }
+
+      if (type !== 'Borrow') {
         updates.condition = condition;
       }
 
-      if (listing.type === 'Sale') {
+      if (type === 'Sale') {
         updates.price = Number(price);
       }
 
@@ -206,7 +212,50 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
               />
             </div>
 
-            <div className={`grid ${listing.type !== 'Borrow' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-4`}>
+            {/* Offering Type / Legacy Borrow Conversion */}
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                Offering Type <span className="text-red-500">*</span>
+              </label>
+              {type === 'Borrow' ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900 space-y-2">
+                  <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                    Legacy Borrow Listing
+                  </div>
+                  <p className="text-amber-700">
+                    Borrow listings have been retired from the active marketplace. Choose an active option to convert this listing:
+                  </p>
+                  <div className="flex gap-2 pt-1">
+                    {ACTIVE_TYPES.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => {
+                          setType(t);
+                          if (!price && t === 'Sale') setPrice('100');
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 font-semibold text-zinc-800 hover:bg-amber-100 hover:border-amber-400 transition shadow-xs text-xs"
+                      >
+                        Convert to {t === 'Sale' ? 'Sell' : t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value as ActiveListingType)}
+                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
+                >
+                  <option value="Sale">Sell</option>
+                  <option value="Donate">Donate</option>
+                  <option value="Exchange">Exchange</option>
+                </select>
+              )}
+            </div>
+
+            <div className={`grid ${type !== 'Borrow' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-4`}>
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
                   Category <span className="text-red-500">*</span>
@@ -224,7 +273,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 </select>
               </div>
 
-              {listing.type !== 'Borrow' && (
+              {type !== 'Borrow' && (
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
                     Condition <span className="text-red-500">*</span>
@@ -244,7 +293,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
               )}
             </div>
 
-            {listing.type === 'Sale' && (
+            {type === 'Sale' && (
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
                   Price (₹) <span className="text-red-500">*</span>

@@ -487,11 +487,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatePayload.description = trimmed;
     }
 
+    if (updates.type !== undefined) {
+      updatePayload.type = updates.type;
+    }
+
     if (updates.category !== undefined) {
       updatePayload.category = updates.category;
     }
 
-    if (updates.condition !== undefined && currentListing?.type !== 'Borrow') {
+    const effectiveType = updates.type || currentListing?.type;
+    if (updates.condition !== undefined && effectiveType !== 'Borrow') {
       updatePayload.condition = updates.condition;
     }
 

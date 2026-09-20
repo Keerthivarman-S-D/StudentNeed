@@ -197,22 +197,24 @@ console.log('\n--- Running StudentNeed Requests Chat & UX Verification Tests ---
   );
 }
 
-// Test 9: Borrow Listing Condition Omission in CreateListing.tsx & AppContext
+// Test 9: Elimination of Borrow from CreateListing.tsx
 {
   const createListingSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/CreateListing.tsx'), 'utf-8').replace(/\r\n/g, '\n');
   assert(
-    createListingSrc.includes("condition: type === 'Borrow' ? undefined : condition"),
-    'CreateListing omits condition when listing type is Borrow'
+    createListingSrc.includes("const types: ActiveListingType[] = ['Sale', 'Donate', 'Exchange'];"),
+    'CreateListing only offers active types: Sale (Sell), Donate, and Exchange'
   );
   assert(
-    createListingSrc.includes("type !== 'Borrow' && ("),
-    'CreateListing hides Condition selector completely when type is Borrow'
+    !createListingSrc.includes("'Borrow'"),
+    'CreateListing completely removed "Borrow" from types and forms'
   );
-
-  const appContextSrc = fs.readFileSync(path.join(process.cwd(), 'src/context/AppContext.tsx'), 'utf-8').replace(/\r\n/g, '\n');
   assert(
-    appContextSrc.includes("listingInput.type !== 'Borrow' && listingInput.condition"),
-    'AppContext omits condition for Borrow listings on addListing'
+    createListingSrc.includes('grid grid-cols-3 gap-3'),
+    'CreateListing displays a 3-column type selector for the active offering types'
+  );
+  assert(
+    !createListingSrc.includes("type === 'Borrow'"),
+    'CreateListing removed all active Borrow condition branching'
   );
 }
 
@@ -238,16 +240,22 @@ console.log('\n--- Running StudentNeed Requests Chat & UX Verification Tests ---
   );
 }
 
-// Test 11: Borrow Condition Handling in EditListingModal.tsx
+// Test 11: Legacy Borrow Listing Conversion in EditListingModal.tsx
 {
   const editListingSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/EditListingModal.tsx'), 'utf-8').replace(/\r\n/g, '\n');
   assert(
-    editListingSrc.includes("listing.type !== 'Borrow' && ("),
-    'EditListingModal hides Condition selector when listing.type is Borrow'
+    editListingSrc.includes("const ACTIVE_TYPES: ActiveListingType[] = ['Sale', 'Donate', 'Exchange'];"),
+    'EditListingModal defines active offering types for selection'
   );
   assert(
-    editListingSrc.includes("if (listing.type !== 'Borrow') {\n        updates.condition = condition;\n      }"),
-    'EditListingModal omits condition in updates when listing.type is Borrow'
+    editListingSrc.includes('Legacy Borrow Listing') &&
+    editListingSrc.includes('Borrow listings have been retired from the active marketplace'),
+    'EditListingModal displays informative banner when editing an old Borrow listing'
+  );
+  assert(
+    editListingSrc.includes('Convert to') &&
+    editListingSrc.includes('updates.type = type;'),
+    'EditListingModal provides conversion buttons and persists type change in update payload'
   );
 }
 
@@ -288,6 +296,40 @@ console.log('\n--- Running StudentNeed Requests Chat & UX Verification Tests ---
   assert(
     !createSrc.includes('photo-1544816155-12df9643f363'),
     'CreateListing contains no hardcoded Unsplash fallback image URL'
+  );
+}
+
+// Test 14: Marketplace Filters Exclude Borrow
+{
+  const marketplaceSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/Marketplace.tsx'), 'utf-8').replace(/\r\n/g, '\n');
+  assert(
+    marketplaceSrc.includes("const types: (ActiveListingType | 'All')[] = ['All', 'Sale', 'Donate', 'Exchange'];"),
+    'Marketplace filter list only offers All, Sale (For Sale), Donate, and Exchange'
+  );
+  assert(
+    !marketplaceSrc.includes("'Borrow'"),
+    'Marketplace filter list completely removes "Borrow"'
+  );
+}
+
+// Test 15: Backward Compatibility for Historical Borrow Listings
+{
+  const listingCardSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/ListingCard.tsx'), 'utf-8').replace(/\r\n/g, '\n');
+  assert(
+    listingCardSrc.includes("case 'Borrow': return 'warning';"),
+    'ListingCard maintains warning badge compatibility for historical Borrow listings'
+  );
+
+  const listingDetailSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/ListingDetail.tsx'), 'utf-8').replace(/\r\n/g, '\n');
+  assert(
+    listingDetailSrc.includes("case 'Borrow': return 'warning';"),
+    'ListingDetail maintains warning badge compatibility for historical Borrow listings'
+  );
+
+  const typesSrc = fs.readFileSync(path.join(process.cwd(), 'src/types.ts'), 'utf-8').replace(/\r\n/g, '\n');
+  assert(
+    typesSrc.includes("export type ListingType = 'Sale' | 'Borrow' | 'Donate' | 'Exchange';"),
+    'types.ts preserves ListingType containing "Borrow" for historical Firestore documents'
   );
 }
 

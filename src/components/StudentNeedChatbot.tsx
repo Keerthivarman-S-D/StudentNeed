@@ -26,14 +26,14 @@ export interface ChatMessageItem {
 const INITIAL_GREETING: ChatMessageItem = {
   id: 'msg_welcome',
   role: 'assistant',
-  text: "Hello! I'm the StudentNeed Campus Guide. I can help you understand how to buy, borrow, donate, or exchange items, navigate the Find → Connect → Meet process, or answer questions about listings and safe campus meetups. How can I help you today?",
+  text: "Hello! I'm the StudentNeed Campus Guide. I can help you understand how to buy, donate, or exchange items, post requests for what you need, navigate the Find → Connect → Meet process, or answer questions about listings and safe campus meetups. How can I help you today?",
   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   source: 'knowledge_base'
 };
 
 const SUGGESTED_QUESTIONS = [
   "How does Find → Connect → Meet work?",
-  "How do I list an item to sell or borrow?",
+  "How do I list an item to sell, donate, or exchange?",
   "What categories and types are supported?",
   "How do campus meetups work?",
   "Are online payments or deliveries supported?"
