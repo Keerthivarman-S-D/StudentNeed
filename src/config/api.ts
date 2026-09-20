@@ -89,3 +89,12 @@ export const ADMIN_ENDPOINTS = {
     return `${getApiBaseUrl()}/api/admin/activity-logs`;
   },
 };
+
+export const RESERVATION_ENDPOINTS = {
+  get complete() {
+    return `${getApiBaseUrl()}/api/reservations/complete`;
+  },
+  get cancel() {
+    return `${getApiBaseUrl()}/api/reservations/cancel`;
+  },
+};

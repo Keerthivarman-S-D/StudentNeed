@@ -12,12 +12,23 @@ service cloud.firestore {
              request.auth.token.email.matches('.*@student\\.annauniv\\.edu');
     }
 
+    function isInternalSystem() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'internal.system@student.annauniv.edu' ||
+        request.auth.token.email == 'admin@student.annauniv.edu'
+      );
+    }
+
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.email == 'admin@student.annauniv.edu' ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
+    }
+
+    function isAuthorizedStudent() {
+      return isAnnaUnivStudent() || isAdmin() || isInternalSystem();
     }
 
     function isUserActive() {
@@ -28,11 +39,11 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthorizedStudent();
 
       // Creating a user profile:
       // Restricted to verified admin/server system account after OTP verification
-      allow create: if isAdmin();
+      allow create: if isAdmin() || isInternalSystem();
 
       // Updating user profile:
       // - Owner can update, but cannot alter protected fields:
@@ -40,8 +51,8 @@ service cloud.firestore {
       //   successfulExchanges, ratingCount, reviewCount, trustScore, reputation, badges, statistics, createdAt,
       //   status, warningCount, warnings, statusReason, statusUpdatedAt, suspendedAt, bannedAt, lastActivityAt
       // - Rating and exchangesCompleted must strictly match existing values if provided
-      // - Admin can update any profile
-      allow update: if isAuthenticated() && (
+      // - Admin or system service account can update any profile
+      allow update: if isAuthorizedStudent() && (
         (
           request.auth.uid == userId &&
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
@@ -58,7 +69,8 @@ service cloud.firestore {
           request.resource.data.get('rating', resource.data.get('rating', 0)) == resource.data.get('rating', 0) &&
           request.resource.data.get('exchangesCompleted', resource.data.get('exchangesCompleted', 0)) == resource.data.get('exchangesCompleted', 0)
         ) ||
-        isAdmin()
+        isAdmin() ||
+        isInternalSystem()
       );
 
       allow delete: if false;
@@ -66,7 +78,7 @@ service cloud.firestore {
       // Private user PII subcollection: phone, private email, sensitive preferences
       // Strictly isolated to the document owner or system admin
       match /private/{docId} {
-        allow read, write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        allow read, write: if isAuthorizedStudent() && (request.auth.uid == userId || isAdmin() || isInternalSystem());
       }
     }
 
@@ -105,11 +117,11 @@ service cloud.firestore {
     }
 
     match /listings/{listingId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthorizedStudent();
 
-      // Only authenticated users can create listings where sellerId matches their UID
+      // Only authenticated Anna Univ students can create listings where sellerId matches their UID
       // Must start with available/active status, satisfy image constraints, and provide valid expiration
-      allow create: if isAuthenticated() &&
+      allow create: if isAnnaUnivStudent() &&
                        isUserActive() &&
                        request.resource.data.sellerId == request.auth.uid &&
                        request.resource.data.status in ['available', 'active'] &&
@@ -123,7 +135,7 @@ service cloud.firestore {
       // - Owner can modify listing details while preserving images constraint and sellerId
       // - Expiration date and creation date are strictly immutable by seller to prevent immortal listings
       // - Owner cannot alter moderation fields (reportCount, moderationReason, moderatedAt, moderatedBy, flaggedForReview)
-      allow update: if isAuthenticated() && (
+      allow update: if isAuthorizedStudent() && (
         (
           isUserActive() &&
           resource.data.status != 'cancelled' &&
@@ -144,18 +156,19 @@ service cloud.firestore {
             (request.resource.data.status in ['available', 'active', 'reserved'] && validListingImages(request.resource.data))
           )
         ) ||
-        isAdmin()
+        isAdmin() ||
+        isInternalSystem()
       );
 
       // Preserve cancelled/completed records for history; only admins and server cleanup may permanently remove
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isInternalSystem();
     }
 
     match /requests/{requestId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthorizedStudent();
 
-      // Only authenticated users can create requests with requesterId matching their UID
-      allow create: if isAuthenticated() &&
+      // Only authenticated Anna Univ students can create requests with requesterId matching their UID
+      allow create: if isAnnaUnivStudent() &&
                        isUserActive() &&
                        request.resource.data.requesterId == request.auth.uid &&
                        request.resource.data.status in ['open', 'active'];
@@ -163,7 +176,7 @@ service cloud.firestore {
       // Updates:
       // - Cannot transition if already cancelled or completed
       // - Only owner can update or cancel request
-      allow update: if isAuthenticated() && (
+      allow update: if isAuthorizedStudent() && (
         (
           resource.data.status != 'cancelled' &&
           resource.data.status != 'completed' &&
@@ -171,11 +184,12 @@ service cloud.firestore {
           request.resource.data.requesterId == resource.data.requesterId &&
           request.resource.data.status in ['open', 'active', 'matched', 'accepted', 'completed', 'cancelled']
         ) ||
-        isAdmin()
+        isAdmin() ||
+        isInternalSystem()
       );
 
       // Preserve request records for history; only admins may permanently remove
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isInternalSystem();
     }
 
     function isValidCampusLocation(loc) {
@@ -234,14 +248,15 @@ service cloud.firestore {
     }
 
     match /reservations/{reservationId} {
-      allow read: if isAuthenticated() && (
+      allow read: if isAuthorizedStudent() && (
         resource.data.buyerId == request.auth.uid ||
         resource.data.sellerId == request.auth.uid ||
-        isAdmin()
+        isAdmin() ||
+        isInternalSystem()
       );
 
-      // Only authenticated students can create a reservation in 'pending' status for another student's active listing
-      allow create: if isAuthenticated() &&
+      // Only authenticated Anna Univ students can create a reservation in 'pending' status for another student's active listing
+      allow create: if isAnnaUnivStudent() &&
                        isUserActive() &&
                        request.resource.data.buyerId == request.auth.uid &&
                        request.resource.data.sellerId != request.auth.uid &&
@@ -255,12 +270,15 @@ service cloud.firestore {
       // Updates:
       // 1. Status transitions: ONLY seller can transition from 'pending' to 'accepted' or 'rejected'
       // 2. Buyer re-request: ONLY original buyer can transition from 'rejected' to 'pending' (core IDs strictly immutable and listing still active)
-      // 3. Campus meetup updates: ONLY on ACCEPTED reservations by buyer or seller
-      // 4. Completion transition: ONLY from 'accepted' to 'completed' by legitimate participants (buyer or seller)
+      // 3. Buyer cancel pending: ONLY original buyer can transition from 'pending' to 'cancelled'
+      // 4. Buyer/Seller cancel accepted: ONLY buyer or seller can transition from 'accepted' to 'cancelled'
+      // 5. Campus meetup updates: ONLY on ACCEPTED reservations by buyer or seller
+      // 6. Completion transition: ONLY from 'accepted' to 'completed' by legitimate participants (buyer or seller)
       //    All core IDs remain strictly immutable and listing belongs to seller
-      // 5. Terminal state: Completed or cancelled reservations cannot be mutated
-      allow update: if isAuthenticated() && (
+      // 7. Terminal state: Completed or cancelled reservations cannot be mutated
+      allow update: if isAuthorizedStudent() && (
         (
+          // Seller accept or reject pending reservation
           resource.data.sellerId == request.auth.uid &&
           request.resource.data.sellerId == resource.data.sellerId &&
           request.resource.data.buyerId == resource.data.buyerId &&
@@ -270,17 +288,39 @@ service cloud.firestore {
           (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected')
         ) ||
         (
+          // Buyer re-request rejected reservation
           resource.data.buyerId == request.auth.uid &&
           request.resource.data.buyerId == resource.data.buyerId &&
           request.resource.data.sellerId == resource.data.sellerId &&
           request.resource.data.listingId == resource.data.listingId &&
           request.resource.data.chatId == resource.data.chatId &&
-          resource.data.status == 'rejected' &&
+          (resource.data.status == 'rejected' || resource.data.status == 'cancelled') &&
           request.resource.data.status == 'pending' &&
           exists(/databases/$(database)/documents/listings/$(resource.data.listingId)) &&
           get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status in ['available', 'active']
         ) ||
         (
+          // Buyer can cancel pending reservation
+          resource.data.buyerId == request.auth.uid &&
+          request.resource.data.buyerId == resource.data.buyerId &&
+          request.resource.data.sellerId == resource.data.sellerId &&
+          request.resource.data.listingId == resource.data.listingId &&
+          request.resource.data.chatId == resource.data.chatId &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status == 'cancelled'
+        ) ||
+        (
+          // Buyer or Seller can cancel accepted reservation
+          (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid) &&
+          request.resource.data.buyerId == resource.data.buyerId &&
+          request.resource.data.sellerId == resource.data.sellerId &&
+          request.resource.data.listingId == resource.data.listingId &&
+          request.resource.data.chatId == resource.data.chatId &&
+          resource.data.status == 'accepted' &&
+          request.resource.data.status == 'cancelled'
+        ) ||
+        (
+          // Meetup transitions on accepted reservations
           resource.data.status == 'accepted' &&
           request.resource.data.status == 'accepted' &&
           request.resource.data.sellerId == resource.data.sellerId &&
@@ -302,18 +342,19 @@ service cloud.firestore {
           exists(/databases/$(database)/documents/listings/$(resource.data.listingId)) &&
           get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.sellerId == resource.data.sellerId
         ) ||
-        isAdmin()
+        isAdmin() ||
+        isInternalSystem()
       );
 
       allow delete: if false;
     }
 
     match /chats/{chatId} {
-      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
-      allow update: if isAuthenticated() &&
+      allow read: if isAuthorizedStudent() && (request.auth.uid in resource.data.participants || isAdmin() || isInternalSystem());
+      allow update: if isAuthorizedStudent() &&
                        request.auth.uid in resource.data.participants &&
                        request.resource.data.participants == resource.data.participants;
-      allow create: if isAuthenticated() &&
+      allow create: if isAnnaUnivStudent() &&
                        request.auth.uid in request.resource.data.participants &&
                        request.resource.data.participants is list &&
                        request.resource.data.participants.size() == 2 &&
@@ -323,9 +364,9 @@ service cloud.firestore {
       allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if isAuthenticated() &&
-                       request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
-        allow create: if isAuthenticated() &&
+        allow read: if isAuthorizedStudent() &&
+                       (request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants || isAdmin() || isInternalSystem());
+        allow create: if isAnnaUnivStudent() &&
                          isUserActive() &&
                          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
                          request.resource.data.senderId == request.auth.uid &&
@@ -337,20 +378,21 @@ service cloud.firestore {
     }
 
     match /locations/{locationId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow read: if isAuthorizedStudent();
+      allow write: if isAdmin() || isInternalSystem();
     }
 
     // Reports Collection for User Moderation
     match /reports/{reportId} {
       // Normal users can read their own submitted reports; Admin can read all reports
-      allow read: if isAuthenticated() && (
+      allow read: if isAuthorizedStudent() && (
         resource.data.reporterId == request.auth.uid ||
-        isAdmin()
+        isAdmin() ||
+        isInternalSystem()
       );
 
       // Active users can submit a pending report
-      allow create: if isAuthenticated() &&
+      allow create: if isAnnaUnivStudent() &&
                        isUserActive() &&
                        request.resource.data.reporterId == request.auth.uid &&
                        request.resource.data.status == 'pending' &&
@@ -359,24 +401,24 @@ service cloud.firestore {
                        request.resource.data.reportedUserId is string;
 
       // Only admin can update (resolve, dismiss, review) or delete reports
-      allow update, delete: if isAdmin();
+      allow update, delete: if isAdmin() || isInternalSystem();
     }
 
     // Admin Audit Logs: strictly readable and writable by admin only
     match /admin_audit_logs/{logId} {
-      allow read, write: if isAdmin();
+      allow read, write: if isAdmin() || isInternalSystem();
     }
 
     // Activity Logs for Moderation and Monitoring
     match /activity_logs/{logId} {
       // Normal users can only read their own activity; Admin can read all activity
-      allow read: if isAdmin() || (
-        isAuthenticated() && resource.data.userId == request.auth.uid
+      allow read: if isAdmin() || isInternalSystem() || (
+        isAuthorizedStudent() && resource.data.userId == request.auth.uid
       );
 
       // Admin can log activity, or authenticated users can log their own activity with strict field whitelist
-      allow create: if isAdmin() || (
-        isAuthenticated() &&
+      allow create: if isAdmin() || isInternalSystem() || (
+        isAnnaUnivStudent() &&
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.keys().hasAll(['userId', 'action']) &&
         (request.resource.data.keys().hasAny(['createdAt', 'timestamp'])) &&
@@ -391,10 +433,9 @@ service cloud.firestore {
     }
 
     // Temporary server-side OTP store for registration verification
-    // Strictly restricted to the server's internal service account
+    // Strictly restricted to the server's internal service account or admin
     match /temp_otps/{otpId} {
-      allow read, write: if isAuthenticated() &&
-                            request.auth.token.email == 'admin@student.annauniv.edu';
+      allow read, write: if isInternalSystem() || isAdmin();
     }
   }
 }

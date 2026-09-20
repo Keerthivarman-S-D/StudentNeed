@@ -536,6 +536,11 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                                     Completed
                                   </Badge>
                                 )}
+                                {res.status === 'cancelled' && (
+                                  <Badge variant="outline" className="gap-1 text-zinc-500 flex-shrink-0">
+                                    Cancelled
+                                  </Badge>
+                                )}
                               </div>
 
                               <p className="mt-1 font-bold text-zinc-900 text-sm">

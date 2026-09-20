@@ -8,7 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Category, ListingType } from '../types';
 
 export function Marketplace() {
-  const { listings, listingsLoading, listingsError } = useAppContext();
+  const { listings, listingsLoading, listingsError, hasMoreListings, loadMoreListings } = useAppContext();
   const { currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   
@@ -213,10 +213,23 @@ export function Marketplace() {
               )}
             </div>
           ) : filteredListings.length > 0 ? (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filteredListings.map(listing => (
-                <ListingCard key={listing.id} listing={listing} />
-              ))}
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {filteredListings.map(listing => (
+                  <ListingCard key={listing.id} listing={listing} />
+                ))}
+              </div>
+              {hasMoreListings && (
+                <div className="flex justify-center pt-2 pb-6">
+                  <Button
+                    variant="outline"
+                    onClick={loadMoreListings}
+                    className="gap-2 px-6 h-10 border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-medium text-sm"
+                  >
+                    Load More Listings
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 py-24 text-center">

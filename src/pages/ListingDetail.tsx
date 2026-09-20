@@ -453,8 +453,8 @@ export function ListingDetail() {
           return;
         }
 
-        if (existingStatus === 'rejected') {
-          // Re-request reservation for original buyer: transition rejected -> pending
+        if (existingStatus === 'rejected' || existingStatus === 'cancelled') {
+          // Re-request reservation for original buyer: transition rejected/cancelled -> pending
           await updateDoc(doc(db, 'reservations', existingDoc.id), {
             status: 'pending',
             updatedAt: serverTimestamp(),
@@ -696,6 +696,23 @@ export function ListingDetail() {
                   </p>
                 </div>
               )}
+
+              {userReservation.status === 'cancelled' && (
+                <div className="flex flex-col gap-2 rounded-xl bg-zinc-100 p-3.5 border border-zinc-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-600 uppercase tracking-wider">
+                      Reservation Status
+                    </span>
+                    <Badge variant="secondary" className="gap-1 font-medium text-xs">
+                      <X className="h-3 w-3" />
+                      Cancelled
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-zinc-700 leading-relaxed">
+                    This reservation request was cancelled. You may submit a new request if the item is still available.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -720,6 +737,7 @@ export function ListingDetail() {
                       {res.status === 'pending' && <Badge variant="warning">Pending Request</Badge>}
                       {res.status === 'accepted' && <Badge variant="success">Accepted</Badge>}
                       {res.status === 'rejected' && <Badge variant="secondary">Declined</Badge>}
+                      {res.status === 'cancelled' && <Badge variant="secondary">Cancelled</Badge>}
                       {res.status === 'accepted' && res.meetup?.status === 'confirmed' && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">
                           <MapPin className="h-3 w-3" />

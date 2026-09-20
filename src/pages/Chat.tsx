@@ -389,8 +389,8 @@ export function ChatPage() {
           return;
         }
 
-        if (existingStatus === 'rejected') {
-          // Re-request reservation: allowed for original buyer (rejected -> pending)
+        if (existingStatus === 'rejected' || existingStatus === 'cancelled') {
+          // Re-request reservation: allowed for original buyer (rejected/cancelled -> pending)
           await updateDoc(doc(db, 'reservations', existingDoc.id), {
             status: 'pending',
             updatedAt: serverTimestamp(),
@@ -540,6 +540,73 @@ export function ChatPage() {
     } catch (err: any) {
       console.error('Error completing exchange:', err);
       setReservationError(err?.message || 'Failed to complete exchange.');
+    } finally {
+      setIsActionLoading(null);
+    }
+  };
+
+  // Reservation Cancellation (Pending -> Cancelled by Buyer, Accepted -> Cancelled by Buyer or Seller)
+  const handleCancelReservation = async () => {
+    setReservationError(null);
+    setReservationSuccess(null);
+
+    if (!reservation || !currentUserId || isActionLoading) return;
+
+    if (reservation.status !== 'pending' && reservation.status !== 'accepted') {
+      setReservationError(`Cannot cancel a reservation with status '${reservation.status}'.`);
+      return;
+    }
+
+    if (reservation.status === 'pending' && currentUserId !== reservation.buyerId) {
+      setReservationError('Only the buyer can cancel a pending reservation request.');
+      return;
+    }
+
+    if (
+      reservation.status === 'accepted' &&
+      currentUserId !== reservation.buyerId &&
+      currentUserId !== reservation.sellerId
+    ) {
+      setReservationError('Only the buyer or seller can cancel an accepted reservation.');
+      return;
+    }
+
+    setIsActionLoading('cancelling' as any);
+
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch('/api/reservations/cancel', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ reservationId: reservation.id }),
+        });
+        const resData = await response.json();
+        if (!response.ok) {
+          throw new Error(resData?.error || 'Failed to cancel reservation.');
+        }
+      } else {
+        const resRef = doc(db, 'reservations', reservation.id);
+        await updateDoc(resRef, {
+          status: 'cancelled',
+          updatedAt: serverTimestamp(),
+        });
+        if (reservation.status === 'accepted' && listing?.id) {
+          await updateDoc(doc(db, 'listings', listing.id), {
+            status: 'available',
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      setReservationSuccess('Reservation successfully cancelled.');
+    } catch (err: any) {
+      console.error('Error cancelling reservation:', err);
+      setReservationError(err?.message || 'Failed to cancel reservation.');
     } finally {
       setIsActionLoading(null);
     }
@@ -879,6 +946,11 @@ export function ChatPage() {
                         <X className="h-3 w-3" />
                         Declined
                       </Badge>
+                    ) : reservation?.status === 'cancelled' ? (
+                      <Badge variant="secondary" className="gap-1 font-medium text-zinc-600">
+                        <X className="h-3 w-3" />
+                        Cancelled
+                      </Badge>
                     ) : (
                       <Badge variant="outline" className="text-zinc-500 font-normal">
                         No active request
@@ -893,6 +965,7 @@ export function ChatPage() {
                     {listing.status !== 'cancelled' && reservation?.status === 'pending' && isSeller && `Incoming reservation request from ${otherUser?.name || 'student'}.`}
                     {listing.status !== 'cancelled' && reservation?.status === 'accepted' && 'Item is reserved. Arrange pickup and exchange details in chat.'}
                     {listing.status !== 'cancelled' && reservation?.status === 'rejected' && 'The reservation request for this listing was declined.'}
+                    {listing.status !== 'cancelled' && reservation?.status === 'cancelled' && 'This reservation was cancelled.'}
                     {listing.status !== 'cancelled' && !reservation && isBuyer && 'Interested in this item? Request to reserve it from the seller.'}
                     {listing.status !== 'cancelled' && !reservation && isSeller && 'Waiting for student reservation request.'}
                   </p>
@@ -907,7 +980,7 @@ export function ChatPage() {
                 )}
 
                 {/* Buyer: Request Reservation button */}
-                {isBuyer && listing.status !== 'cancelled' && (!reservation || reservation.status === 'rejected') && (
+                {isBuyer && listing.status !== 'cancelled' && (!reservation || reservation.status === 'rejected' || reservation.status === 'cancelled') && (
                   <Button
                     size="sm"
                     onClick={handleRequestReservation}
@@ -923,7 +996,27 @@ export function ChatPage() {
                       ? 'Requesting...'
                       : reservation?.status === 'rejected'
                       ? 'Re-request Reservation'
+                      : reservation?.status === 'cancelled'
+                      ? 'Reserve Again'
                       : 'Request Reservation'}
+                  </Button>
+                )}
+
+                {/* Buyer: Cancel Pending Request button */}
+                {isBuyer && reservation?.status === 'pending' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCancelReservation}
+                    disabled={isActionLoading !== null}
+                    className="gap-1 text-xs h-8 px-3 font-medium border-red-200 text-red-600 hover:bg-red-50"
+                  >
+                    {isActionLoading === ('cancelling' as any) ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <X className="h-3.5 w-3.5" />
+                    )}
+                    Cancel Request
                   </Button>
                 )}
 
@@ -960,7 +1053,7 @@ export function ChatPage() {
                   </div>
                 )}
 
-                {/* Complete Exchange Action (Only when Accepted) */}
+                {/* Complete Exchange and Cancel Actions (Only when Accepted) */}
                 {reservation?.status === 'accepted' && (currentUserId === reservation.buyerId || currentUserId === reservation.sellerId) && (
                   <div className="flex items-center gap-2">
                     <Button
@@ -975,6 +1068,20 @@ export function ChatPage() {
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
                       )}
                       Complete Exchange
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCancelReservation}
+                      disabled={isActionLoading !== null}
+                      className="gap-1 text-xs h-8 px-2.5 font-medium border-red-200 text-red-600 hover:bg-red-50"
+                    >
+                      {isActionLoading === ('cancelling' as any) ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <X className="h-3.5 w-3.5" />
+                      )}
+                      Cancel
                     </Button>
                   </div>
                 )}

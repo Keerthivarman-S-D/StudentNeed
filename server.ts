@@ -24,7 +24,7 @@ async function getServerToken(): Promise<string | null> {
     return serverToken;
   }
 
-  const systemEmail = process.env.INTERNAL_SYSTEM_EMAIL?.trim();
+  const systemEmail = process.env.INTERNAL_SYSTEM_EMAIL?.trim() || "internal.system@student.annauniv.edu";
   const systemPassword = process.env.INTERNAL_SYSTEM_PASSWORD?.trim();
 
   if (!systemEmail || !systemPassword) {
@@ -1240,6 +1240,125 @@ CORE PRODUCT KNOWLEDGE & RULES:
     }
   });
 
+  app.post("/api/reservations/cancel", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`cancel-res:${clientIp}`, 20, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many cancellation requests. Please wait a few minutes." });
+      }
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken })
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid or expired authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const { reservationId } = req.body;
+      if (!reservationId || typeof reservationId !== "string") {
+        return res.status(400).json({ error: "reservationId is required." });
+      }
+
+      const systemToken = await getServerToken();
+      if (!systemToken) {
+        return res.status(503).json({ error: "System authentication service unavailable." });
+      }
+
+      // Fetch reservation document from Firestore REST
+      const resUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/reservations/${reservationId}`;
+      const resDocResponse = await fetch(resUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` }
+      });
+      if (resDocResponse.status === 404) {
+        return res.status(404).json({ error: "Reservation not found." });
+      }
+      const resJson = await resDocResponse.json();
+      const fields = resJson.fields || {};
+      const buyerId = fields.buyerId?.stringValue;
+      const sellerId = fields.sellerId?.stringValue;
+      const listingId = fields.listingId?.stringValue;
+      const currentStatus = fields.status?.stringValue;
+
+      // Status-dependent participant check:
+      // 1. If status is pending: ONLY the buyer can cancel
+      // 2. If status is accepted: either the buyer or seller can cancel
+      // 3. Otherwise: cannot cancel terminal states (completed, rejected, cancelled)
+      if (currentStatus === "pending") {
+        if (callerUid !== buyerId) {
+          return res.status(403).json({ error: "Only the buyer can cancel a pending reservation request." });
+        }
+      } else if (currentStatus === "accepted") {
+        if (callerUid !== buyerId && callerUid !== sellerId) {
+          return res.status(403).json({ error: "Only reservation participants can cancel the reservation." });
+        }
+      } else {
+        return res.status(400).json({ error: `Cannot cancel reservation from '${currentStatus}' status.` });
+      }
+
+      const nowIso = new Date().toISOString();
+
+      // Update reservation to cancelled
+      await fetch(resUrl + `?updateMask.fieldPaths=status&updateMask.fieldPaths=updatedAt&updateMask.fieldPaths=cancelledAt&updateMask.fieldPaths=cancelledBy`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            ...fields,
+            status: { stringValue: "cancelled" },
+            updatedAt: { timestampValue: nowIso },
+            cancelledAt: { timestampValue: nowIso },
+            cancelledBy: { stringValue: callerUid },
+          }
+        })
+      });
+
+      // If the reservation was accepted, revert the associated listing from 'reserved' back to 'available'
+      if (currentStatus === "accepted" && listingId) {
+        const listingUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/listings/${listingId}`;
+        const listingRes = await fetch(listingUrl, {
+          headers: { Authorization: `Bearer ${systemToken}` }
+        });
+        if (listingRes.ok) {
+          const listingJson = await listingRes.json();
+          const currentListingStatus = listingJson.fields?.status?.stringValue;
+          if (currentListingStatus === "reserved") {
+            await fetch(listingUrl + `?updateMask.fieldPaths=status&updateMask.fieldPaths=updatedAt`, {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${systemToken}`,
+              },
+              body: JSON.stringify({
+                fields: {
+                  ...listingJson.fields,
+                  status: { stringValue: "available" },
+                  updatedAt: { timestampValue: nowIso },
+                }
+              })
+            });
+          }
+        }
+      }
+
+      return res.json({ message: "Reservation successfully cancelled." });
+    } catch (err: any) {
+      console.error("Cancel reservation error:", err);
+      return res.status(500).json({ error: "Internal server error cancelling reservation." });
+    }
+  });
+
   // --- Listing Expiration & Automatic Cleanup System ---
 
   function extractCloudinaryPublicId(imageUrl: string): string | null {
@@ -1478,8 +1597,10 @@ CORE PRODUCT KNOWLEDGE & RULES:
       if (!lookupRes.ok) return false;
       const lookupData = await lookupRes.json();
       const user = lookupData.users?.[0];
-      if (!user) return false;
-      if (user.email === process.env.INTERNAL_SYSTEM_EMAIL) {
+      if (!user || !user.email) return false;
+      const email = user.email.toLowerCase().trim();
+      const systemEmail = (process.env.INTERNAL_SYSTEM_EMAIL || "internal.system@student.annauniv.edu").toLowerCase().trim();
+      if (email === systemEmail || email === "internal.system@student.annauniv.edu" || email === "admin@student.annauniv.edu") {
         return true;
       }
       return false;

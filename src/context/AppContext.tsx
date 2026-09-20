@@ -3,11 +3,13 @@ import {
   collection,
   onSnapshot,
   doc,
+  getDoc,
   setDoc,
   updateDoc,
   serverTimestamp,
   query,
   orderBy,
+  limit,
   Timestamp
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -45,18 +47,23 @@ type AppContextType = {
   listings: Listing[];
   listingsLoading: boolean;
   listingsError: string | null;
+  hasMoreListings: boolean;
+  loadMoreListings: () => void;
   addListing: (listing: NewListingInput | Listing) => Promise<string>;
   updateListing: (listingId: string, updates: UpdateListingInput) => Promise<void>;
   cancelListing: (listingId: string) => Promise<void>;
   requests: ItemRequest[];
   requestsLoading: boolean;
   requestsError: string | null;
+  hasMoreRequests: boolean;
+  loadMoreRequests: () => void;
   addRequest: (request: NewRequestInput | ItemRequest) => Promise<string>;
   cancelRequest: (requestId: string) => Promise<void>;
   updateRequestStatus: (requestId: string, status: RequestStatus) => Promise<void>;
   savedListings: string[];
   toggleSaveListing: (id: string) => void;
   users: User[];
+  fetchUserProfile: (userId: string) => Promise<User | null>;
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -65,10 +72,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [listingsLoading, setListingsLoading] = useState<boolean>(true);
   const [listingsError, setListingsError] = useState<string | null>(null);
+  const [listingsLimit, setListingsLimit] = useState<number>(24);
+  const [hasMoreListings, setHasMoreListings] = useState<boolean>(true);
 
   const [requests, setRequests] = useState<ItemRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState<boolean>(true);
   const [requestsError, setRequestsError] = useState<string | null>(null);
+  const [requestsLimit, setRequestsLimit] = useState<number>(20);
+  const [hasMoreRequests, setHasMoreRequests] = useState<boolean>(true);
 
   const [savedListings, setSavedListings] = useState<string[]>(() => {
     try {
@@ -78,7 +89,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return ['l2', 'l4'];
     }
   });
-  const [users, setUsers] = useState<User[]>(mockUsers);
+
+  const [userCache, setUserCache] = useState<Map<string, User>>(() => {
+    const initialMap = new Map<string, User>();
+    mockUsers.forEach((u) => initialMap.set(u.id, u));
+    return initialMap;
+  });
+
+  const [authUser, setAuthUser] = useState<any>(auth.currentUser);
+
+  // Sync auth state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Sync saved listings to localStorage
   useEffect(() => {
@@ -89,222 +115,288 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [savedListings]);
 
-  // Listen to Firestore listings, requests & users
-  useEffect(() => {
-    let unsubscribeListings: (() => void) | null = null;
-    let unsubscribeRequests: (() => void) | null = null;
-    let unsubscribeUsers: (() => void) | null = null;
+  const loadMoreListings = () => {
+    setListingsLimit((prev) => prev + 24);
+  };
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      // Clean up any previous subscriptions
-      if (unsubscribeListings) {
-        unsubscribeListings();
-        unsubscribeListings = null;
+  const loadMoreRequests = () => {
+    setRequestsLimit((prev) => prev + 20);
+  };
+
+  const fetchUserProfile = async (userId: string): Promise<User | null> => {
+    if (!userId) return null;
+    if (userCache.has(userId)) {
+      return userCache.get(userId)!;
+    }
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        const createdAt = data.createdAt?.toDate
+          ? data.createdAt.toDate().toISOString()
+          : typeof data.createdAt === 'string'
+          ? data.createdAt
+          : new Date().toISOString();
+
+        const fetchedUser: User = {
+          id: userDoc.id,
+          name: data.name || 'Student',
+          email: data.email || '',
+          department: data.department || 'Anna Univ',
+          campus: data.campus || 'Main Campus',
+          rating: typeof data.rating === 'number' ? data.rating : 5.0,
+          avatarUrl: data.avatarUrl,
+          exchangesCompleted: data.exchangesCompleted || 0,
+          role: data.role || 'student',
+          isVerified: Boolean(data.isVerified),
+          createdAt,
+        };
+
+        setUserCache((prev) => {
+          const next = new Map(prev);
+          next.set(userId, fetchedUser);
+          return next;
+        });
+        return fetchedUser;
       }
-      if (unsubscribeRequests) {
-        unsubscribeRequests();
-        unsubscribeRequests = null;
-      }
-      if (unsubscribeUsers) {
-        unsubscribeUsers();
-        unsubscribeUsers = null;
-      }
+      return null;
+    } catch (err) {
+      console.warn(`[Profile Cache] Could not fetch user ${userId}:`, err);
+      return null;
+    }
+  };
 
-      setListingsLoading(true);
-      setListingsError(null);
-      setRequestsLoading(true);
-      setRequestsError(null);
-
-      if (user) {
-        // Authenticated student: subscribe to real-time Firestore listings
+  const prefetchUsers = (userIds: string[]) => {
+    const missing = userIds.filter((id) => id && !userCache.has(id));
+    if (missing.length === 0) return;
+    Promise.all(
+      missing.map(async (id) => {
         try {
-          const listingsQuery = query(collection(db, 'listings'), orderBy('createdAt', 'desc'));
-          unsubscribeListings = onSnapshot(
-            listingsQuery,
-            (snapshot) => {
-              const liveListings: Listing[] = snapshot.docs.map((docSnap) => {
-                const data = docSnap.data();
-                const createdAt = data.createdAt?.toDate
-                  ? data.createdAt.toDate().toISOString()
-                  : typeof data.createdAt === 'string'
-                  ? data.createdAt
-                  : new Date().toISOString();
-                const updatedAt = data.updatedAt?.toDate
-                  ? data.updatedAt.toDate().toISOString()
-                  : typeof data.updatedAt === 'string'
-                  ? data.updatedAt
-                  : new Date().toISOString();
+          const userDoc = await getDoc(doc(db, 'users', id));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            const createdAt = data.createdAt?.toDate
+              ? data.createdAt.toDate().toISOString()
+              : typeof data.createdAt === 'string'
+              ? data.createdAt
+              : new Date().toISOString();
 
-                // Compute or fallback expiresAt
-                const rawExpires = data.expiresAt;
-                let expiresAt = '';
-                if (rawExpires?.toDate) {
-                  expiresAt = rawExpires.toDate().toISOString();
-                } else if (typeof rawExpires === 'string') {
-                  expiresAt = rawExpires;
-                } else if (data.createdAt) {
-                  const cDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
-                  expiresAt = new Date(cDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-                } else {
-                  expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-                }
-
-                return {
-                  id: docSnap.id,
-                  title: data.title || '',
-                  description: data.description || '',
-                  price: data.price !== undefined ? Number(data.price) : undefined,
-                  type: data.type || 'Sale',
-                  condition: data.condition || 'Good',
-                  category: data.category || 'Other',
-                  location: data.location || '',
-                  sellerId: data.sellerId || '',
-                  images: Array.isArray(data.images) && data.images.length > 0
-                    ? data.images
-                    : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800'],
-                  status: data.status || 'available',
-                  expirationDays: data.expirationDays ? Number(data.expirationDays) : 15,
-                  expiresAt,
-                  createdAt,
-                  updatedAt,
-                };
-              });
-
-              setListings(liveListings);
-              setListingsLoading(false);
-              setListingsError(null);
-            },
-            (err) => {
-              console.error('Error listening to listings:', err);
-              setListingsLoading(false);
-              setListingsError(err.message || 'Failed to load live marketplace listings.');
-              try {
-                handleFirestoreError(err, OperationType.LIST, 'listings');
-              } catch {
-                // error logged
-              }
-            }
-          );
-        } catch (err: any) {
-          console.error('Failed to initialize listings query:', err);
-          setListingsLoading(false);
-          setListingsError(err.message || 'Failed to initialize listings.');
+            return {
+              id: userDoc.id,
+              name: data.name || 'Student',
+              email: data.email || '',
+              department: data.department || 'Anna Univ',
+              campus: data.campus || 'Main Campus',
+              rating: typeof data.rating === 'number' ? data.rating : 5.0,
+              avatarUrl: data.avatarUrl,
+              exchangesCompleted: data.exchangesCompleted || 0,
+              role: data.role || 'student',
+              isVerified: Boolean(data.isVerified),
+              createdAt,
+            } as User;
+          }
+        } catch {
+          // ignore individual fetch errors
         }
-
-        // Authenticated student: subscribe to real-time Firestore requests
-        try {
-          const requestsQuery = query(collection(db, 'requests'), orderBy('createdAt', 'desc'));
-          unsubscribeRequests = onSnapshot(
-            requestsQuery,
-            (snapshot) => {
-              const liveRequests: ItemRequest[] = snapshot.docs.map((docSnap) => {
-                const data = docSnap.data();
-                const createdAt = data.createdAt?.toDate
-                  ? data.createdAt.toDate().toISOString()
-                  : typeof data.createdAt === 'string'
-                  ? data.createdAt
-                  : new Date().toISOString();
-                const updatedAt = data.updatedAt?.toDate
-                  ? data.updatedAt.toDate().toISOString()
-                  : typeof data.updatedAt === 'string'
-                  ? data.updatedAt
-                  : new Date().toISOString();
-
-                return {
-                  id: docSnap.id,
-                  title: data.title || '',
-                  description: data.description || '',
-                  category: data.category || 'Other',
-                  neededBy: data.neededBy || '',
-                  location: data.location || '',
-                  budget: data.budget !== undefined ? Number(data.budget) : undefined,
-                  status: data.status || 'open',
-                  requesterId: data.requesterId || '',
-                  createdAt,
-                  updatedAt,
-                };
-              });
-
-              setRequests(liveRequests);
-              setRequestsLoading(false);
-              setRequestsError(null);
-            },
-            (err) => {
-              console.error('Error listening to requests:', err);
-              setRequestsLoading(false);
-              setRequestsError(err.message || 'Failed to load live student requests.');
-              try {
-                handleFirestoreError(err, OperationType.LIST, 'requests');
-              } catch {
-                // error logged
-              }
-            }
-          );
-        } catch (err: any) {
-          console.error('Failed to initialize requests query:', err);
-          setRequestsLoading(false);
-          setRequestsError(err.message || 'Failed to initialize requests.');
-        }
-
-        // Also listen to users collection so seller & requester details are available
-        try {
-          unsubscribeUsers = onSnapshot(
-            collection(db, 'users'),
-            (snapshot) => {
-              const liveUsers: User[] = snapshot.docs.map((docSnap) => {
-                const data = docSnap.data();
-                const createdAt = data.createdAt?.toDate
-                  ? data.createdAt.toDate().toISOString()
-                  : typeof data.createdAt === 'string'
-                  ? data.createdAt
-                  : new Date().toISOString();
-
-                return {
-                  id: docSnap.id,
-                  name: data.name || 'Student',
-                  email: data.email || '',
-                  department: data.department || 'Anna Univ',
-                  campus: data.campus || 'Main Campus',
-                  rating: typeof data.rating === 'number' ? data.rating : 5.0,
-                  avatarUrl: data.avatarUrl,
-                  exchangesCompleted: data.exchangesCompleted || 0,
-                  role: data.role || 'student',
-                  isVerified: Boolean(data.isVerified),
-                  createdAt,
-                };
-              });
-
-              // Merge live users with mock users as fallback for unmigrated demo data
-              const userMap = new Map<string, User>();
-              mockUsers.forEach((u) => userMap.set(u.id, u));
-              liveUsers.forEach((u) => userMap.set(u.id, u));
-              setUsers(Array.from(userMap.values()));
-            },
-            (err) => {
-              console.warn('Could not sync all users collection:', err);
-            }
-          );
-        } catch (err) {
-          console.warn('User listener error:', err);
-        }
-      } else {
-        // Not authenticated yet
-        setListings([]);
-        setListingsLoading(false);
-        setListingsError(null);
-        setRequests([]);
-        setRequestsLoading(false);
-        setRequestsError(null);
+        return null;
+      })
+    ).then((fetchedUsers) => {
+      const valid = fetchedUsers.filter((u): u is User => u !== null);
+      if (valid.length > 0) {
+        setUserCache((prev) => {
+          const next = new Map(prev);
+          valid.forEach((u) => next.set(u.id, u));
+          return next;
+        });
       }
     });
+  };
+
+  // Subscribe to real-time listings with limit
+  useEffect(() => {
+    if (!authUser) {
+      setListings([]);
+      setListingsLoading(false);
+      setListingsError(null);
+      setHasMoreListings(false);
+      return;
+    }
+
+    setListingsLoading(true);
+    setListingsError(null);
+
+    let unsubscribe: (() => void) | null = null;
+    try {
+      const listingsQuery = query(
+        collection(db, 'listings'),
+        orderBy('createdAt', 'desc'),
+        limit(listingsLimit)
+      );
+
+      unsubscribe = onSnapshot(
+        listingsQuery,
+        (snapshot) => {
+          const liveListings: Listing[] = snapshot.docs.map((docSnap) => {
+            const data = docSnap.data();
+            const createdAt = data.createdAt?.toDate
+              ? data.createdAt.toDate().toISOString()
+              : typeof data.createdAt === 'string'
+              ? data.createdAt
+              : new Date().toISOString();
+            const updatedAt = data.updatedAt?.toDate
+              ? data.updatedAt.toDate().toISOString()
+              : typeof data.updatedAt === 'string'
+              ? data.updatedAt
+              : new Date().toISOString();
+
+            // Compute or fallback expiresAt
+            const rawExpires = data.expiresAt;
+            let expiresAt = '';
+            if (rawExpires?.toDate) {
+              expiresAt = rawExpires.toDate().toISOString();
+            } else if (typeof rawExpires === 'string') {
+              expiresAt = rawExpires;
+            } else if (data.createdAt) {
+              const cDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
+              expiresAt = new Date(cDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+            } else {
+              expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+            }
+
+            return {
+              id: docSnap.id,
+              title: data.title || '',
+              description: data.description || '',
+              price: data.price !== undefined ? Number(data.price) : undefined,
+              type: data.type || 'Sale',
+              condition: data.condition || 'Good',
+              category: data.category || 'Other',
+              location: data.location || '',
+              sellerId: data.sellerId || '',
+              images: Array.isArray(data.images) && data.images.length > 0
+                ? data.images
+                : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800'],
+              status: data.status || 'available',
+              expirationDays: data.expirationDays ? Number(data.expirationDays) : 15,
+              expiresAt,
+              createdAt,
+              updatedAt,
+            };
+          });
+
+          setListings(liveListings);
+          setHasMoreListings(snapshot.docs.length >= listingsLimit);
+          setListingsLoading(false);
+          setListingsError(null);
+
+          // Prefetch seller profiles on demand
+          const sellerIds = Array.from(new Set(liveListings.map((l) => l.sellerId).filter(Boolean)));
+          prefetchUsers(sellerIds);
+        },
+        (err) => {
+          console.error('Error listening to listings:', err);
+          setListingsLoading(false);
+          setListingsError(err.message || 'Failed to load live marketplace listings.');
+          try {
+            handleFirestoreError(err, OperationType.LIST, 'listings');
+          } catch {
+            // error logged
+          }
+        }
+      );
+    } catch (err: any) {
+      console.error('Failed to initialize listings query:', err);
+      setListingsLoading(false);
+      setListingsError(err.message || 'Failed to initialize listings.');
+    }
 
     return () => {
-      unsubscribeAuth();
-      if (unsubscribeListings) unsubscribeListings();
-      if (unsubscribeRequests) unsubscribeRequests();
-      if (unsubscribeUsers) unsubscribeUsers();
+      if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [authUser, listingsLimit]);
+
+  // Subscribe to real-time requests with limit
+  useEffect(() => {
+    if (!authUser) {
+      setRequests([]);
+      setRequestsLoading(false);
+      setRequestsError(null);
+      setHasMoreRequests(false);
+      return;
+    }
+
+    setRequestsLoading(true);
+    setRequestsError(null);
+
+    let unsubscribe: (() => void) | null = null;
+    try {
+      const requestsQuery = query(
+        collection(db, 'requests'),
+        orderBy('createdAt', 'desc'),
+        limit(requestsLimit)
+      );
+
+      unsubscribe = onSnapshot(
+        requestsQuery,
+        (snapshot) => {
+          const liveRequests: ItemRequest[] = snapshot.docs.map((docSnap) => {
+            const data = docSnap.data();
+            const createdAt = data.createdAt?.toDate
+              ? data.createdAt.toDate().toISOString()
+              : typeof data.createdAt === 'string'
+              ? data.createdAt
+              : new Date().toISOString();
+            const updatedAt = data.updatedAt?.toDate
+              ? data.updatedAt.toDate().toISOString()
+              : typeof data.updatedAt === 'string'
+              ? data.updatedAt
+              : new Date().toISOString();
+
+            return {
+              id: docSnap.id,
+              title: data.title || '',
+              description: data.description || '',
+              category: data.category || 'Other',
+              neededBy: data.neededBy || '',
+              location: data.location || '',
+              budget: data.budget !== undefined ? Number(data.budget) : undefined,
+              status: data.status || 'open',
+              requesterId: data.requesterId || '',
+              createdAt,
+              updatedAt,
+            };
+          });
+
+          setRequests(liveRequests);
+          setHasMoreRequests(snapshot.docs.length >= requestsLimit);
+          setRequestsLoading(false);
+          setRequestsError(null);
+
+          // Prefetch requester profiles on demand
+          const requesterIds = Array.from(new Set(liveRequests.map((r) => r.requesterId).filter(Boolean)));
+          prefetchUsers(requesterIds);
+        },
+        (err) => {
+          console.error('Error listening to requests:', err);
+          setRequestsLoading(false);
+          setRequestsError(err.message || 'Failed to load live student requests.');
+          try {
+            handleFirestoreError(err, OperationType.LIST, 'requests');
+          } catch {
+            // error logged
+          }
+        }
+      );
+    } catch (err: any) {
+      console.error('Failed to initialize requests query:', err);
+      setRequestsLoading(false);
+      setRequestsError(err.message || 'Failed to initialize requests.');
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [authUser, requestsLimit]);
 
   const addListing = async (listingInput: NewListingInput | Listing): Promise<string> => {
     if (!auth.currentUser) {
@@ -546,18 +638,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         listings,
         listingsLoading,
         listingsError,
+        hasMoreListings,
+        loadMoreListings,
         addListing,
         updateListing,
         cancelListing,
         requests,
         requestsLoading,
         requestsError,
+        hasMoreRequests,
+        loadMoreRequests,
         addRequest,
         cancelRequest,
         updateRequestStatus,
         savedListings,
         toggleSaveListing,
-        users,
+        users: Array.from(userCache.values()),
+        fetchUserProfile,
       }}
     >
       {children}
