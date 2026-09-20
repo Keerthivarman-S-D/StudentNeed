@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ImagePlus, AlertCircle, X, Loader2, Info, ArrowLeft, Clock, Calendar } from 'lucide-react';
+import { ImagePlus, AlertCircle, X, Loader2, ArrowLeft, Clock, Calendar, CheckCircle2 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
@@ -8,8 +8,6 @@ import { Input } from '../components/ui/Input';
 import { Category, ListingType, Condition } from '../types';
 import { uploadImageToCloudinary, validateImageFile, UploadCancelledError } from '../lib/cloudinary';
 import { MODERATION_ENDPOINTS } from '../config/api';
-
-const MAX_IMAGES = 4;
 
 export function CreateListing() {
   const navigate = useNavigate();
@@ -25,11 +23,12 @@ export function CreateListing() {
   const [location, setLocation] = useState('');
   const [expirationDays, setExpirationDays] = useState<7 | 15 | 30>(15);
   
-  // Cloudinary image upload states
-  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  // Single optional photo upload state
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadingFileName, setUploadingFileName] = useState<string>('');
+  const [photoAddedFeedback, setPhotoAddedFeedback] = useState(false);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
@@ -49,21 +48,8 @@ export function CreateListing() {
     };
   }, []);
 
-  // Handle switching listing types (reset image state when moving to Borrow or Exchange)
+  // Handle switching listing types (preserve optional photo state)
   const handleTypeChange = (newType: ListingType) => {
-    if (newType === 'Borrow' || newType === 'Exchange') {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-      setIsUploading(false);
-      setUploadProgress(0);
-      setUploadingFileName('');
-      setUploadedImages([]);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
     setType(newType);
   };
 
@@ -88,71 +74,58 @@ export function CreateListing() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setError(null);
+    setPhotoAddedFeedback(false);
 
-    if (type === 'Borrow' || type === 'Exchange') {
-      setError('Images are not permitted for Borrow or Exchange listings.');
+    const file = e.target.files[0];
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      setError(validation.error || 'Invalid image file.');
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
-    const incomingFiles = Array.from(e.target.files);
-    if (uploadedImages.length + incomingFiles.length > MAX_IMAGES) {
-      setError(`You can upload a maximum of ${MAX_IMAGES} photos.`);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsUploading(true);
+    setUploadProgress(0);
+    setUploadingFileName(file.name);
 
-    for (const file of incomingFiles) {
-      const validation = validateImageFile(file);
-      if (!validation.valid) {
-        setError(`"${file.name}": ${validation.error}`);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        return;
-      }
-    }
-
-    // Upload files sequentially with progress reporting and cancellation support
-    for (let i = 0; i < incomingFiles.length; i++) {
-      const file = incomingFiles[i];
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      setIsUploading(true);
-      setUploadProgress(0);
-      setUploadingFileName(file.name);
-
-      try {
-        const secureUrl = await uploadImageToCloudinary(file, {
-          folder: 'studentneed/listings',
-          signal: controller.signal,
-          onProgress: (pct) => setUploadProgress(pct),
-        });
-        setUploadedImages(prev => [...prev, secureUrl]);
-      } catch (err: any) {
-        if (err instanceof UploadCancelledError || err.name === 'AbortError') {
-          // Handled via cancellation
-          setIsUploading(false);
-          setUploadProgress(0);
-          setUploadingFileName('');
-          return;
-        }
-        console.error('Image upload failed:', err);
-        setError('Failed to upload photo. Please try again.');
-        break;
-      } finally {
-        abortControllerRef.current = null;
+    try {
+      const secureUrl = await uploadImageToCloudinary(file, {
+        folder: 'studentneed/listings',
+        signal: controller.signal,
+        onProgress: (pct) => setUploadProgress(pct),
+      });
+      // Replace previous image with newly uploaded single photo
+      setUploadedImage(secureUrl);
+      setPhotoAddedFeedback(true);
+      setTimeout(() => setPhotoAddedFeedback(false), 3000);
+    } catch (err: any) {
+      if (err instanceof UploadCancelledError || err.name === 'AbortError') {
         setIsUploading(false);
         setUploadProgress(0);
         setUploadingFileName('');
+        return;
       }
-    }
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      console.error('Image upload failed:', err);
+      setError('Failed to upload photo. Please try again.');
+    } finally {
+      abortControllerRef.current = null;
+      setIsUploading(false);
+      setUploadProgress(0);
+      setUploadingFileName('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
-  const handleRemoveImage = (index: number) => {
-    setUploadedImages(prev => prev.filter((_, i) => i !== index));
+  const handleRemoveImage = () => {
+    setUploadedImage(null);
+    setPhotoAddedFeedback(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -195,15 +168,7 @@ export function CreateListing() {
       console.warn('Moderation pre-check failed or skipped:', modErr);
     }
 
-    // Enforce empty images for Borrow & Exchange; require image for Sale / Donate
-    const isBorrowOrExchange = type === 'Borrow' || type === 'Exchange';
-    if (isBorrowOrExchange && uploadedImages.length > 0) {
-      setUploadedImages([]);
-    }
-
-    const finalImages: string[] = isBorrowOrExchange 
-      ? [] 
-      : (uploadedImages.length > 0 ? uploadedImages : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800']);
+    const finalImages: string[] = uploadedImage ? [uploadedImage] : [];
     
     setIsSubmitting(true);
     setError(null);
@@ -215,7 +180,7 @@ export function CreateListing() {
         description: description.trim(),
         price: type === 'Sale' && price ? Number(price) : undefined,
         type,
-        condition,
+        condition: type === 'Borrow' ? undefined : condition,
         category,
         location: location.trim(),
         images: finalImages,
@@ -239,8 +204,6 @@ export function CreateListing() {
   const types: ListingType[] = ['Sale', 'Borrow', 'Donate', 'Exchange'];
   const categories: Category[] = ['Textbooks', 'Electronics', 'Stationery', 'Lab Essentials', 'Hostel Essentials', 'Sports', 'College Wear', 'Other'];
   const conditions: Condition[] = ['New', 'Like New', 'Good', 'Fair', 'Poor'];
-
-  const allowsImages = type === 'Sale' || type === 'Donate';
 
   if (showSuccess) {
     return (
@@ -331,7 +294,7 @@ export function CreateListing() {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className={type === 'Borrow' ? "" : "grid grid-cols-1 gap-4 sm:grid-cols-2"}>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-zinc-700">Category</label>
                 <select 
@@ -343,16 +306,18 @@ export function CreateListing() {
                 </select>
               </div>
               
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-zinc-700">Condition</label>
-                <select 
-                  className="flex h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                  value={condition}
-                  onChange={e => setCondition(e.target.value as Condition)}
-                >
-                  {conditions.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+              {type !== 'Borrow' && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-zinc-700">Condition</label>
+                  <select 
+                    className="flex h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                    value={condition}
+                    onChange={e => setCondition(e.target.value as Condition)}
+                  >
+                    {conditions.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
 
             {type === 'Sale' && (
@@ -455,93 +420,107 @@ export function CreateListing() {
           </div>
         </section>
 
-        {/* Photos Section: Only for Sale & Donate. Hidden for Borrow & Exchange */}
-        {allowsImages ? (
-          <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-zinc-900">Photos</h2>
-              <span className="text-xs text-zinc-500">Max {MAX_IMAGES} photos (up to 5MB each)</span>
-            </div>
+        {/* Photo Section: Optional single photo for all listing types */}
+        <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-zinc-900">Photo (Optional)</h2>
+            <span className="text-xs text-zinc-500">1 photo (up to 5MB)</span>
+          </div>
 
-            {/* Uploaded Image Previews */}
-            {uploadedImages.length > 0 && (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-3">
-                {uploadedImages.map((src, idx) => (
-                  <div key={idx} className="group relative aspect-square overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
-                    <img src={src} alt={`Uploaded ${idx + 1}`} className="h-full w-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveImage(idx)}
-                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900/80 text-white transition-opacity hover:bg-zinc-900"
-                      title="Remove photo"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* In-Flight Upload Card with Cancel Upload Button */}
-            {isUploading && (
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 flex flex-col items-center justify-center text-center">
-                <Loader2 className="h-6 w-6 animate-spin text-zinc-700 mb-2" />
-                <p className="text-sm font-semibold text-zinc-900">
-                  Uploading image... {uploadProgress > 0 ? `${uploadProgress}%` : ''}
-                </p>
-                {uploadingFileName && (
-                  <p className="text-xs text-zinc-500 mt-0.5 mb-3 truncate max-w-xs">{uploadingFileName}</p>
-                )}
-                {uploadProgress > 0 && (
-                  <div className="w-56 bg-zinc-200 rounded-full h-2 mb-3 overflow-hidden">
-                    <div 
-                      className="bg-zinc-900 h-2 rounded-full transition-all duration-150" 
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                )}
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  size="sm"
-                  onClick={handleCancelUpload}
-                  className="text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 h-8 font-medium"
+          {/* Uploaded Single Image Preview */}
+          {uploadedImage && !isUploading && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="relative aspect-square w-32 sm:w-40 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+                <img src={uploadedImage} alt="Uploaded preview" className="h-full w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900/80 text-white transition-opacity hover:bg-zinc-900"
+                  title="Remove photo"
                 >
-                  Cancel Upload
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="space-y-2">
+                {photoAddedFeedback && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Photo added
+                  </span>
+                )}
+                <p className="text-xs text-zinc-500">To replace this photo, select another file.</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs gap-1.5"
+                >
+                  <ImagePlus className="h-3.5 w-3.5" />
+                  Change Photo
                 </Button>
               </div>
-            )}
-
-            {/* Upload Button */}
-            {!isUploading && uploadedImages.length < MAX_IMAGES && (
-              <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 transition-colors hover:border-zinc-400 hover:bg-zinc-100">
-                <input 
-                  ref={fileInputRef}
-                  type="file" 
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={handleFileChange}
-                  className="hidden" 
-                  disabled={isSubmitting || isUploading}
-                />
-                <ImagePlus className="h-8 w-8 text-zinc-400 mb-2" />
-                <span className="text-sm font-medium text-zinc-600">Click to upload photo</span>
-                <span className="text-xs text-zinc-400 mt-1">JPG, JPEG, PNG, or WEBP up to 5MB</span>
-              </label>
-            )}
-          </section>
-        ) : (
-          <section className="space-y-3 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6">
-            <div className="flex items-start gap-3">
-              <Info className="h-5 w-5 text-zinc-500 shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-semibold text-zinc-900">No Photos Required</h3>
-                <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
-                  Photos are only enabled for items offered for <strong>Sale</strong> or <strong>Donate</strong>. Borrow and Exchange listings do not require or permit photos to keep campus peer requests simple and lightweight.
-                </p>
-              </div>
             </div>
-          </section>
-        )}
+          )}
+
+          {/* In-Flight Upload Card with Cancel Upload Button */}
+          {isUploading && (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 flex flex-col items-center justify-center text-center">
+              <Loader2 className="h-6 w-6 animate-spin text-zinc-700 mb-2" />
+              <p className="text-sm font-semibold text-zinc-900">
+                Uploading photo… {uploadProgress > 0 ? `${uploadProgress}%` : ''}
+              </p>
+              {uploadingFileName && (
+                <p className="text-xs text-zinc-500 mt-0.5 mb-3 truncate max-w-xs">{uploadingFileName}</p>
+              )}
+              {uploadProgress > 0 && (
+                <div className="w-56 bg-zinc-200 rounded-full h-2 mb-3 overflow-hidden">
+                  <div 
+                    className="bg-zinc-900 h-2 rounded-full transition-all duration-150" 
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              )}
+              <Button 
+                type="button" 
+                variant="outline" 
+                size="sm"
+                onClick={handleCancelUpload}
+                className="text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 h-8 font-medium"
+              >
+                Cancel Upload
+              </Button>
+            </div>
+          )}
+
+          {/* Upload Dropzone (when photo is not yet selected and not uploading) */}
+          {!isUploading && !uploadedImage && (
+            <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 transition-colors hover:border-zinc-400 hover:bg-zinc-100">
+              <input 
+                ref={fileInputRef}
+                type="file" 
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleFileChange}
+                className="hidden" 
+                disabled={isSubmitting || isUploading}
+              />
+              <ImagePlus className="h-8 w-8 text-zinc-400 mb-2" />
+              <span className="text-sm font-medium text-zinc-600">Click to upload photo</span>
+              <span className="text-xs text-zinc-400 mt-1">JPG, JPEG, PNG, or WEBP up to 5MB</span>
+            </label>
+          )}
+
+          {/* Hidden input for change photo button */}
+          {!isUploading && uploadedImage && (
+            <input 
+              ref={fileInputRef}
+              type="file" 
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleFileChange}
+              className="hidden" 
+              disabled={isSubmitting || isUploading}
+            />
+          )}
+        </section>
 
         <div className="flex items-center justify-end gap-4">
           <Button type="button" variant="ghost" onClick={() => navigate(-1)} disabled={isSubmitting || isUploading}>

@@ -15,7 +15,8 @@ import {
   Timer,
   Edit3,
   Flag,
-  ShieldAlert
+  ShieldAlert,
+  ImageOff
 } from 'lucide-react';
 import {
   doc,
@@ -521,17 +522,16 @@ export function ListingDetail() {
       <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:gap-12">
         {/* Image Gallery */}
         <div className="relative aspect-square overflow-hidden rounded-3xl bg-zinc-100 border border-zinc-200 flex items-center justify-center">
-          {listing.images && listing.images.length > 0 ? (
+          {listing.images && listing.images.length > 0 && listing.images[0] ? (
             <img
               src={listing.images[0]}
               alt={listing.title}
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex flex-col items-center justify-center p-8 text-center bg-gradient-to-br from-zinc-50 to-zinc-100 h-full w-full">
-              <span className="text-5xl mb-3">{listing.type === 'Borrow' ? '🤝' : '🔄'}</span>
-              <span className="text-base font-semibold uppercase tracking-wider text-zinc-600">{listing.type} Request</span>
-              <p className="text-xs text-zinc-400 mt-2 max-w-xs">Text-only listing — no photos required for peer campus requests.</p>
+            <div className="flex flex-col items-center justify-center p-8 text-center bg-zinc-50 text-zinc-400 h-full w-full select-none">
+              <ImageOff className="h-12 w-12 text-zinc-300 mb-2" />
+              <span className="text-sm font-medium text-zinc-400">No image</span>
             </div>
           )}
           <div className="absolute left-4 top-4 flex gap-2 flex-wrap">
@@ -585,9 +585,11 @@ export function ListingDetail() {
                   {isExpired ? 'Expired' : `Expires ${new Date(listing.expiresAt).toLocaleDateString()}`}
                 </span>
               )}
-              <Badge variant="outline" className="bg-zinc-50 font-medium">
-                {listing.condition}
-              </Badge>
+              {listing.condition && (
+                <Badge variant="outline" className="bg-zinc-50 font-medium">
+                  {listing.condition}
+                </Badge>
+              )}
               <Badge variant="outline" className="bg-zinc-50 font-medium">
                 {listing.category}
               </Badge>

@@ -33,9 +33,9 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
   const [description, setDescription] = useState(listing.description);
   const [price, setPrice] = useState(listing.price !== undefined ? String(listing.price) : '');
   const [category, setCategory] = useState<Category>(listing.category);
-  const [condition, setCondition] = useState<Condition>(listing.condition);
+  const [condition, setCondition] = useState<Condition>(listing.condition || 'Good');
   const [location, setLocation] = useState(listing.location);
-  const [images, setImages] = useState<string[]>(listing.images || []);
+  const [image, setImage] = useState<string | null>(listing.images?.[0] || null);
 
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -50,11 +50,6 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    if (images.length >= 4) {
-      setError('You can upload a maximum of 4 images per listing.');
-      return;
-    }
-
     const file = files[0];
     const validation = validateImageFile(file);
     if (!validation.valid) {
@@ -66,7 +61,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
     setIsUploading(true);
     try {
       const url = await uploadImageToCloudinary(file, { folder: 'studentneed/listings' });
-      setImages(prev => [...prev, url].slice(0, 4));
+      setImage(url);
     } catch (err: any) {
       console.error('Failed to upload image:', err);
       setError('Failed to upload photo. Please try again.');
@@ -76,12 +71,8 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
     }
   };
 
-  const handleRemoveImage = (indexToRemove: number) => {
-    if (listing.type === 'Sale' && images.length <= 1) {
-      setError('Sale listings require at least one photo.');
-      return;
-    }
-    setImages(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  const handleRemoveImage = () => {
+    setImage(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,10 +109,6 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         setError('Please enter a valid price greater than 0.');
         return;
       }
-      if (images.length === 0) {
-        setError('Please provide at least one photo for items on sale.');
-        return;
-      }
     }
 
     setIsSaving(true);
@@ -130,16 +117,16 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         title: trimmedTitle,
         description: trimmedDesc,
         category,
-        condition,
         location: trimmedLoc,
+        images: image ? [image] : [],
       };
+
+      if (listing.type !== 'Borrow') {
+        updates.condition = condition;
+      }
 
       if (listing.type === 'Sale') {
         updates.price = Number(price);
-      }
-
-      if (images.length > 0) {
-        updates.images = images;
       }
 
       // Security guarantee: sellerId, createdAt, expiresAt, and expirationDays
@@ -219,7 +206,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className={`grid ${listing.type !== 'Borrow' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-4`}>
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
                   Category <span className="text-red-500">*</span>
@@ -237,22 +224,24 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  Condition <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={condition}
-                  onChange={(e) => setCondition(e.target.value as Condition)}
-                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
-                >
-                  {CONDITIONS.map((cond) => (
-                    <option key={cond} value={cond}>
-                      {cond}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {listing.type !== 'Borrow' && (
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Condition <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={condition}
+                    onChange={(e) => setCondition(e.target.value as Condition)}
+                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
+                  >
+                    {CONDITIONS.map((cond) => (
+                      <option key={cond} value={cond}>
+                        {cond}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             {listing.type === 'Sale' && (
@@ -300,46 +289,65 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
               />
             </div>
 
-            {/* Images */}
+            {/* Photo (Optional, max 1) */}
             <div>
               <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                Photos ({images.length}/4)
+                Photo <span className="text-zinc-400 font-normal">(Optional, max 1)</span>
               </label>
-              <div className="flex flex-wrap gap-2.5 items-center">
-                {images.map((imgUrl, index) => (
-                  <div key={index} className="relative h-20 w-20 rounded-xl overflow-hidden border border-zinc-200 group">
-                    <img src={imgUrl} alt="listing" className="h-full w-full object-cover" />
+
+              {image ? (
+                <div className="flex items-center gap-3">
+                  <div className="relative h-24 w-24 rounded-xl overflow-hidden border border-zinc-200 bg-zinc-100 shrink-0">
+                    <img src={image} alt="Listing photo" className="h-full w-full object-cover" />
                     <button
                       type="button"
-                      onClick={() => handleRemoveImage(index)}
+                      onClick={handleRemoveImage}
                       className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-1 opacity-90 hover:opacity-100 transition"
-                      title="Remove image"
+                      title="Remove photo"
                     >
                       <X className="h-3 w-3" />
                     </button>
                   </div>
-                ))}
-
-                {images.length < 4 && (
-                  <label className="h-20 w-20 flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 hover:border-zinc-400 bg-zinc-50 cursor-pointer text-zinc-500 hover:text-zinc-700 transition">
-                    {isUploading ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-zinc-500" />
-                    ) : (
-                      <>
-                        <ImagePlus className="h-5 w-5 mb-1" />
-                        <span className="text-[10px] font-medium">Add</span>
-                      </>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="hidden"
-                      onChange={handleImageUpload}
-                      disabled={isUploading}
-                    />
-                  </label>
-                )}
-              </div>
+                  <div className="space-y-1">
+                    <label className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-700 hover:text-zinc-900 cursor-pointer border border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white hover:bg-zinc-50 transition">
+                      <ImagePlus className="h-3.5 w-3.5" />
+                      Change photo
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={handleImageUpload}
+                        disabled={isUploading}
+                      />
+                    </label>
+                    <p className="text-[11px] text-zinc-400">Selecting a new photo will replace this one.</p>
+                  </div>
+                </div>
+              ) : (
+                <label className="h-24 w-24 flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 hover:border-zinc-400 bg-zinc-50 cursor-pointer text-zinc-500 hover:text-zinc-700 transition">
+                  {isUploading ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-zinc-500" />
+                  ) : (
+                    <>
+                      <ImagePlus className="h-5 w-5 mb-1 text-zinc-400" />
+                      <span className="text-[11px] font-medium">Add photo</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                    disabled={isUploading}
+                  />
+                </label>
+              )}
+              {isUploading && (
+                <p className="text-xs text-zinc-500 mt-2 flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-600" />
+                  Uploading photo…
+                </p>
+              )}
             </div>
 
             {/* Security Notice on Protected Fields */}

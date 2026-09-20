@@ -53,7 +53,7 @@ export type Listing = {
   description: string;
   price?: number;
   type: ListingType;
-  condition: Condition;
+  condition?: Condition;
   category: Category;
   location: string;
   sellerId: string;

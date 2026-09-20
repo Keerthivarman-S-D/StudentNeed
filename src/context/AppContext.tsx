@@ -269,13 +269,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               description: data.description || '',
               price: data.price !== undefined ? Number(data.price) : undefined,
               type: data.type || 'Sale',
-              condition: data.condition || 'Good',
+              condition: data.type === 'Borrow' ? undefined : (data.condition || undefined),
               category: data.category || 'Other',
               location: data.location || '',
               sellerId: data.sellerId || '',
-              images: Array.isArray(data.images) && data.images.length > 0
-                ? data.images
-                : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800'],
+              images: Array.isArray(data.images)
+                ? data.images.filter((img): img is string => typeof img === 'string' && img.trim().length > 0)
+                : [],
               status: data.status || 'available',
               expirationDays: data.expirationDays ? Number(data.expirationDays) : 15,
               expiresAt,
@@ -406,8 +406,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const sellerId = auth.currentUser.uid;
     const docRef = doc(collection(db, 'listings'));
 
-    const isBorrowOrExchange = listingInput.type === 'Borrow' || listingInput.type === 'Exchange';
-
     const validDays = [7, 15, 30];
     const durationDays = validDays.includes(Number(listingInput.expirationDays))
       ? Number(listingInput.expirationDays)
@@ -418,27 +416,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const rawImages = Array.isArray(listingInput.images) ? listingInput.images : [];
     const sanitizedImages = rawImages
       .filter((img): img is string => typeof img === 'string' && img.trim().length > 0 && img.startsWith('https://'))
-      .slice(0, 5);
+      .slice(0, 1);
 
     const newListingData: Record<string, any> = {
       title: listingInput.title.trim(),
       description: listingInput.description.trim(),
       type: listingInput.type,
-      condition: listingInput.condition,
       category: listingInput.category,
       location: listingInput.location.trim(),
       sellerId: sellerId, // strictly enforced from authenticated user
-      images: isBorrowOrExchange
-        ? []
-        : (sanitizedImages.length > 0
-            ? sanitizedImages
-            : ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=800']),
+      images: sanitizedImages,
       status: listingInput.status || 'available',
       expirationDays: durationDays,
       expiresAt: expiresAtTimestamp,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
+
+    if (listingInput.type !== 'Borrow' && listingInput.condition) {
+      newListingData.condition = listingInput.condition;
+    }
 
     if (listingInput.price !== undefined && listingInput.price !== null && !isNaN(Number(listingInput.price))) {
       newListingData.price = Number(listingInput.price);
@@ -494,7 +491,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updatePayload.category = updates.category;
     }
 
-    if (updates.condition !== undefined) {
+    if (updates.condition !== undefined && currentListing?.type !== 'Borrow') {
       updatePayload.condition = updates.condition;
     }
 
@@ -512,8 +509,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    if (Array.isArray(updates.images) && updates.images.length > 0) {
-      updatePayload.images = updates.images;
+    if (Array.isArray(updates.images)) {
+      updatePayload.images = updates.images
+        .filter((img): img is string => typeof img === 'string' && img.trim().length > 0 && img.startsWith('https://'))
+        .slice(0, 1);
     }
 
     try {

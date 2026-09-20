@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Heart, MapPin, Clock, Timer } from 'lucide-react';
+import { Heart, MapPin, Clock, Timer, ImageOff } from 'lucide-react';
 import { Listing } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { Badge } from './ui/Badge';
@@ -53,17 +53,16 @@ export function ListingCard({ listing }: { listing: Listing }) {
       className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition-all hover:shadow-md hover:border-zinc-300"
     >
       <div className="relative aspect-square overflow-hidden bg-zinc-100 flex items-center justify-center">
-        {listing.images && listing.images.length > 0 ? (
+        {listing.images && listing.images.length > 0 && listing.images[0] ? (
           <img 
             src={listing.images[0]} 
             alt={listing.title} 
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
-          <div className="flex flex-col items-center justify-center p-6 text-center bg-gradient-to-br from-zinc-50 to-zinc-100 h-full w-full">
-            <span className="text-3xl mb-2">{listing.type === 'Borrow' ? '🤝' : '🔄'}</span>
-            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{listing.type} Request</span>
-            <span className="text-xs text-zinc-400 mt-1 line-clamp-1">{listing.category}</span>
+          <div className="flex flex-col items-center justify-center p-6 text-center bg-zinc-50 text-zinc-400 h-full w-full select-none">
+            <ImageOff className="h-8 w-8 text-zinc-300 mb-1.5" />
+            <span className="text-xs font-medium text-zinc-400">No image</span>
           </div>
         )}
         <button
@@ -131,9 +130,11 @@ export function ListingCard({ listing }: { listing: Listing }) {
               <Clock className="h-3.5 w-3.5" />
               {timeAgo}
             </span>
-            <span className="rounded-md bg-zinc-100 px-2 py-1 font-medium text-zinc-700">
-              {listing.condition}
-            </span>
+            {listing.condition && (
+              <span className="rounded-md bg-zinc-100 px-2 py-1 font-medium text-zinc-700">
+                {listing.condition}
+              </span>
+            )}
           </div>
         </div>
       </div>

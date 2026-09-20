@@ -172,6 +172,125 @@ console.log('\n--- Running StudentNeed Requests Chat & UX Verification Tests ---
   );
 }
 
+// Test 8: Single Photo and Optional Photo in CreateListing.tsx
+{
+  const createListingSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/CreateListing.tsx'), 'utf-8').replace(/\r\n/g, '\n');
+  assert(
+    createListingSrc.includes('const [uploadedImage, setUploadedImage] = useState<string | null>(null);'),
+    'CreateListing tracks a single uploadedImage state instead of an array of images'
+  );
+  assert(
+    !createListingSrc.includes('up to 4 images') && !createListingSrc.includes('MAX_IMAGES = 4'),
+    'CreateListing removed "up to 4 images" and MAX_IMAGES = 4'
+  );
+  assert(
+    createListingSrc.includes('1 photo (up to 5MB)'),
+    'CreateListing indicates single photo limit of 1 photo (up to 5MB)'
+  );
+  assert(
+    !createListingSrc.includes('Sale listings require at least one photo'),
+    'CreateListing does NOT mandate photos for Sale listings (photos are optional)'
+  );
+  assert(
+    createListingSrc.includes('images: finalImages') && createListingSrc.includes('uploadedImage ? [uploadedImage] : [];'),
+    'CreateListing formats images as 0 or 1 item array for database compatibility'
+  );
+}
+
+// Test 9: Borrow Listing Condition Omission in CreateListing.tsx & AppContext
+{
+  const createListingSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/CreateListing.tsx'), 'utf-8').replace(/\r\n/g, '\n');
+  assert(
+    createListingSrc.includes("condition: type === 'Borrow' ? undefined : condition"),
+    'CreateListing omits condition when listing type is Borrow'
+  );
+  assert(
+    createListingSrc.includes("type !== 'Borrow' && ("),
+    'CreateListing hides Condition selector completely when type is Borrow'
+  );
+
+  const appContextSrc = fs.readFileSync(path.join(process.cwd(), 'src/context/AppContext.tsx'), 'utf-8').replace(/\r\n/g, '\n');
+  assert(
+    appContextSrc.includes("listingInput.type !== 'Borrow' && listingInput.condition"),
+    'AppContext omits condition for Borrow listings on addListing'
+  );
+}
+
+// Test 10: Single Photo and Optional Photo in EditListingModal.tsx
+{
+  const editListingSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/EditListingModal.tsx'), 'utf-8').replace(/\r\n/g, '\n');
+  assert(
+    editListingSrc.includes('const [image, setImage] = useState<string | null>(listing.images?.[0] || null);'),
+    'EditListingModal initializes single photo from existing listing images[0]'
+  );
+  assert(
+    !editListingSrc.includes('Sale listings require at least one photo') &&
+    !editListingSrc.includes('Please provide at least one photo for items on sale'),
+    'EditListingModal does NOT require photo for Sale listings'
+  );
+  assert(
+    !editListingSrc.includes('You can upload a maximum of 4 images'),
+    'EditListingModal removed 4 image limit check'
+  );
+  assert(
+    editListingSrc.includes('images: image ? [image] : []'),
+    'EditListingModal submits 0 or 1 image in updates'
+  );
+}
+
+// Test 11: Borrow Condition Handling in EditListingModal.tsx
+{
+  const editListingSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/EditListingModal.tsx'), 'utf-8').replace(/\r\n/g, '\n');
+  assert(
+    editListingSrc.includes("listing.type !== 'Borrow' && ("),
+    'EditListingModal hides Condition selector when listing.type is Borrow'
+  );
+  assert(
+    editListingSrc.includes("if (listing.type !== 'Borrow') {\n        updates.condition = condition;\n      }"),
+    'EditListingModal omits condition in updates when listing.type is Borrow'
+  );
+}
+
+// Test 12: Neutral "No Image" Placeholder & Clean Badges in Cards and Details
+{
+  const listingCardSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/ListingCard.tsx'), 'utf-8');
+  assert(
+    listingCardSrc.includes('<ImageOff className="h-8 w-8 text-zinc-300 mb-1.5" />') &&
+    listingCardSrc.includes('<span className="text-xs font-medium text-zinc-400">No image</span>'),
+    'ListingCard renders neutral "No image" placeholder with ImageOff icon'
+  );
+  assert(
+    listingCardSrc.includes('{listing.condition && ('),
+    'ListingCard only renders condition badge if condition exists'
+  );
+
+  const listingDetailSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/ListingDetail.tsx'), 'utf-8');
+  assert(
+    listingDetailSrc.includes('<ImageOff className="h-12 w-12 text-zinc-300 mb-2" />') &&
+    listingDetailSrc.includes('<span className="text-sm font-medium text-zinc-400">No image</span>'),
+    'ListingDetail renders neutral "No image" placeholder with ImageOff icon'
+  );
+  assert(
+    listingDetailSrc.includes('{listing.condition && ('),
+    'ListingDetail only renders condition badge if condition exists'
+  );
+}
+
+// Test 13: Total Elimination of Hardcoded Unsplash Paper Bag Image Fallbacks
+{
+  const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/context/AppContext.tsx'), 'utf-8');
+  assert(
+    !appSrc.includes('photo-1544816155-12df9643f363'),
+    'AppContext contains no hardcoded Unsplash fallback image URL'
+  );
+
+  const createSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/CreateListing.tsx'), 'utf-8');
+  assert(
+    !createSrc.includes('photo-1544816155-12df9643f363'),
+    'CreateListing contains no hardcoded Unsplash fallback image URL'
+  );
+}
+
 console.log(`\nResults: ${passed} passed, ${failed} failed.\n`);
 if (failed > 0) {
   process.exit(1);
