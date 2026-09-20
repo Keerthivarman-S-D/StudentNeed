@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
@@ -26,8 +26,28 @@ export function CreateRequest() {
     e.preventDefault();
     if (!currentUser || !firebaseUser) return navigate('/login');
     
-    setIsSubmitting(true);
+    // Clear previous error
     setError(null);
+
+    // Form input validation with clear student-friendly guidance
+    if (!title.trim()) {
+      setError('Please specify what item you need.');
+      return;
+    }
+    if (!description.trim()) {
+      setError('Please describe what item you need.');
+      return;
+    }
+    if (!neededBy.trim()) {
+      setError('Please specify when you need this item.');
+      return;
+    }
+    if (!location.trim()) {
+      setError('Please specify your preferred campus meetup location.');
+      return;
+    }
+    
+    setIsSubmitting(true);
     
     try {
       await addRequest({
@@ -49,7 +69,7 @@ export function CreateRequest() {
     } catch (err: any) {
       console.error('Failed to create request:', err);
       setIsSubmitting(false);
-      setError(err.message || 'Failed to post request to Firestore. Please try again.');
+      setError('Could not post request. Please try again.');
     }
   };
 
@@ -154,8 +174,15 @@ export function CreateRequest() {
 
         <div className="flex items-center justify-end gap-4 pt-4 border-t border-zinc-100">
           <Button type="button" variant="ghost" onClick={() => navigate(-1)}>Cancel</Button>
-          <Button type="submit" size="lg" disabled={isSubmitting}>
-            {isSubmitting ? 'Posting to Firestore...' : 'Post Request'}
+          <Button type="submit" size="lg" disabled={isSubmitting} className="min-w-[140px]">
+            {isSubmitting ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Posting your request…
+              </span>
+            ) : (
+              'Post Request'
+            )}
           </Button>
         </div>
       </form>

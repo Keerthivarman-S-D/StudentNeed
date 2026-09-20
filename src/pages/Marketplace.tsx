@@ -199,7 +199,7 @@ export function Marketplace() {
           {listingsLoading ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Loader2 className="h-8 w-8 animate-spin text-zinc-600 mb-3" />
-              <p className="text-sm text-zinc-500 font-medium">Fetching real-time listings from Firestore...</p>
+              <p className="text-sm text-zinc-500 font-medium">Loading campus listings…</p>
             </div>
           ) : listingsError ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">

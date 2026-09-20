@@ -350,7 +350,17 @@ service cloud.firestore {
     }
 
     match /chats/{chatId} {
-      allow read: if isAuthorizedStudent() && (request.auth.uid in resource.data.participants || isAdmin() || isInternalSystem());
+      allow get: if isAuthorizedStudent() && (
+        resource == null ||
+        request.auth.uid in resource.data.participants ||
+        isAdmin() ||
+        isInternalSystem()
+      );
+      allow list: if isAuthorizedStudent() && (
+        request.auth.uid in resource.data.participants ||
+        isAdmin() ||
+        isInternalSystem()
+      );
       allow update: if isAuthorizedStudent() &&
                        request.auth.uid in resource.data.participants &&
                        request.resource.data.participants == resource.data.participants;

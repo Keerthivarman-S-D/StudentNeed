@@ -71,20 +71,48 @@ export function Requests() {
 
     setStartingChatId(request.id);
     try {
+      // 1. Immediately reuse conversation if already in user state
+      const existingInState = userChats.find(
+        (c) => c.requestId === request.id && c.participants.includes(request.requesterId)
+      );
+      if (existingInState) {
+        navigate(`/chat/${existingInState.id}`);
+        return;
+      }
+
+      // 2. Deterministic ID ensures no duplicate conversations from repeated clicks
       const chatId = `req_${request.id}_${[currentUserId, request.requesterId].sort().join('_')}`;
       const chatDocRef = doc(db, 'chats', chatId);
 
-      const chatDocSnap = await getDoc(chatDocRef);
-      if (!chatDocSnap.exists()) {
-        await setDoc(chatDocRef, {
-          participants: [currentUserId, request.requesterId],
-          requestId: request.id,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+      // 3. Try to get doc or create if it does not exist yet
+      try {
+        const chatDocSnap = await getDoc(chatDocRef);
+        if (!chatDocSnap.exists()) {
+          await setDoc(chatDocRef, {
+            participants: [currentUserId, request.requesterId],
+            requestId: request.id,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+        navigate(`/chat/${chatId}`);
+      } catch (checkErr) {
+        // Fallback: If getDoc fails due to security rules evaluation on null resource,
+        // create the conversation via the authorized chat create rule
+        console.warn('Initial chat check notice, initializing conversation:', checkErr);
+        try {
+          await setDoc(chatDocRef, {
+            participants: [currentUserId, request.requesterId],
+            requestId: request.id,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          navigate(`/chat/${chatId}`);
+        } catch (createErr) {
+          console.error('Failed to initialize request chat:', createErr);
+          setChatError('Could not start conversation. Please try again.');
+        }
       }
-
-      navigate(`/chat/${chatId}`);
     } catch (err: unknown) {
       console.error('Failed to initialize request chat:', err);
       setChatError('Could not start conversation. Please try again.');
@@ -186,7 +214,7 @@ export function Requests() {
       {requestsLoading ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Loader2 className="h-8 w-8 animate-spin text-zinc-600 mb-3" />
-          <p className="text-sm text-zinc-500 font-medium">Fetching real-time student requests from Firestore...</p>
+          <p className="text-sm text-zinc-500 font-medium">Loading campus requests…</p>
         </div>
       ) : requestsError ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">

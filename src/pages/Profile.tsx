@@ -245,8 +245,8 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
       });
       setImageMessage({ type: 'success', text: 'Profile image updated successfully.' });
     } catch (err: any) {
-      console.error('Failed to upload avatar to Cloudinary:', err);
-      setImageMessage({ type: 'error', text: err.message || 'Failed to upload image to Cloudinary.' });
+      console.error('Failed to upload avatar:', err);
+      setImageMessage({ type: 'error', text: 'Failed to upload photo. Please try again.' });
     } finally {
       setIsUploadingImage(false);
       if (e.target) e.target.value = ''; // Reset input
@@ -1002,7 +1002,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
             </div>
 
             <p className="text-sm text-zinc-600 mb-4 leading-relaxed">
-              Deleting your account will permanently purge your student profile, all active and expired listings, remove uploaded photos from Cloudinary, and cancel any pending reservations.
+              Deleting your account will permanently purge your student profile, all active and expired listings, remove uploaded photos, and cancel any pending reservations.
             </p>
 
             {deleteAccountError && (

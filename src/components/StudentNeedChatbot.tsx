@@ -112,7 +112,7 @@ export function StudentNeedChatbot() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data.error || `Server responded with status ${res.status}`);
+        throw new Error(data.error || 'The campus assistant is temporarily unavailable.');
       }
 
       const botReply = data.reply || "I'm sorry, I couldn't process that response. Please try asking in a different way.";
@@ -128,7 +128,7 @@ export function StudentNeedChatbot() {
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err: any) {
       console.warn('[Campus Assistant Error]:', err?.message || err);
-      setError(err?.message || 'Unable to connect to the campus assistant. Please try again.');
+      setError('The campus assistant is temporarily unavailable. Please try again.');
     } finally {
       setIsLoading(false);
     }

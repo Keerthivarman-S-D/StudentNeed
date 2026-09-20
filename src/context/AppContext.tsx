@@ -296,7 +296,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         (err) => {
           console.error('Error listening to listings:', err);
           setListingsLoading(false);
-          setListingsError(err.message || 'Failed to load live marketplace listings.');
+          setListingsError('Unable to load campus listings right now. Please refresh.');
           try {
             handleFirestoreError(err, OperationType.LIST, 'listings');
           } catch {
@@ -307,7 +307,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       console.error('Failed to initialize listings query:', err);
       setListingsLoading(false);
-      setListingsError(err.message || 'Failed to initialize listings.');
+      setListingsError('Unable to load campus listings right now. Please refresh.');
     }
 
     return () => {
@@ -379,7 +379,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         (err) => {
           console.error('Error listening to requests:', err);
           setRequestsLoading(false);
-          setRequestsError(err.message || 'Failed to load live student requests.');
+          setRequestsError('Unable to load campus requests right now. Please refresh.');
           try {
             handleFirestoreError(err, OperationType.LIST, 'requests');
           } catch {
@@ -390,7 +390,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       console.error('Failed to initialize requests query:', err);
       setRequestsLoading(false);
-      setRequestsError(err.message || 'Failed to initialize requests.');
+      setRequestsError('Unable to load campus requests right now. Please refresh.');
     }
 
     return () => {

@@ -116,7 +116,7 @@ export function Login() {
           const data = JSON.parse(text);
           errMessage = data.error || errMessage;
         } catch (e) {
-          errMessage = `Server error ${res.status}`;
+          errMessage = "Unable to send verification code. Please try again.";
         }
         throw new Error(errMessage);
       }
@@ -152,7 +152,7 @@ export function Login() {
           const data = JSON.parse(text);
           errMessage = data.error || errMessage;
         } catch (e) {
-          errMessage = `Server error ${res.status}`;
+          errMessage = "Unable to verify code. Please try again.";
         }
         throw new Error(errMessage);
       }

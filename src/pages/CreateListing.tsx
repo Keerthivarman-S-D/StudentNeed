@@ -136,7 +136,7 @@ export function CreateListing() {
           return;
         }
         console.error('Image upload failed:', err);
-        setError(err.message || 'Failed to upload photo to Cloudinary.');
+        setError('Failed to upload photo. Please try again.');
         break;
       } finally {
         abortControllerRef.current = null;
@@ -207,7 +207,7 @@ export function CreateListing() {
     
     setIsSubmitting(true);
     setError(null);
-    setStatusMessage('Publishing listing to Firestore...');
+    setStatusMessage('Publishing your listing…');
     
     try {
       const listingId = await addListing({
@@ -218,10 +218,9 @@ export function CreateListing() {
         condition,
         category,
         location: location.trim(),
-        sellerId: firebaseUser.uid,
         images: finalImages,
         status: 'available',
-        expirationDays,
+        expirationDays: expirationDays,
       });
       
       setIsSubmitting(false);
@@ -233,7 +232,7 @@ export function CreateListing() {
     } catch (err: any) {
       console.error('Failed to create listing:', err);
       setIsSubmitting(false);
-      setError(err.message || 'Failed to publish listing. Please try again.');
+      setError('Could not publish listing. Please try again.');
     }
   };
 

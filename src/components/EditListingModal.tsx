@@ -68,7 +68,8 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
       const url = await uploadImageToCloudinary(file, { folder: 'studentneed/listings' });
       setImages(prev => [...prev, url].slice(0, 4));
     } catch (err: any) {
-      setError(err?.message || 'Failed to upload image to Cloudinary.');
+      console.error('Failed to upload image:', err);
+      setError('Failed to upload photo. Please try again.');
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -150,7 +151,8 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         onClose();
       }, 700);
     } catch (err: any) {
-      setError(err?.message || 'Failed to update listing. Please verify permissions.');
+      console.error('Failed to update listing:', err);
+      setError('Failed to update listing. Please try again.');
     } finally {
       setIsSaving(false);
     }
