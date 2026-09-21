@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { LaunchHeader } from '../components/LaunchHeader';
 import { LaunchFooter } from '../components/LaunchFooter';
+import { StudentNeedIcon } from '../components/StudentNeedLogo';
 
 export function Launch() {
   const scrollToSection = (sectionId: string) => {
@@ -754,11 +755,11 @@ export function Launch() {
 
             <div className="max-w-3xl mx-auto rounded-2xl border border-zinc-200 bg-zinc-50 p-8 sm:p-10 shadow-xs space-y-8">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-900 text-white font-bold text-lg">
-                  S
-                </div>
+                <StudentNeedIcon size="xl" />
                 <div>
-                  <h3 className="text-lg font-bold text-zinc-900">StudentNeed</h3>
+                  <h3 className="text-lg font-bold tracking-tight text-zinc-900">
+                    Student<span className="text-[#19bf96]">Need</span>
+                  </h3>
                   <p className="text-xs text-zinc-500">Campus marketplace for students</p>
                 </div>
               </div>

@@ -5,6 +5,7 @@ import { collection, query, where, limit, onSnapshot } from 'firebase/firestore'
 import { db } from '../lib/firebase';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
+import { StudentNeedLogo } from './StudentNeedLogo';
 
 export function Navbar() {
   const { currentUser } = useAuth();
@@ -65,11 +66,8 @@ export function Navbar() {
       <header className="sticky top-0 z-50 hidden border-b border-zinc-200 bg-white/80 backdrop-blur-md md:block">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-8">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-white font-bold text-xl leading-none">
-                S
-              </div>
-              <span className="text-xl font-bold tracking-tight text-zinc-900">StudentNeed</span>
+            <Link to="/" className="flex items-center">
+              <StudentNeedLogo size="md" />
             </Link>
             
             <nav className="flex items-center gap-1">

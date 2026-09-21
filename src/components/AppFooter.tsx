@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { StudentNeedLogo } from './StudentNeedLogo';
 
 export function AppFooter() {
   return (
@@ -7,12 +8,7 @@ export function AppFooter() {
         <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
           {/* Brand */}
           <div className="col-span-2 md:col-span-1 space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-zinc-900 text-white font-bold text-xs">
-                S
-              </div>
-              <span className="font-bold text-zinc-900 tracking-tight text-sm">StudentNeed</span>
-            </div>
+            <StudentNeedLogo size="sm" />
             <p className="text-xs text-zinc-500">
               Campus marketplace for Anna University students.
             </p>

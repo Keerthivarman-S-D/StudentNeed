@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, ArrowRight } from 'lucide-react';
+import { StudentNeedLogo } from './StudentNeedLogo';
 
 export function LaunchHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -24,15 +25,10 @@ export function LaunchHeader() {
         {/* Left: Branding */}
         <Link 
           to="/" 
-          className="flex items-center gap-2.5 group focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 rounded-lg"
+          className="flex items-center group focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 rounded-lg"
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         >
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white font-bold text-lg shadow-sm group-hover:scale-105 transition-transform">
-            S
-          </div>
-          <span className="text-xl font-bold tracking-tight text-zinc-900">
-            StudentNeed
-          </span>
+          <StudentNeedLogo size="lg" iconClassName="group-hover:scale-105" />
         </Link>
 
         {/* Center / Desktop Navigation */}

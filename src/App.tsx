@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { StudentNeedChatbot } from './components/StudentNeedChatbot';
+import { StudentNeedIcon } from './components/StudentNeedLogo';
 
 // Page Imports
 import { Launch } from './pages/Launch';
@@ -28,12 +29,10 @@ function AppContent() {
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50 space-y-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-900 text-white font-bold text-2xl shadow-sm">
-          S
-        </div>
+        <StudentNeedIcon size="2xl" />
         <div className="flex items-center gap-2 text-sm font-medium text-zinc-500">
-          <div className="h-4 w-4 rounded-full border-2 border-zinc-900 border-t-transparent animate-spin" />
-          <span>Loading StudentNeed...</span>
+          <div className="h-4 w-4 rounded-full border-2 border-[#19bf96] border-t-transparent animate-spin" />
+          <span>Loading <strong className="font-semibold text-zinc-900">Student<span className="text-[#19bf96]">Need</span></strong>...</span>
         </div>
       </div>
     );

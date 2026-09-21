@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
+import { StudentNeedLogo } from './StudentNeedLogo';
 
 export function LaunchFooter() {
   const scrollToSection = (sectionId: string) => {
@@ -15,11 +16,8 @@ export function LaunchFooter() {
         <div className="grid grid-cols-2 gap-8 md:grid-cols-5">
           {/* Brand Col */}
           <div className="col-span-2 space-y-4">
-            <Link to="/" className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-white font-bold text-base">
-                S
-              </div>
-              <span className="text-xl font-bold tracking-tight text-zinc-900">StudentNeed</span>
+            <Link to="/" className="flex items-center">
+              <StudentNeedLogo size="md" />
             </Link>
             <p className="max-w-sm text-sm text-zinc-500 leading-relaxed">
               Campus marketplace built for students. Connect with peers to find, exchange, and request essential items on campus.
