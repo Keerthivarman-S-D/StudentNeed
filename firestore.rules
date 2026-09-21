@@ -285,7 +285,14 @@ service cloud.firestore {
           request.resource.data.listingId == resource.data.listingId &&
           request.resource.data.chatId == resource.data.chatId &&
           resource.data.status == 'pending' &&
-          (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected')
+          (
+            request.resource.data.status == 'rejected' ||
+            (
+              request.resource.data.status == 'accepted' &&
+              exists(/databases/$(database)/documents/listings/$(resource.data.listingId)) &&
+              get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status in ['available', 'active']
+            )
+          )
         ) ||
         (
           // Buyer re-request rejected reservation

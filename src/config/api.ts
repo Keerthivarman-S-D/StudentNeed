@@ -91,6 +91,9 @@ export const ADMIN_ENDPOINTS = {
 };
 
 export const RESERVATION_ENDPOINTS = {
+  get accept() {
+    return `${getApiBaseUrl()}/api/reservations/accept`;
+  },
   get complete() {
     return `${getApiBaseUrl()}/api/reservations/complete`;
   },

@@ -260,7 +260,7 @@ export function CreateListing() {
             {types.map(t => (
               <label 
                 key={t}
-                className={`flex cursor-pointer items-center justify-center rounded-xl border p-4 text-sm font-medium transition-colors ${
+                className={`flex cursor-pointer items-center justify-center rounded-xl border p-4 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-brand-teal focus-within:ring-offset-2 ${
                   type === t 
                     ? 'border-brand-teal bg-brand-teal text-white shadow-xs' 
                     : 'border-brand-border bg-white text-zinc-600 hover:bg-slate-50'
@@ -269,7 +269,7 @@ export function CreateListing() {
                 <input 
                   type="radio" 
                   name="type" 
-                  className="hidden" 
+                  className="sr-only" 
                   checked={type === t} 
                   onChange={() => handleTypeChange(t)} 
                 />

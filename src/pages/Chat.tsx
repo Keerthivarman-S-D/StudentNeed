@@ -18,6 +18,7 @@ import {
 import { db, auth } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { Chat, ChatMessage, User, Listing, Reservation, CAMPUS_MEETUP_LOCATIONS, CampusMeetupLocation, ItemRequest } from '../types';
+import { RESERVATION_ENDPOINTS } from '../config/api';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
@@ -453,23 +454,43 @@ export function ChatPage() {
     setIsActionLoading(targetStatus === 'accepted' ? 'accepting' : 'rejecting');
 
     try {
-      const resRef = doc(db, 'reservations', reservation.id);
-      await updateDoc(resRef, {
-        status: targetStatus,
-        updatedAt: serverTimestamp(),
-      });
+      if (targetStatus === 'accepted') {
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          throw new Error('You must be signed in to accept a reservation.');
+        }
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch(RESERVATION_ENDPOINTS.accept, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ reservationId: reservation.id }),
+        });
+        const resData = await response.json();
+        if (!response.ok) {
+          throw new Error(resData?.error || 'Failed to accept reservation.');
+        }
+      } else {
+        const resRef = doc(db, 'reservations', reservation.id);
+        await updateDoc(resRef, {
+          status: targetStatus,
+          updatedAt: serverTimestamp(),
+        });
+
+        // Synchronize listing status to available if rejected
+        if (listing?.id && currentUserId === listing.sellerId) {
+          await updateDoc(doc(db, 'listings', listing.id), {
+            status: 'available',
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
 
       // Also update chat timestamp
       if (chat?.id) {
         await updateDoc(doc(db, 'chats', chat.id), {
-          updatedAt: serverTimestamp(),
-        });
-      }
-
-      // Synchronize listing status: 'reserved' when accepted, 'available' when rejected
-      if (listing?.id && currentUserId === listing.sellerId) {
-        await updateDoc(doc(db, 'listings', listing.id), {
-          status: targetStatus === 'accepted' ? 'reserved' : 'available',
           updatedAt: serverTimestamp(),
         });
       }
@@ -482,9 +503,9 @@ export function ChatPage() {
     } catch (err: any) {
       console.error(`Error updating reservation to ${targetStatus}:`, err);
       setReservationError(
-        targetStatus === 'accepted'
+        err.message || (targetStatus === 'accepted'
           ? "Couldn't accept the reservation. Please try again."
-          : "Couldn't reject the reservation. Please try again."
+          : "Couldn't reject the reservation. Please try again.")
       );
     } finally {
       setIsActionLoading(null);

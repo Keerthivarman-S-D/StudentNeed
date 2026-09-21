@@ -99,9 +99,19 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000).unref();
 
+// In-memory development fallback store for temporary OTP records when system token is not configured
+const devOtpStore = new Map<string, OtpFirestoreDoc>();
+
 async function getOtpRecord(emailDocId: string): Promise<OtpFirestoreDoc | null> {
   try {
     const token = await getServerToken();
+    if (!token) {
+      if (process.env.NODE_ENV !== "production") {
+        const localDoc = devOtpStore.get(emailDocId);
+        return localDoc ? { ...localDoc } : null;
+      }
+      return null;
+    }
     const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/temp_otps/${emailDocId}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
@@ -130,6 +140,13 @@ async function getOtpRecord(emailDocId: string): Promise<OtpFirestoreDoc | null>
 
 async function saveOtpRecord(emailDocId: string, record: OtpFirestoreDoc): Promise<void> {
   const token = await getServerToken();
+  if (!token) {
+    if (process.env.NODE_ENV !== "production") {
+      devOtpStore.set(emailDocId, { ...record });
+      return;
+    }
+    throw new Error("System authentication token is unavailable in production environment.");
+  }
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/temp_otps/${emailDocId}`;
   const fields: Record<string, any> = {
     hash: { stringValue: record.hash },
@@ -159,6 +176,13 @@ async function saveOtpRecord(emailDocId: string, record: OtpFirestoreDoc): Promi
 async function deleteOtpRecord(emailDocId: string): Promise<void> {
   try {
     const token = await getServerToken();
+    if (!token) {
+      if (process.env.NODE_ENV !== "production") {
+        devOtpStore.delete(emailDocId);
+        return;
+      }
+      return;
+    }
     const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/temp_otps/${emailDocId}`;
     await fetch(url, {
       method: "DELETE",
@@ -345,7 +369,29 @@ async function startServer() {
   };
 
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+    const missingProductionSecrets: string[] = [];
+    if (process.env.NODE_ENV === "production") {
+      if (!process.env.INTERNAL_SYSTEM_PASSWORD?.trim()) missingProductionSecrets.push("INTERNAL_SYSTEM_PASSWORD");
+      if (!process.env.INTERNAL_SYSTEM_EMAIL?.trim()) missingProductionSecrets.push("INTERNAL_SYSTEM_EMAIL");
+      if (!process.env.RESEND_API_KEY?.trim()) missingProductionSecrets.push("RESEND_API_KEY");
+      if (!process.env.CLOUDINARY_API_SECRET?.trim() && !process.env.CLOUDINARY_SECRET?.trim() && !process.env.CLOUDINARY_URL) {
+        missingProductionSecrets.push("CLOUDINARY_API_SECRET");
+      }
+    }
+
+    if (missingProductionSecrets.length > 0) {
+      return res.status(503).json({
+        status: "misconfigured",
+        missingConfig: missingProductionSecrets,
+        environment: process.env.NODE_ENV || "development",
+      });
+    }
+
+    res.json({
+      status: "healthy",
+      environment: process.env.NODE_ENV || "development",
+      uptime: Math.round(process.uptime()),
+    });
   });
 
   // --- StudentNeed Campus Assistant & Knowledge Base ---
@@ -542,12 +588,12 @@ CORE PRODUCT KNOWLEDGE & RULES:
     }
   });
 
-  // 1. Send OTP (Rate-limited via trusted req.ip)
+  // 1. Send OTP (Rate-limited via trusted req.ip and email address)
   app.post("/api/auth/send-otp", async (req, res) => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkIpRateLimit(`send-otp:${clientIp}`, 10, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many verification requests from this IP address. Please wait 10 minutes." });
+      if (!checkIpRateLimit(`send-otp:ip:${clientIp}`, 25, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many verification requests from this network. Please wait 10 minutes." });
       }
 
       const { email } = req.body;
@@ -561,6 +607,10 @@ CORE PRODUCT KNOWLEDGE & RULES:
 
       if (!normalizedEmail.endsWith(allowedDomain)) {
         return res.status(403).json({ error: "Please use your official college email address." });
+      }
+
+      if (!checkIpRateLimit(`send-otp:email:${normalizedEmail}`, 5, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many verification requests for this email address. Please wait 10 minutes." });
       }
 
       const emailDocId = crypto.createHash("sha256").update(normalizedEmail).digest("hex");
@@ -633,12 +683,12 @@ CORE PRODUCT KNOWLEDGE & RULES:
     }
   });
 
-  // 2. Verify OTP (Rate-limited via trusted req.ip)
+  // 2. Verify OTP (Rate-limited via trusted req.ip and email target)
   app.post("/api/auth/verify-otp", async (req, res) => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkIpRateLimit(`verify-otp:${clientIp}`, 20, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many verification attempts from this IP address. Please wait 10 minutes." });
+      if (!checkIpRateLimit(`verify-otp:ip:${clientIp}`, 40, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many verification attempts from this network. Please wait 10 minutes." });
       }
 
       const { email, otp } = req.body;
@@ -647,6 +697,9 @@ CORE PRODUCT KNOWLEDGE & RULES:
       }
 
       const normalizedEmail = email.toLowerCase().trim();
+      if (!checkIpRateLimit(`verify-otp:email:${normalizedEmail}`, 10, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many verification attempts for this account. Please wait 10 minutes." });
+      }
       const emailDocId = crypto.createHash("sha256").update(normalizedEmail).digest("hex");
       const data = await getOtpRecord(emailDocId);
 
@@ -1125,7 +1178,160 @@ CORE PRODUCT KNOWLEDGE & RULES:
     }
   });
 
-  // 6. Authorized Reservation Completion & Listing Status Synchronization
+  // 6. Atomic Reservation Acceptance & Listing Status Synchronization
+  app.post("/api/reservations/accept", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`accept-res:${clientIp}`, 20, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many acceptance requests. Please wait a few minutes." });
+      }
+
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid or expired authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const { reservationId } = req.body;
+      if (!reservationId || typeof reservationId !== "string") {
+        return res.status(400).json({ error: "reservationId is required." });
+      }
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      // 1. Fetch reservation document
+      const resUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/reservations/${reservationId}`;
+      const resDocResponse = await fetch(resUrl, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (resDocResponse.status === 404) {
+        return res.status(404).json({ error: "Reservation not found." });
+      }
+      const resJson = await resDocResponse.json();
+      const fields = resJson.fields || {};
+      const sellerId = fields.sellerId?.stringValue;
+      const listingId = fields.listingId?.stringValue;
+      const currentStatus = fields.status?.stringValue;
+
+      // Verify caller is the seller
+      if (callerUid !== sellerId) {
+        return res.status(403).json({ error: "Only the seller can accept a reservation request." });
+      }
+
+      // Verify reservation is pending
+      if (currentStatus !== "pending") {
+        return res.status(400).json({ error: `Cannot accept reservation from '${currentStatus}' status. Must be 'pending'.` });
+      }
+
+      if (!listingId) {
+        return res.status(400).json({ error: "Reservation is missing listingId." });
+      }
+
+      // 2. Fetch associated listing document
+      const listingUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/listings/${listingId}`;
+      const listingRes = await fetch(listingUrl, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (!listingRes.ok) {
+        return res.status(404).json({ error: "Associated listing not found." });
+      }
+      const listingJson = await listingRes.json();
+      const listingFields = listingJson.fields || {};
+      const listingSellerId = listingFields.sellerId?.stringValue;
+      const listingStatus = listingFields.status?.stringValue;
+
+      if (listingSellerId !== callerUid) {
+        return res.status(403).json({ error: "Reservation seller does not match listing owner." });
+      }
+
+      // 3. STRICT ATOMIC CHECK: Listing MUST be available or active
+      if (listingStatus !== "available" && listingStatus !== "active") {
+        return res.status(409).json({
+          error: `Cannot accept reservation: this listing is already '${listingStatus}' by another reservation.`,
+          listingStatus,
+        });
+      }
+
+      const nowIso = new Date().toISOString();
+
+      // 4. Atomic Commit with write preconditions to prevent multi-acceptance race conditions
+      const commitUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents:commit`;
+      const commitPayload = {
+        writes: [
+          {
+            updateMask: { fieldPaths: ["status", "updatedAt"] },
+            update: {
+              name: listingJson.name,
+              fields: {
+                ...listingFields,
+                status: { stringValue: "reserved" },
+                updatedAt: { timestampValue: nowIso },
+              },
+            },
+            currentDocument: { updateTime: listingJson.updateTime },
+          },
+          {
+            updateMask: { fieldPaths: ["status", "updatedAt", "acceptedAt", "acceptedBy"] },
+            update: {
+              name: resJson.name,
+              fields: {
+                ...fields,
+                status: { stringValue: "accepted" },
+                updatedAt: { timestampValue: nowIso },
+                acceptedAt: { timestampValue: nowIso },
+                acceptedBy: { stringValue: callerUid },
+              },
+            },
+            currentDocument: { updateTime: resJson.updateTime },
+          },
+        ],
+      };
+
+      const commitRes = await fetch(commitUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${effectiveToken}`,
+        },
+        body: JSON.stringify(commitPayload),
+      });
+
+      if (!commitRes.ok) {
+        const commitErr = await commitRes.json().catch(() => ({}));
+        if (commitRes.status === 409 || commitRes.status === 412 || commitErr?.error?.status === "ABORTED" || commitErr?.error?.status === "FAILED_PRECONDITION") {
+          return res.status(409).json({
+            error: "Concurrent reservation conflict detected: another reservation or status change was processed first.",
+          });
+        }
+        console.error("Atomic accept commit error:", commitErr);
+        return res.status(commitRes.status || 500).json({ error: "Failed to atomically accept reservation." });
+      }
+
+      return res.json({
+        message: "Reservation successfully accepted. Listing is now reserved.",
+        reservationId,
+        listingId,
+        status: "accepted",
+      });
+    } catch (err: any) {
+      console.error("Accept reservation error:", err);
+      return res.status(500).json({ error: "Internal server error accepting reservation." });
+    }
+  });
+
+  // 7. Authorized Reservation Completion & Listing Status Synchronization
   app.post("/api/reservations/complete", async (req, res) => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
@@ -1715,7 +1921,67 @@ CORE PRODUCT KNOWLEDGE & RULES:
       }
       const { apiKeyVal, apiSecret, cloudName } = getCloudinaryConfig();
 
-      // 2. Query and delete all user listings and their Cloudinary assets
+      // 2. Query and delete all user requests
+      const requestDocs = await fetchFirestoreCollection(systemToken, "requests", 300);
+      for (const reqDoc of requestDocs) {
+        const fields = reqDoc.fields || {};
+        if (fields.requesterId?.stringValue === uid) {
+          await fetch(`https://firestore.googleapis.com/v1/${reqDoc.name}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          });
+        }
+      }
+
+      // 3. Process and cancel all active reservations involving this user
+      const reservationDocs = await fetchFirestoreCollection(systemToken, "reservations", 300);
+      for (const resDoc of reservationDocs) {
+        const fields = resDoc.fields || {};
+        const buyerId = fields.buyerId?.stringValue;
+        const sellerId = fields.sellerId?.stringValue;
+        const status = fields.status?.stringValue;
+        const listingId = fields.listingId?.stringValue;
+
+        if (buyerId === uid || sellerId === uid) {
+          if (status === "pending" || status === "accepted") {
+            const patchUrl = `https://firestore.googleapis.com/v1/${resDoc.name}?updateMask.fieldPaths=status&updateMask.fieldPaths=cancelReason&updateMask.fieldPaths=updatedAt`;
+            await fetch(patchUrl, {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${systemToken}`,
+              },
+              body: JSON.stringify({
+                fields: {
+                  status: { stringValue: "cancelled" },
+                  cancelReason: { stringValue: buyerId === uid ? "Buyer account deleted" : "Seller account deleted" },
+                  updatedAt: { timestampValue: new Date().toISOString() },
+                },
+              }),
+            });
+
+            // If buyer deleted account while reservation was accepted, release listing back to available
+            if (buyerId === uid && status === "accepted" && listingId) {
+              const listingUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/listings/${listingId}?updateMask.fieldPaths=status&updateMask.fieldPaths=updatedAt`;
+              await fetch(listingUrl, {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${systemToken}`,
+                },
+                body: JSON.stringify({
+                  fields: {
+                    status: { stringValue: "available" },
+                    updatedAt: { timestampValue: new Date().toISOString() },
+                  },
+                }),
+              });
+            }
+          }
+        }
+      }
+
+      // 4. Query and delete all user listings and their Cloudinary assets
       const documents = await fetchFirestoreListings(systemToken, 300);
       for (const doc of documents) {
           const fields = doc.fields || {};

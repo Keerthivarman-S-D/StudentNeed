@@ -989,14 +989,14 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
 
       {/* Delete Account Confirmation Modal */}
       {showDeleteAccountModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <div className="flex items-center gap-3 text-red-600 mb-4">
               <div className="p-3 bg-red-100 rounded-xl">
                 <AlertCircle className="h-6 w-6" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-zinc-900">Delete Account?</h3>
+                <h3 id="delete-account-title" className="text-lg font-bold text-zinc-900">Delete Account?</h3>
                 <p className="text-xs text-zinc-500">This action cannot be undone.</p>
               </div>
             </div>

@@ -93,6 +93,7 @@ export function Navbar() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-brand-muted" />
               <input
                 type="text"
+                aria-label="Search campus items"
                 placeholder="Search campus..."
                 className="h-9 w-full rounded-full border border-brand-border bg-zinc-50 pl-9 pr-4 text-sm text-brand-charcoal outline-none transition-all placeholder:text-brand-muted focus:border-brand-teal focus:bg-white focus:ring-2 focus:ring-brand-teal/20"
               />
@@ -153,7 +154,7 @@ export function Navbar() {
             <Search className="h-5 w-5" />
             <span className="text-[10px] font-medium">Explore</span>
           </Link>
-          <Link to="/create-listing" className="group -mt-6 flex flex-col items-center p-2 text-brand-charcoal">
+          <Link to="/create-listing" aria-label="Post Item" className="group -mt-6 flex flex-col items-center p-2 text-brand-charcoal">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-teal text-white shadow-lg shadow-brand-teal/30 transition-transform active:scale-95 hover:bg-brand-teal-hover">
               <Plus className="h-6 w-6" />
             </div>
