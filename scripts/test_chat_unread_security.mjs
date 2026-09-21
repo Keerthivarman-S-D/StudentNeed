@@ -53,10 +53,14 @@ export function calculateUnreadMessages(messages, currentUserId, lastReadTimesta
 }
 
 async function runSuite() {
-  console.log('[Setup] Authenticating test accounts...');
-  const studentA = await authUser('student_a_test@student.annauniv.edu', 'P@ssw0rd12345!');
-  const studentB = await authUser('student_b_test@student.annauniv.edu', 'P@ssw0rd12345!');
-  const studentC = await authUser('student_c_test@student.annauniv.edu', 'P@ssw0rd12345!');
+  const TEST_PASSWORD = process.env.TEST_STUDENT_PASSWORD || '';
+  if (!TEST_PASSWORD) {
+    console.error('❌ [MISSING CREDENTIALS] TEST_STUDENT_PASSWORD environment variable is required.');
+    process.exit(1);
+  }
+  const studentA = await authUser('student_a_test@student.annauniv.edu', TEST_PASSWORD);
+  const studentB = await authUser('student_b_test@student.annauniv.edu', TEST_PASSWORD);
+  const studentC = await authUser('student_c_test@student.annauniv.edu', TEST_PASSWORD);
 
   console.log(`Student A: ${studentA.localId}`);
   console.log(`Student B: ${studentB.localId}`);

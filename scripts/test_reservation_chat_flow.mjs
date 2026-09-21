@@ -36,10 +36,15 @@ async function runLiveE2ETest() {
   console.log('  Live E2E Verification: Reservation Authorization & Chat Flow ');
   console.log('===============================================================\n');
 
+  const TEST_PASSWORD = process.env.TEST_STUDENT_PASSWORD || '';
+  if (!TEST_PASSWORD) {
+    console.error('❌ [MISSING CREDENTIALS] TEST_STUDENT_PASSWORD environment variable is required.');
+    process.exit(1);
+  }
   // Authenticate Seller (Student A) and Buyer (Student B)
   console.log('[Setup] Authenticating test accounts...');
-  const seller = await getOrAuthUser('student_a_test@student.annauniv.edu', 'P@ssw0rd12345!');
-  const buyer = await getOrAuthUser('student_b_test@student.annauniv.edu', 'P@ssw0rd12345!');
+  const seller = await getOrAuthUser('student_a_test@student.annauniv.edu', TEST_PASSWORD);
+  const buyer = await getOrAuthUser('student_b_test@student.annauniv.edu', TEST_PASSWORD);
   console.log(`[Setup] Seller UID: ${seller.localId}`);
   console.log(`[Setup] Buyer UID:  ${buyer.localId}\n`);
 

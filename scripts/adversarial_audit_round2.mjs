@@ -55,12 +55,17 @@ async function runAdversarialSuite() {
   console.log('   StudentNeed Round 2 — Exhaustive Adversarial Security Audit  ');
   console.log('================================================================\n');
 
+  const TEST_PASSWORD = process.env.TEST_STUDENT_PASSWORD || '';
+  if (!TEST_PASSWORD) {
+    console.error('❌ [MISSING CREDENTIALS] TEST_STUDENT_PASSWORD environment variable is required.');
+    process.exit(1);
+  }
   // Authenticate test users
   console.log('[Setup] Authenticating test accounts...');
-  const studentA = await authUser('student_a_test@student.annauniv.edu', 'P@ssw0rd12345!');
-  const studentB = await authUser('student_b_test@student.annauniv.edu', 'P@ssw0rd12345!');
-  const studentC = await authUser('student_c_test@student.annauniv.edu', 'P@ssw0rd12345!');
-  const attacker = await authUser('attacker_external@test.com', 'P@ssw0rd12345!');
+  const studentA = await authUser('student_a_test@student.annauniv.edu', TEST_PASSWORD);
+  const studentB = await authUser('student_b_test@student.annauniv.edu', TEST_PASSWORD);
+  const studentC = await authUser('student_c_test@student.annauniv.edu', TEST_PASSWORD);
+  const attacker = await authUser('attacker_external@test.com', TEST_PASSWORD);
 
   console.log(`[Setup] Student A: ${studentA.localId}`);
   console.log(`[Setup] Student B: ${studentB.localId}`);

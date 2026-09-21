@@ -73,8 +73,23 @@ export const ADMIN_ENDPOINTS = {
   get listings() {
     return `${getApiBaseUrl()}/api/admin/listings`;
   },
+  get editListing() {
+    return `${getApiBaseUrl()}/api/admin/listings/edit`;
+  },
   get moderateListing() {
     return `${getApiBaseUrl()}/api/admin/listings/moderate`;
+  },
+  get requests() {
+    return `${getApiBaseUrl()}/api/admin/requests`;
+  },
+  get editRequest() {
+    return `${getApiBaseUrl()}/api/admin/requests/edit`;
+  },
+  get moderateRequest() {
+    return `${getApiBaseUrl()}/api/admin/requests/moderate`;
+  },
+  get reservations() {
+    return `${getApiBaseUrl()}/api/admin/reservations`;
   },
   get reports() {
     return `${getApiBaseUrl()}/api/admin/reports`;

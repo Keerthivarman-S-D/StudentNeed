@@ -41,15 +41,22 @@ async function runTests() {
   console.log('=== StudentNeed Round-2 Security Remediation Test Suite ===\n');
   const results = [];
 
-  const studentA = await getAnonymousOrPasswordUser('student_a_test@student.annauniv.edu', 'P@ssw0rd12345!');
-  const studentB = await getAnonymousOrPasswordUser('student_b_test@student.annauniv.edu', 'P@ssw0rd12345!');
+  const TEST_PASSWORD = process.env.TEST_STUDENT_PASSWORD || '';
+  if (!TEST_PASSWORD) {
+    console.error('❌ [MISSING CREDENTIALS] TEST_STUDENT_PASSWORD environment variable is required.');
+    process.exit(1);
+  }
+
+  const studentA = await getAnonymousOrPasswordUser('student_a_test@student.annauniv.edu', TEST_PASSWORD);
+  const studentB = await getAnonymousOrPasswordUser('student_b_test@student.annauniv.edu', TEST_PASSWORD);
   console.log(`Student A UID: ${studentA.localId}`);
   console.log(`Student B UID: ${studentB.localId}\n`);
 
   const firestoreBase = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents`;
 
   // Initialize Student A public profile & private profile via admin account
-  const adminUser = await getAnonymousOrPasswordUser(process.env.INTERNAL_SYSTEM_EMAIL || 'admin@student.annauniv.edu', process.env.INTERNAL_SYSTEM_PASSWORD || 'P@ssw0rd12345!');
+  const adminPassword = process.env.INTERNAL_SYSTEM_PASSWORD || process.env.TEST_ADMIN_PASSWORD || '';
+  const adminUser = await getAnonymousOrPasswordUser(process.env.INTERNAL_SYSTEM_EMAIL || 'admin@student.annauniv.edu', adminPassword);
   await fetch(`${firestoreBase}/users?documentId=${studentA.localId}`, {
     method: 'POST',
     headers: {

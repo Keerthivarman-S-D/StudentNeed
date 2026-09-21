@@ -1,6 +1,6 @@
 export type Role = 'student' | 'admin';
 export type ListingStatus = 'available' | 'active' | 'reserved' | 'completed' | 'cancelled' | 'expired' | 'hidden' | 'removed';
-export type RequestStatus = 'open' | 'active' | 'matched' | 'accepted' | 'completed' | 'cancelled';
+export type RequestStatus = 'open' | 'active' | 'matched' | 'accepted' | 'completed' | 'cancelled' | 'removed';
 export type ReservationStatus = 'pending' | 'accepted' | 'rejected' | 'completed' | 'cancelled';
 
 export type UserStatus = 'active' | 'suspended' | 'banned';
@@ -96,6 +96,9 @@ export type ItemRequest = {
   requesterId: string;
   createdAt: string;
   updatedAt: string;
+  moderationReason?: string;
+  moderatedAt?: string;
+  moderatedBy?: string;
 };
 
 export const CAMPUS_MEETUP_LOCATIONS = [
@@ -174,22 +177,32 @@ export type Report = {
 };
 
 export type AdminAuditAction =
+  | 'EDIT_LISTING'
+  | 'REMOVE_LISTING'
+  | 'RESTORE_LISTING'
   | 'LISTING_HIDDEN'
   | 'LISTING_REMOVED'
   | 'LISTING_RESTORED'
+  | 'EDIT_REQUEST'
+  | 'REMOVE_REQUEST'
+  | 'RESTORE_REQUEST'
   | 'USER_WARNED'
   | 'USER_SUSPENDED'
   | 'USER_BANNED'
   | 'USER_RESTORED'
+  | 'SUSPEND_USER'
+  | 'UNSUSPEND_USER'
   | 'REPORT_RESOLVED'
-  | 'REPORT_DISMISSED';
+  | 'REPORT_DISMISSED'
+  | 'RESOLVE_REPORT'
+  | 'DISMISS_REPORT';
 
 export type AdminAuditLog = {
   id: string;
   adminId: string;
   adminEmail: string;
   action: AdminAuditAction;
-  targetType: 'listing' | 'user' | 'report';
+  targetType: 'listing' | 'user' | 'report' | 'request';
   targetId: string;
   targetUserId?: string;
   reason: string;

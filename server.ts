@@ -2255,8 +2255,26 @@ CORE PRODUCT KNOWLEDGE & RULES:
       const user = lookupData.users?.[0];
       if (!user || !user.email) return null;
       const email = user.email.toLowerCase().trim();
-      if (email === "admin@student.annauniv.edu") {
+      const configuredAdmin = process.env.ADMIN_EMAIL?.toLowerCase().trim();
+      if (email === "admin@student.annauniv.edu" || (configuredAdmin && email === configuredAdmin)) {
         return { uid: user.localId, email };
+      }
+      try {
+        const sysToken = await getServerToken();
+        if (sysToken) {
+          const userDocRes = await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${user.localId}`, {
+            headers: { Authorization: `Bearer ${sysToken}` },
+          });
+          if (userDocRes.ok) {
+            const userDoc = await userDocRes.json();
+            const userData = parseFirestoreDoc(userDoc);
+            if (userData.role === "admin") {
+              return { uid: user.localId, email };
+            }
+          }
+        }
+      } catch {
+        // ignore lookup error
       }
       return null;
     } catch {
@@ -2308,7 +2326,8 @@ CORE PRODUCT KNOWLEDGE & RULES:
       if (!user || !user.email) return false;
       const email = user.email.toLowerCase().trim();
       const systemEmail = (process.env.INTERNAL_SYSTEM_EMAIL || "internal.system@student.annauniv.edu").toLowerCase().trim();
-      if (email === systemEmail || email === "internal.system@student.annauniv.edu" || email === "admin@student.annauniv.edu") {
+      const configuredAdmin = process.env.ADMIN_EMAIL?.toLowerCase().trim();
+      if (email === systemEmail || email === "internal.system@student.annauniv.edu" || email === "admin@student.annauniv.edu" || (configuredAdmin && email === configuredAdmin)) {
         return true;
       }
       return false;
@@ -2634,7 +2653,10 @@ CORE PRODUCT KNOWLEDGE & RULES:
         }),
       });
 
-      if (!res.ok) return [];
+      if (!res.ok) {
+        console.warn(`[Firestore Query] ${collectionId} returned HTTP ${res.status}`);
+        return [];
+      }
       const results = await res.json();
       if (!Array.isArray(results)) return [];
       return results
@@ -2646,45 +2668,127 @@ CORE PRODUCT KNOWLEDGE & RULES:
     }
   }
 
+  interface FirestoreWrite {
+    updateMask?: { fieldPaths: string[] };
+    update: {
+      name: string;
+      fields: Record<string, any>;
+    };
+    currentDocument?: {
+      updateTime?: string;
+      exists?: boolean;
+    };
+  }
+
+  async function commitAdminMutationWithAudit(
+    systemToken: string,
+    targetWrite: FirestoreWrite,
+    auditEntry: {
+      adminId: string;
+      adminEmail: string;
+      action: string;
+      targetType: "listing" | "user" | "report" | "request";
+      targetId: string;
+      targetUserId?: string;
+      reason: string;
+      metadata?: Record<string, any>;
+    },
+    extraWrites: FirestoreWrite[] = []
+  ): Promise<{ logId: string; timestamp: string }> {
+    const logId = `audit_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+    const timestamp = new Date().toISOString();
+    const entryDoc = {
+      id: logId,
+      adminId: auditEntry.adminId,
+      adminEmail: auditEntry.adminEmail,
+      action: auditEntry.action,
+      targetType: auditEntry.targetType,
+      targetId: auditEntry.targetId,
+      targetUserId: auditEntry.targetUserId || "",
+      reason: auditEntry.reason,
+      timestamp,
+      metadata: auditEntry.metadata || {},
+    };
+
+    const auditDocName = `projects/${projectId}/databases/${firestoreDatabaseId}/documents/admin_audit_logs/${logId}`;
+    const auditWrite: FirestoreWrite = {
+      update: {
+        name: auditDocName,
+        fields: toFirestoreFields(entryDoc),
+      },
+    };
+
+    const commitUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents:commit`;
+    const commitPayload = {
+      writes: [
+        targetWrite,
+        ...extraWrites,
+        auditWrite,
+      ],
+    };
+
+    const res = await fetch(commitUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${systemToken}`,
+      },
+      body: JSON.stringify(commitPayload),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Admin Commit] Atomic mutation + audit commit failed (HTTP ${res.status}):`, errText);
+      throw new Error(`Atomic commit failed with HTTP ${res.status}: ${errText}`);
+    }
+
+    return { logId, timestamp };
+  }
+
   async function logAdminAudit(
     systemToken: string,
     entry: {
       adminId: string;
       adminEmail: string;
       action: string;
-      targetType: "listing" | "user" | "report";
+      targetType: "listing" | "user" | "report" | "request";
       targetId: string;
       targetUserId?: string;
       reason: string;
       metadata?: Record<string, any>;
     }
   ): Promise<void> {
-    try {
-      const logId = `audit_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
-      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/admin_audit_logs?documentId=${logId}`;
-      await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${systemToken}`,
-        },
-        body: JSON.stringify({
-          fields: toFirestoreFields({
-            id: logId,
-            adminId: entry.adminId,
-            adminEmail: entry.adminEmail,
-            action: entry.action,
-            targetType: entry.targetType,
-            targetId: entry.targetId,
-            targetUserId: entry.targetUserId || "",
-            reason: entry.reason,
-            timestamp: new Date().toISOString(),
-            metadata: entry.metadata || {},
-          }),
-        }),
-      });
-    } catch (err) {
-      console.warn("Failed to log admin audit:", err);
+    const logId = `audit_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+    const timestamp = new Date().toISOString();
+    const entryDoc = {
+      id: logId,
+      adminId: entry.adminId,
+      adminEmail: entry.adminEmail,
+      action: entry.action,
+      targetType: entry.targetType,
+      targetId: entry.targetId,
+      targetUserId: entry.targetUserId || "",
+      reason: entry.reason,
+      timestamp,
+      metadata: entry.metadata || {},
+    };
+
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/admin_audit_logs?documentId=${logId}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${systemToken}`,
+      },
+      body: JSON.stringify({
+        fields: toFirestoreFields(entryDoc),
+      }),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`[Admin Audit] Failed to persist audit log to Firestore (HTTP ${res.status}):`, errBody);
+      throw new Error(`Audit log persistence failed with HTTP ${res.status}`);
     }
   }
 
@@ -2699,28 +2803,34 @@ CORE PRODUCT KNOWLEDGE & RULES:
       details?: Record<string, any>;
     }
   ): Promise<void> {
+    const logId = `act_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+    const timestamp = new Date().toISOString();
+    const actDoc = {
+      id: logId,
+      userId: entry.userId,
+      userEmail: entry.userEmail || "",
+      action: entry.action,
+      targetType: entry.targetType,
+      targetId: entry.targetId,
+      timestamp,
+      details: entry.details || {},
+    };
+
     try {
-      const logId = `act_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
       const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/activity_logs?documentId=${logId}`;
-      await fetch(url, {
+      const res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${systemToken}`,
         },
         body: JSON.stringify({
-          fields: toFirestoreFields({
-            id: logId,
-            userId: entry.userId,
-            userEmail: entry.userEmail || "",
-            action: entry.action,
-            targetType: entry.targetType,
-            targetId: entry.targetId,
-            timestamp: new Date().toISOString(),
-            details: entry.details || {},
-          }),
+          fields: toFirestoreFields(actDoc),
         }),
       });
+      if (!res.ok) {
+        console.warn(`[Activity Log] Failed to persist activity log (HTTP ${res.status})`);
+      }
     } catch (err) {
       console.warn("Failed to log activity:", err);
     }
@@ -3048,10 +3158,14 @@ CORE PRODUCT KNOWLEDGE & RULES:
         return res.status(503).json({ error: "System service unavailable." });
       }
 
-      const [users, listings, reports] = await Promise.all([
+      const [users, listings, reports, requests, reservations, activityLogs, auditLogs] = await Promise.all([
         fetchFirestoreCollection(systemToken, "users", 500),
         fetchFirestoreCollection(systemToken, "listings", 500),
         fetchFirestoreCollection(systemToken, "reports", 500),
+        fetchFirestoreCollection(systemToken, "requests", 500),
+        fetchFirestoreCollection(systemToken, "reservations", 500),
+        fetchFirestoreCollection(systemToken, "activity_logs", 25),
+        fetchFirestoreCollection(systemToken, "admin_audit_logs", 25),
       ]);
 
       const totalUsers = users.length;
@@ -3062,7 +3176,54 @@ CORE PRODUCT KNOWLEDGE & RULES:
       const totalListings = listings.length;
       const activeListings = listings.filter((l) => l.status === "available" || l.status === "active").length;
       const reportedListings = listings.filter((l) => typeof l.reportCount === "number" && l.reportCount > 0).length;
-      const pendingReports = reports.filter((r) => r.status === "pending").length;
+      const removedListings = listings.filter((l) => l.status === "removed" || l.status === "hidden").length;
+
+      const totalRequests = requests.length;
+      const activeRequests = requests.filter((r) => r.status === "open" || r.status === "active").length;
+      const removedRequests = requests.filter((r) => r.status === "removed" || r.status === "cancelled").length;
+
+      const totalReservations = reservations.length;
+      const activeReservations = reservations.filter((r) => r.status === "pending" || r.status === "accepted").length;
+      const pendingReports = reports.filter((r) => r.status === "pending" || r.status === "reviewing").length;
+
+      const removedListingsAndRequests = removedListings + removedRequests;
+
+      // Merge and normalize recent moderation & system events (bounded to top 15)
+      const userMap = new Map<string, any>();
+      for (const u of users) {
+        userMap.set(u.id, u);
+      }
+
+      const normalizedActivity = [
+        ...activityLogs.map((a) => {
+          const user = userMap.get(a.userId);
+          return {
+            id: a.id,
+            timestamp: a.timestamp || a.createdAt || new Date().toISOString(),
+            source: "activity" as const,
+            action: a.action,
+            actorEmail: a.userEmail || user?.email || "student",
+            actorName: user?.name || "Student",
+            targetType: a.targetType || "item",
+            targetId: a.targetId || "",
+            details: a.details || {},
+          };
+        }),
+        ...auditLogs.map((l) => ({
+          id: l.id,
+          timestamp: l.timestamp || new Date().toISOString(),
+          source: "audit" as const,
+          action: l.action,
+          actorEmail: l.adminEmail || "Admin",
+          actorName: "Moderator",
+          targetType: l.targetType || "item",
+          targetId: l.targetId || "",
+          details: { reason: l.reason, metadata: l.metadata },
+        })),
+      ];
+
+      normalizedActivity.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+      const recentActivity = normalizedActivity.slice(0, 15);
 
       return res.json({
         totalUsers,
@@ -3072,7 +3233,15 @@ CORE PRODUCT KNOWLEDGE & RULES:
         totalListings,
         activeListings,
         reportedListings,
+        removedListings,
+        totalRequests,
+        activeRequests,
+        removedRequests,
+        totalReservations,
+        activeReservations,
         pendingReports,
+        removedListingsAndRequests,
+        recentActivity,
       });
     } catch (err: any) {
       console.error("Admin overview error:", err);
@@ -3093,16 +3262,35 @@ CORE PRODUCT KNOWLEDGE & RULES:
         return res.status(503).json({ error: "System service unavailable." });
       }
 
-      const [users, listings, reports] = await Promise.all([
+      const [users, listings, reports, requests, reservations] = await Promise.all([
         fetchFirestoreCollection(systemToken, "users", 500),
         fetchFirestoreCollection(systemToken, "listings", 500),
         fetchFirestoreCollection(systemToken, "reports", 500),
+        fetchFirestoreCollection(systemToken, "requests", 500),
+        fetchFirestoreCollection(systemToken, "reservations", 500),
       ]);
 
       const listingsCountMap = new Map<string, number>();
       for (const l of listings) {
         if (l.sellerId) {
           listingsCountMap.set(l.sellerId, (listingsCountMap.get(l.sellerId) || 0) + 1);
+        }
+      }
+
+      const requestsCountMap = new Map<string, number>();
+      for (const reqItem of requests) {
+        if (reqItem.requesterId) {
+          requestsCountMap.set(reqItem.requesterId, (requestsCountMap.get(reqItem.requesterId) || 0) + 1);
+        }
+      }
+
+      const reservationsCountMap = new Map<string, number>();
+      for (const resItem of reservations) {
+        if (resItem.buyerId) {
+          reservationsCountMap.set(resItem.buyerId, (reservationsCountMap.get(resItem.buyerId) || 0) + 1);
+        }
+        if (resItem.sellerId) {
+          reservationsCountMap.set(resItem.sellerId, (reservationsCountMap.get(resItem.sellerId) || 0) + 1);
         }
       }
 
@@ -3120,6 +3308,8 @@ CORE PRODUCT KNOWLEDGE & RULES:
           warningCount: typeof u.warningCount === "number" ? u.warningCount : 0,
           warnings: Array.isArray(u.warnings) ? u.warnings : [],
           listingsCount: listingsCountMap.get(u.id) || 0,
+          requestsCount: requestsCountMap.get(u.id) || 0,
+          reservationsCount: reservationsCountMap.get(u.id) || 0,
           reportsReceivedCount: reportsReceivedMap.get(u.id) || 0,
         };
       });
@@ -3167,15 +3357,11 @@ CORE PRODUCT KNOWLEDGE & RULES:
         adminEmail: admin.email,
       };
       const updatedWarnings = [...currentWarnings, newWarning];
+      const nowIso = new Date().toISOString();
 
-      const patchUrl = `${userUrl}?updateMask.fieldPaths=warningCount&updateMask.fieldPaths=warnings&updateMask.fieldPaths=lastActivityAt`;
-      await fetch(patchUrl, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${systemToken}`,
-        },
-        body: JSON.stringify({
+      const targetWrite: FirestoreWrite = {
+        update: {
+          name: rawUserDoc.name,
           fields: {
             ...rawUserDoc.fields,
             warningCount: { integerValue: String(currentCount + 1) },
@@ -3186,12 +3372,16 @@ CORE PRODUCT KNOWLEDGE & RULES:
                 })),
               },
             },
-            lastActivityAt: { stringValue: new Date().toISOString() },
+            lastActivityAt: { stringValue: nowIso },
           },
-        }),
-      });
+        },
+        updateMask: {
+          fieldPaths: ["warningCount", "warnings", "lastActivityAt"],
+        },
+        currentDocument: rawUserDoc.updateTime ? { updateTime: rawUserDoc.updateTime } : undefined,
+      };
 
-      await logAdminAudit(systemToken, {
+      await commitAdminMutationWithAudit(systemToken, targetWrite, {
         adminId: admin.uid,
         adminEmail: admin.email,
         action: "USER_WARNED",
@@ -3245,14 +3435,9 @@ CORE PRODUCT KNOWLEDGE & RULES:
       const rawUserDoc = await userRes.json();
       const nowIso = new Date().toISOString();
 
-      const patchUrl = `${userUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=statusReason&updateMask.fieldPaths=suspendedAt&updateMask.fieldPaths=statusUpdatedAt`;
-      await fetch(patchUrl, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${systemToken}`,
-        },
-        body: JSON.stringify({
+      const targetWrite: FirestoreWrite = {
+        update: {
+          name: rawUserDoc.name,
           fields: {
             ...rawUserDoc.fields,
             status: { stringValue: "suspended" },
@@ -3260,10 +3445,14 @@ CORE PRODUCT KNOWLEDGE & RULES:
             suspendedAt: { stringValue: nowIso },
             statusUpdatedAt: { stringValue: nowIso },
           },
-        }),
-      });
+        },
+        updateMask: {
+          fieldPaths: ["status", "statusReason", "suspendedAt", "statusUpdatedAt"],
+        },
+        currentDocument: rawUserDoc.updateTime ? { updateTime: rawUserDoc.updateTime } : undefined,
+      };
 
-      await logAdminAudit(systemToken, {
+      await commitAdminMutationWithAudit(systemToken, targetWrite, {
         adminId: admin.uid,
         adminEmail: admin.email,
         action: "USER_SUSPENDED",
@@ -3316,14 +3505,9 @@ CORE PRODUCT KNOWLEDGE & RULES:
       const rawUserDoc = await userRes.json();
       const nowIso = new Date().toISOString();
 
-      const patchUrl = `${userUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=statusReason&updateMask.fieldPaths=bannedAt&updateMask.fieldPaths=statusUpdatedAt`;
-      await fetch(patchUrl, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${systemToken}`,
-        },
-        body: JSON.stringify({
+      const targetWrite: FirestoreWrite = {
+        update: {
+          name: rawUserDoc.name,
           fields: {
             ...rawUserDoc.fields,
             status: { stringValue: "banned" },
@@ -3331,10 +3515,14 @@ CORE PRODUCT KNOWLEDGE & RULES:
             bannedAt: { stringValue: nowIso },
             statusUpdatedAt: { stringValue: nowIso },
           },
-        }),
-      });
+        },
+        updateMask: {
+          fieldPaths: ["status", "statusReason", "bannedAt", "statusUpdatedAt"],
+        },
+        currentDocument: rawUserDoc.updateTime ? { updateTime: rawUserDoc.updateTime } : undefined,
+      };
 
-      await logAdminAudit(systemToken, {
+      await commitAdminMutationWithAudit(systemToken, targetWrite, {
         adminId: admin.uid,
         adminEmail: admin.email,
         action: "USER_BANNED",
@@ -3387,14 +3575,9 @@ CORE PRODUCT KNOWLEDGE & RULES:
       const rawUserDoc = await userRes.json();
       const nowIso = new Date().toISOString();
 
-      const patchUrl = `${userUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=statusReason&updateMask.fieldPaths=restoredAt&updateMask.fieldPaths=statusUpdatedAt`;
-      await fetch(patchUrl, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${systemToken}`,
-        },
-        body: JSON.stringify({
+      const targetWrite: FirestoreWrite = {
+        update: {
+          name: rawUserDoc.name,
           fields: {
             ...rawUserDoc.fields,
             status: { stringValue: "active" },
@@ -3402,10 +3585,14 @@ CORE PRODUCT KNOWLEDGE & RULES:
             restoredAt: { stringValue: nowIso },
             statusUpdatedAt: { stringValue: nowIso },
           },
-        }),
-      });
+        },
+        updateMask: {
+          fieldPaths: ["status", "statusReason", "restoredAt", "statusUpdatedAt"],
+        },
+        currentDocument: rawUserDoc.updateTime ? { updateTime: rawUserDoc.updateTime } : undefined,
+      };
 
-      await logAdminAudit(systemToken, {
+      await commitAdminMutationWithAudit(systemToken, targetWrite, {
         adminId: admin.uid,
         adminEmail: admin.email,
         action: "USER_RESTORED",
@@ -3506,14 +3693,9 @@ CORE PRODUCT KNOWLEDGE & RULES:
       const auditAction = action === "hide" ? "LISTING_HIDDEN" : action === "remove" ? "LISTING_REMOVED" : "LISTING_RESTORED";
       const nowIso = new Date().toISOString();
 
-      const patchUrl = `${listingUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=moderationReason&updateMask.fieldPaths=moderatedAt&updateMask.fieldPaths=moderatedBy`;
-      await fetch(patchUrl, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${systemToken}`,
-        },
-        body: JSON.stringify({
+      const targetWrite: FirestoreWrite = {
+        update: {
+          name: rawListingDoc.name,
           fields: {
             ...rawListingDoc.fields,
             status: { stringValue: targetStatus },
@@ -3521,10 +3703,14 @@ CORE PRODUCT KNOWLEDGE & RULES:
             moderatedAt: { stringValue: nowIso },
             moderatedBy: { stringValue: admin.email },
           },
-        }),
-      });
+        },
+        updateMask: {
+          fieldPaths: ["status", "moderationReason", "moderatedAt", "moderatedBy"],
+        },
+        currentDocument: rawListingDoc.updateTime ? { updateTime: rawListingDoc.updateTime } : undefined,
+      };
 
-      await logAdminAudit(systemToken, {
+      await commitAdminMutationWithAudit(systemToken, targetWrite, {
         adminId: admin.uid,
         adminEmail: admin.email,
         action: auditAction,
@@ -3547,6 +3733,364 @@ CORE PRODUCT KNOWLEDGE & RULES:
     } catch (err: any) {
       console.error("Admin moderate listing error:", err);
       return res.status(500).json({ error: "Internal server error moderating listing." });
+    }
+  });
+
+  // Admin Endpoint: Edit Listing Details Safely
+  app.post("/api/admin/listings/edit", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const { listingId, title, description, category, condition, type, price, wantedItem, location, reason } = req.body;
+      if (!listingId || !title || !description || !category || !type || !location) {
+        return res.status(400).json({ error: "Missing required listing fields: listingId, title, description, category, type, and location are required." });
+      }
+
+      if (type === "Exchange" && (!wantedItem || typeof wantedItem !== "string" || !wantedItem.trim())) {
+        return res.status(400).json({ error: "Wanted item description is required for exchange listings." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const listingUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/listings/${listingId}`;
+      const listingRes = await fetch(listingUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (!listingRes.ok) {
+        return res.status(404).json({ error: "Listing not found." });
+      }
+      const rawListingDoc = await listingRes.json();
+      const listingData = parseFirestoreDoc(rawListingDoc);
+
+      const nowIso = new Date().toISOString();
+      const updatedFields: Record<string, any> = {
+        ...rawListingDoc.fields,
+        title: { stringValue: String(title).trim() },
+        description: { stringValue: String(description).trim() },
+        category: { stringValue: String(category).trim() },
+        type: { stringValue: String(type).trim() },
+        location: { stringValue: String(location).trim() },
+        updatedAt: { timestampValue: nowIso },
+      };
+
+      const updateMask = ["title", "description", "category", "type", "location", "updatedAt"];
+      if (condition) {
+        updatedFields.condition = { stringValue: String(condition).trim() };
+        updateMask.push("condition");
+      }
+      if (type === "Exchange" && wantedItem) {
+        updatedFields.wantedItem = { stringValue: String(wantedItem).trim() };
+        updateMask.push("wantedItem");
+      }
+      if (price !== undefined && price !== null && price !== "") {
+        const numPrice = Number(price);
+        if (isNaN(numPrice) || numPrice < 0) {
+          return res.status(400).json({ error: "Invalid price value." });
+        }
+        updatedFields.price = Number.isInteger(numPrice) ? { integerValue: String(numPrice) } : { doubleValue: numPrice };
+        updateMask.push("price");
+      }
+
+      const targetWrite: FirestoreWrite = {
+        update: {
+          name: rawListingDoc.name,
+          fields: updatedFields,
+        },
+        updateMask: { fieldPaths: updateMask },
+        currentDocument: rawListingDoc.updateTime ? { updateTime: rawListingDoc.updateTime } : undefined,
+      };
+
+      await commitAdminMutationWithAudit(systemToken, targetWrite, {
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        action: "EDIT_LISTING",
+        targetType: "listing",
+        targetId: listingId,
+        targetUserId: listingData.sellerId,
+        reason: (reason || "Admin edited listing details").trim(),
+        metadata: { title, category, type },
+      });
+
+      await logActivity(systemToken, {
+        userId: listingData.sellerId || admin.uid,
+        action: "moderation_action",
+        targetType: "listing",
+        targetId: listingId,
+        details: { action: "EDIT_LISTING", reason: (reason || "Admin update").trim() },
+      });
+
+      return res.json({ message: "Listing updated successfully." });
+    } catch (err: any) {
+      console.error("Admin edit listing error:", err);
+      return res.status(500).json({ error: "Internal server error editing listing." });
+    }
+  });
+
+  // Admin Endpoint: Requests List
+  app.get("/api/admin/requests", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const [requests, users] = await Promise.all([
+        fetchFirestoreCollection(systemToken, "requests", 500),
+        fetchFirestoreCollection(systemToken, "users", 500),
+      ]);
+
+      const userMap = new Map<string, any>();
+      for (const u of users) {
+        userMap.set(u.id, u);
+      }
+
+      const enhancedRequests = requests.map((r) => {
+        const requester = userMap.get(r.requesterId);
+        return {
+          ...r,
+          requesterName: requester?.name || "Student",
+          requesterEmail: requester?.email || "",
+          requesterDepartment: requester?.department || "",
+        };
+      });
+
+      enhancedRequests.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      return res.json({ requests: enhancedRequests });
+    } catch (err: any) {
+      console.error("Admin requests error:", err);
+      return res.status(500).json({ error: "Internal server error fetching requests." });
+    }
+  });
+
+  // Admin Endpoint: Edit Request Details Safely
+  app.post("/api/admin/requests/edit", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const { requestId, title, description, category, neededBy, location, budget, reason } = req.body;
+      if (!requestId || !title || typeof title !== "string" || !title.trim() ||
+          !description || typeof description !== "string" || !description.trim() ||
+          !category || typeof category !== "string" || !category.trim() ||
+          !neededBy || typeof neededBy !== "string" || !neededBy.trim() ||
+          !location || typeof location !== "string" || !location.trim()) {
+        return res.status(400).json({ error: "Missing required request fields: title, description, category, neededBy, and location are required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const requestUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/requests/${requestId}`;
+      const requestRes = await fetch(requestUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (!requestRes.ok) {
+        return res.status(404).json({ error: "Request not found." });
+      }
+      const rawRequestDoc = await requestRes.json();
+      const requestData = parseFirestoreDoc(rawRequestDoc);
+
+      const nowIso = new Date().toISOString();
+      const updatedFields: Record<string, any> = {
+        ...rawRequestDoc.fields,
+        title: { stringValue: title.trim() },
+        description: { stringValue: description.trim() },
+        category: { stringValue: category.trim() },
+        neededBy: { stringValue: neededBy.trim() },
+        location: { stringValue: location.trim() },
+        updatedAt: { timestampValue: nowIso },
+      };
+
+      const updateMask = ["title", "description", "category", "neededBy", "location", "updatedAt"];
+      if (budget !== undefined && budget !== null && budget !== "") {
+        const numBudget = Number(budget);
+        if (!isNaN(numBudget) && numBudget >= 0) {
+          updatedFields.budget = Number.isInteger(numBudget) ? { integerValue: String(numBudget) } : { doubleValue: numBudget };
+          updateMask.push("budget");
+        }
+      }
+
+      const targetWrite: FirestoreWrite = {
+        update: {
+          name: rawRequestDoc.name,
+          fields: updatedFields,
+        },
+        updateMask: { fieldPaths: updateMask },
+        currentDocument: rawRequestDoc.updateTime ? { updateTime: rawRequestDoc.updateTime } : undefined,
+      };
+
+      await commitAdminMutationWithAudit(systemToken, targetWrite, {
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        action: "EDIT_REQUEST",
+        targetType: "request",
+        targetId: requestId,
+        targetUserId: requestData.requesterId,
+        reason: (reason || "Admin update request details").trim(),
+        metadata: { title, category },
+      });
+
+      await logActivity(systemToken, {
+        userId: requestData.requesterId || admin.uid,
+        action: "moderation_action",
+        targetType: "request",
+        targetId: requestId,
+        details: { action: "EDIT_REQUEST", reason: (reason || "Admin update").trim() },
+      });
+
+      return res.json({ message: "Request updated successfully." });
+    } catch (err: any) {
+      console.error("Admin edit request error:", err);
+      return res.status(500).json({ error: "Internal server error editing request." });
+    }
+  });
+
+  // Admin Endpoint: Moderate Request (Remove / Restore)
+  app.post("/api/admin/requests/moderate", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const { requestId, action, reason } = req.body;
+      if (!requestId || !action || !reason || typeof reason !== "string" || !reason.trim()) {
+        return res.status(400).json({ error: "Request ID, action, and reason are required." });
+      }
+
+      if (!["remove", "restore"].includes(action)) {
+        return res.status(400).json({ error: "Invalid action. Must be 'remove' or 'restore'." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const requestUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/requests/${requestId}`;
+      const requestRes = await fetch(requestUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+      if (!requestRes.ok) {
+        return res.status(404).json({ error: "Request not found." });
+      }
+      const rawRequestDoc = await requestRes.json();
+      const requestData = parseFirestoreDoc(rawRequestDoc);
+
+      const targetStatus = action === "remove" ? "removed" : "open";
+      const auditAction = action === "remove" ? "REMOVE_REQUEST" : "RESTORE_REQUEST";
+      const nowIso = new Date().toISOString();
+
+      const targetWrite: FirestoreWrite = {
+        update: {
+          name: rawRequestDoc.name,
+          fields: {
+            ...rawRequestDoc.fields,
+            status: { stringValue: targetStatus },
+            moderationReason: { stringValue: reason.trim() },
+            moderatedAt: { stringValue: nowIso },
+            moderatedBy: { stringValue: admin.email },
+            updatedAt: { timestampValue: nowIso },
+          },
+        },
+        updateMask: {
+          fieldPaths: ["status", "moderationReason", "moderatedAt", "moderatedBy", "updatedAt"],
+        },
+        currentDocument: rawRequestDoc.updateTime ? { updateTime: rawRequestDoc.updateTime } : undefined,
+      };
+
+      await commitAdminMutationWithAudit(systemToken, targetWrite, {
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        action: auditAction,
+        targetType: "request",
+        targetId: requestId,
+        targetUserId: requestData.requesterId,
+        reason: reason.trim(),
+        metadata: { newStatus: targetStatus },
+      });
+
+      await logActivity(systemToken, {
+        userId: requestData.requesterId || admin.uid,
+        action: "moderation_action",
+        targetType: "request",
+        targetId: requestId,
+        details: { action: auditAction, reason: reason.trim(), newStatus: targetStatus },
+      });
+
+      return res.json({ message: `Request successfully ${action === "remove" ? "removed" : "restored"}.` });
+    } catch (err: any) {
+      console.error("Admin moderate request error:", err);
+      return res.status(500).json({ error: "Internal server error moderating request." });
+    }
+  });
+
+  // Admin Endpoint: Reservations List (Strictly Read-Only)
+  app.get("/api/admin/reservations", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const [reservations, listings, users] = await Promise.all([
+        fetchFirestoreCollection(systemToken, "reservations", 500),
+        fetchFirestoreCollection(systemToken, "listings", 500),
+        fetchFirestoreCollection(systemToken, "users", 500),
+      ]);
+
+      const userMap = new Map<string, any>();
+      for (const u of users) {
+        userMap.set(u.id, u);
+      }
+
+      const listingMap = new Map<string, any>();
+      for (const l of listings) {
+        listingMap.set(l.id, l);
+      }
+
+      const enhancedReservations = reservations.map((resItem) => {
+        const buyer = userMap.get(resItem.buyerId);
+        const seller = userMap.get(resItem.sellerId);
+        const listing = listingMap.get(resItem.listingId);
+        return {
+          ...resItem,
+          buyerName: buyer?.name || "Student Buyer",
+          buyerEmail: buyer?.email || "",
+          sellerName: seller?.name || "Student Seller",
+          sellerEmail: seller?.email || "",
+          listingTitle: listing?.title || "Listing Item",
+          listingPrice: listing?.price !== undefined ? listing.price : 0,
+          listingType: listing?.type || "Sale",
+          listingImage: Array.isArray(listing?.images) && listing.images.length > 0 ? listing.images[0] : "",
+        };
+      });
+
+      enhancedReservations.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      return res.json({ reservations: enhancedReservations });
+    } catch (err: any) {
+      console.error("Admin reservations error:", err);
+      return res.status(500).json({ error: "Internal server error fetching reservations." });
     }
   });
 
@@ -3607,18 +4151,13 @@ CORE PRODUCT KNOWLEDGE & RULES:
       const rawReportDoc = await reportRes.json();
       const reportData = parseFirestoreDoc(rawReportDoc);
 
-      const targetReportStatus = actionTaken === "dismiss" ? "dismissed" : "resolved";
+      const targetReportStatus = actionTaken === "dismiss" ? "dismissed" : actionTaken === "review" ? "reviewing" : "resolved";
       const nowIso = new Date().toISOString();
 
-      // 1. Update the report document
-      const patchUrl = `${reportUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=resolution&updateMask.fieldPaths=actionTaken&updateMask.fieldPaths=reviewedBy&updateMask.fieldPaths=reviewedAt`;
-      await fetch(patchUrl, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${systemToken}`,
-        },
-        body: JSON.stringify({
+      // 1. Update the report document write
+      const targetWrite: FirestoreWrite = {
+        update: {
+          name: rawReportDoc.name,
           fields: {
             ...rawReportDoc.fields,
             status: { stringValue: targetReportStatus },
@@ -3627,8 +4166,14 @@ CORE PRODUCT KNOWLEDGE & RULES:
             reviewedBy: { stringValue: admin.email },
             reviewedAt: { stringValue: nowIso },
           },
-        }),
-      });
+        },
+        updateMask: {
+          fieldPaths: ["status", "resolution", "actionTaken", "reviewedBy", "reviewedAt"],
+        },
+        currentDocument: rawReportDoc.updateTime ? { updateTime: rawReportDoc.updateTime } : undefined,
+      };
+
+      const extraWrites: FirestoreWrite[] = [];
 
       // 2. Cascade actions if specified
       if (actionTaken === "hide_listing" || actionTaken === "remove_listing") {
@@ -3638,10 +4183,9 @@ CORE PRODUCT KNOWLEDGE & RULES:
           if (listRes.ok) {
             const rawListDoc = await listRes.json();
             const listStatus = actionTaken === "hide_listing" ? "hidden" : "removed";
-            await fetch(`${listUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=moderationReason&updateMask.fieldPaths=moderatedAt&updateMask.fieldPaths=moderatedBy`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${systemToken}` },
-              body: JSON.stringify({
+            extraWrites.push({
+              update: {
+                name: rawListDoc.name,
                 fields: {
                   ...rawListDoc.fields,
                   status: { stringValue: listStatus },
@@ -3649,24 +4193,52 @@ CORE PRODUCT KNOWLEDGE & RULES:
                   moderatedAt: { stringValue: nowIso },
                   moderatedBy: { stringValue: admin.email },
                 },
-              }),
+              },
+              updateMask: {
+                fieldPaths: ["status", "moderationReason", "moderatedAt", "moderatedBy"],
+              },
+              currentDocument: rawListDoc.updateTime ? { updateTime: rawListDoc.updateTime } : undefined,
             });
           }
         }
+      } else if (actionTaken === "suspend_user" && reportData.reportedUserId) {
+        const userUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${reportData.reportedUserId}`;
+        const userRes = await fetch(userUrl, { headers: { Authorization: `Bearer ${systemToken}` } });
+        if (userRes.ok) {
+          const rawUserDoc = await userRes.json();
+          extraWrites.push({
+            update: {
+              name: rawUserDoc.name,
+              fields: {
+                ...rawUserDoc.fields,
+                status: { stringValue: "suspended" },
+                statusReason: { stringValue: (resolution || "Suspended via report resolution").trim() },
+                suspendedAt: { stringValue: nowIso },
+                statusUpdatedAt: { stringValue: nowIso },
+              },
+            },
+            updateMask: {
+              fieldPaths: ["status", "statusReason", "suspendedAt", "statusUpdatedAt"],
+            },
+            currentDocument: rawUserDoc.updateTime ? { updateTime: rawUserDoc.updateTime } : undefined,
+          });
+        }
       }
 
-      await logAdminAudit(systemToken, {
+      const auditAction = actionTaken === "dismiss" ? "REPORT_DISMISSED" : "REPORT_RESOLVED";
+
+      await commitAdminMutationWithAudit(systemToken, targetWrite, {
         adminId: admin.uid,
         adminEmail: admin.email,
-        action: actionTaken === "dismiss" ? "REPORT_DISMISSED" : "REPORT_RESOLVED",
+        action: auditAction,
         targetType: "report",
         targetId: reportId,
         targetUserId: reportData.reportedUserId,
         reason: (resolution || actionTaken).trim(),
         metadata: { actionTaken, listingId: reportData.listingId },
-      });
+      }, extraWrites);
 
-      return res.json({ message: `Report successfully ${targetReportStatus}.` });
+      return res.json({ message: `Report successfully ${targetReportStatus === 'reviewing' ? 'marked under review' : targetReportStatus}.` });
     } catch (err: any) {
       console.error("Admin resolve report error:", err);
       return res.status(500).json({ error: "Internal server error resolving report." });

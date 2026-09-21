@@ -53,13 +53,18 @@ async function authUser(email, password) {
 }
 
 async function runSuite() {
+  const TEST_PASSWORD = process.env.TEST_STUDENT_PASSWORD || '';
+  if (!TEST_PASSWORD) {
+    console.error('❌ [MISSING CREDENTIALS] TEST_STUDENT_PASSWORD environment variable is required.');
+    process.exit(1);
+  }
   console.log('[Setup] Authenticating test accounts for verification...');
   let studentA, studentB, studentC, attacker;
   try {
-    studentA = await authUser('student_a_test@student.annauniv.edu', 'P@ssw0rd12345!');
-    studentB = await authUser('student_b_test@student.annauniv.edu', 'P@ssw0rd12345!');
-    studentC = await authUser('student_c_test@student.annauniv.edu', 'P@ssw0rd12345!');
-    attacker = await authUser('attacker_external@test.com', 'P@ssw0rd12345!');
+    studentA = await authUser('student_a_test@student.annauniv.edu', TEST_PASSWORD);
+    studentB = await authUser('student_b_test@student.annauniv.edu', TEST_PASSWORD);
+    studentC = await authUser('student_c_test@student.annauniv.edu', TEST_PASSWORD);
+    attacker = await authUser('attacker_external@test.com', TEST_PASSWORD);
     console.log(`[Setup] Student A: ${studentA.localId}`);
     console.log(`[Setup] Student B: ${studentB.localId}`);
     console.log(`[Setup] Student C: ${studentC.localId}`);
