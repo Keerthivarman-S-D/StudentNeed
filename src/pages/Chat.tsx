@@ -342,7 +342,7 @@ export function ChatPage() {
 
     try {
       // Create message document in chats/{chatId}/messages
-      await addDoc(collection(db, 'chats', chatId, 'messages'), {
+      const messageDocRef = await addDoc(collection(db, 'chats', chatId, 'messages'), {
         senderId: currentUserId,
         text: trimmed,
         createdAt: serverTimestamp(),
@@ -357,6 +357,26 @@ export function ChatPage() {
       markChatAsRead(chatId);
 
       setInputText('');
+
+      // Dispatch Web Push notification to counterparty via trusted backend
+      try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (idToken) {
+          fetch('/api/push/notify-message', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              chatId,
+              messageId: messageDocRef.id,
+            }),
+          }).catch((pushErr) => console.warn('Push notify-message non-fatal error:', pushErr));
+        }
+      } catch (pushErr) {
+        console.warn('Failed to dispatch push notification:', pushErr);
+      }
     } catch (err: unknown) {
       console.error('Failed to send message:', err);
       setSendError('Failed to send message. Please try again.');

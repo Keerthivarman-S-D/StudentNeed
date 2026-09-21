@@ -10,9 +10,20 @@ import {
   setDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { AppNotification } from '../types';
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 interface NotificationContextType {
   notifications: AppNotification[];
@@ -158,22 +169,103 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   };
 
   const toggleBrowserNotifications = async () => {
-    if (!('Notification' in window)) {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
       alert('Browser notifications are not supported by this browser.');
       return;
     }
 
-    if (Notification.permission === 'granted') {
-      setBrowserNotificationsEnabled((prev) => !prev);
-    } else if (Notification.permission === 'denied') {
-      alert('Notifications are blocked in your browser settings. Please enable them in browser site settings.');
-    } else {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        setBrowserNotificationsEnabled(true);
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('Web Push is not supported in this browser environment.');
+      return;
+    }
+
+    // 1. If currently active, unsubscribe
+    if (browserNotificationsEnabled) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          const idToken = await auth.currentUser?.getIdToken();
+          if (idToken) {
+            await fetch('/api/push/unsubscribe', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`,
+              },
+              body: JSON.stringify({ endpoint: sub.endpoint }),
+            }).catch((err) => console.warn('Unsubscribe API warning:', err));
+          }
+          await sub.unsubscribe().catch(() => {});
+        }
+      } catch (err) {
+        console.warn('Error unsubscribing device:', err);
+      }
+      setBrowserNotificationsEnabled(false);
+      return;
+    }
+
+    // 2. Separate handling for permission states: denied vs default vs granted
+    const permission = Notification.permission;
+    if (permission === 'denied') {
+      alert(
+        'Notifications are blocked in your browser settings. To enable them, please allow notifications for StudentNeed in your browser site settings.'
+      );
+      setBrowserNotificationsEnabled(false);
+      return;
+    }
+
+    let granted = permission === 'granted';
+    if (!granted) {
+      const requested = await Notification.requestPermission();
+      if (requested === 'granted') {
+        granted = true;
       } else {
         setBrowserNotificationsEnabled(false);
+        return;
       }
+    }
+
+    // 3. Register service worker and subscribe to PushManager
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      await navigator.serviceWorker.ready;
+
+      const vapidRes = await fetch('/api/push/vapid-public-key');
+      if (!vapidRes.ok) {
+        throw new Error('Push notification service is temporarily unavailable.');
+      }
+      const { publicKey } = await vapidRes.json();
+      if (!publicKey) {
+        throw new Error('VAPID public key not found.');
+      }
+
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+      }
+
+      const idToken = await auth.currentUser?.getIdToken();
+      if (idToken && sub) {
+        const subJson = sub.toJSON();
+        await fetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ subscription: subJson }),
+        });
+      }
+
+      setBrowserNotificationsEnabled(true);
+    } catch (err: any) {
+      console.error('Failed to enable browser push notifications:', err);
+      alert('Could not enable push notifications: ' + (err.message || 'Unknown error'));
+      setBrowserNotificationsEnabled(false);
     }
   };
 
@@ -181,24 +273,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (soundEnabled) {
       playNotificationChime();
     }
-    if (
-      browserNotificationsEnabled &&
-      'Notification' in window &&
-      Notification.permission === 'granted' &&
-      document.visibilityState !== 'visible'
-    ) {
-      try {
-        const notif = new Notification(title, {
-          body: message,
-          icon: '/favicon.ico',
-        });
-        notif.onclick = () => {
-          window.focus();
-          window.location.href = link;
-        };
-      } catch {}
+    // OS-level notifications are dispatched directly via Web Push Service Worker
+    // to guarantee delivery when backgrounded or closed, avoiding duplicate OS banners.
+  }, [soundEnabled]);
+
+  // Sync browser permission changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'denied' && browserNotificationsEnabled) {
+        setBrowserNotificationsEnabled(false);
+      }
     }
-  }, [soundEnabled, browserNotificationsEnabled]);
+  }, [browserNotificationsEnabled]);
 
   // 1. Subscribe to User's Private Read Receipts: /users/{userId}/private/chat_reads
   useEffect(() => {

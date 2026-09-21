@@ -10,10 +10,26 @@ import { Resend } from "resend";
 import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 import { GoogleAuth } from "google-auth-library";
+import * as webpush from "web-push";
 
 // Load Firebase Config for REST API
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf8"));
 const { projectId, firestoreDatabaseId, apiKey } = firebaseConfig;
+
+// Configure persistent Web Push VAPID credentials
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY?.trim() || "";
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY?.trim() || "";
+const vapidSubject = process.env.VAPID_SUBJECT?.trim() || "mailto:admin@student.annauniv.edu";
+
+if (vapidPublicKey && vapidPrivateKey) {
+  try {
+    webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+  } catch (err: any) {
+    console.warn("[WebPush] Failed to initialize VAPID credentials:", err?.message);
+  }
+} else {
+  console.warn("[WebPush] VAPID keys not configured in environment.");
+}
 
 // Server-side persistent token caching for internal system account
 let serverToken: string | null = null;
@@ -377,6 +393,8 @@ async function startServer() {
       if (!process.env.CLOUDINARY_API_SECRET?.trim() && !process.env.CLOUDINARY_SECRET?.trim() && !process.env.CLOUDINARY_URL) {
         missingProductionSecrets.push("CLOUDINARY_API_SECRET");
       }
+      if (!process.env.VAPID_PUBLIC_KEY?.trim()) missingProductionSecrets.push("VAPID_PUBLIC_KEY");
+      if (!process.env.VAPID_PRIVATE_KEY?.trim()) missingProductionSecrets.push("VAPID_PRIVATE_KEY");
     }
 
     if (missingProductionSecrets.length > 0) {
@@ -1319,6 +1337,22 @@ CORE PRODUCT KNOWLEDGE & RULES:
         return res.status(commitRes.status || 500).json({ error: "Failed to atomically accept reservation." });
       }
 
+      const buyerId = fields.buyerId?.stringValue;
+      if (buyerId) {
+        sendPushToUser(buyerId, {
+          title: "Reservation Accepted! 🎉",
+          body: `The seller accepted your meetup request for "${listingFields.title?.stringValue || "your reserved item"}".`,
+          url: fields.chatId?.stringValue ? `/chat/${fields.chatId.stringValue}` : "/requests",
+          tag: `res_${reservationId}`,
+          data: {
+            type: "reservation_accepted",
+            reservationId,
+            chatId: fields.chatId?.stringValue || "",
+            url: fields.chatId?.stringValue ? `/chat/${fields.chatId.stringValue}` : "/requests",
+          },
+        }).catch((err) => console.warn("[WebPush] Accept reservation push warning:", err));
+      }
+
       return res.json({
         message: "Reservation successfully accepted. Listing is now reserved.",
         reservationId,
@@ -1558,10 +1592,478 @@ CORE PRODUCT KNOWLEDGE & RULES:
         }
       }
 
+      const targetUser = callerUid === buyerId ? sellerId : buyerId;
+      if (targetUser) {
+        const targetChatId = fields.chatId?.stringValue;
+        sendPushToUser(targetUser, {
+          title: "Reservation Cancelled",
+          body: "A reservation request has been cancelled.",
+          url: targetChatId ? `/chat/${targetChatId}` : "/requests",
+          tag: `res_${reservationId}`,
+          data: {
+            type: "reservation_cancelled",
+            reservationId,
+            chatId: targetChatId || "",
+            url: targetChatId ? `/chat/${targetChatId}` : "/requests",
+          },
+        }).catch((err) => console.warn("[WebPush] Cancel reservation push warning:", err));
+      }
+
       return res.json({ message: "Reservation successfully cancelled." });
     } catch (err: any) {
       console.error("Cancel reservation error:", err);
       return res.status(500).json({ error: "Internal server error cancelling reservation." });
+    }
+  });
+
+  // --- Real Mobile & Desktop Web Push Notification System ---
+
+  interface PushSubscriptionDevice {
+    endpoint: string;
+    keys: {
+      p256dh: string;
+      auth: string;
+    };
+    userAgent?: string;
+    updatedAt: string;
+  }
+
+  // In-memory development fallback store for push subscriptions when system token is not configured
+  const devPushStore = new Map<string, Record<string, PushSubscriptionDevice>>();
+
+  async function sendPushToUser(
+    userId: string,
+    payload: { title: string; body: string; url?: string; tag?: string; data?: any }
+  ): Promise<{ sent: number; failed: number; pruned: number }> {
+    if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+      return { sent: 0, failed: 0, pruned: 0 };
+    }
+
+    const systemToken = await getServerToken();
+    const subDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${userId}/private/push_subscriptions`;
+
+    let subscriptionsMap: Record<string, PushSubscriptionDevice> = {};
+
+    if (systemToken) {
+      try {
+        const res = await fetch(subDocUrl, {
+          headers: { Authorization: `Bearer ${systemToken}` },
+        });
+
+        if (res.ok) {
+          const docJson = await res.json();
+          const rawJson = docJson.fields?.subscriptionsJson?.stringValue;
+          if (rawJson) {
+            subscriptionsMap = JSON.parse(rawJson);
+          }
+        }
+      } catch (err) {
+        console.warn("[WebPush] Failed to fetch subscription from Firestore:", err);
+      }
+    } else {
+      const cached = devPushStore.get(userId);
+      if (cached) {
+        subscriptionsMap = { ...cached };
+      }
+    }
+
+    const deviceKeys = Object.keys(subscriptionsMap);
+    if (deviceKeys.length === 0) {
+      return { sent: 0, failed: 0, pruned: 0 };
+    }
+
+    let sent = 0;
+    let failed = 0;
+    let pruned = 0;
+    const keysToRemove: string[] = [];
+
+    const stringPayload = JSON.stringify({
+      title: payload.title,
+      body: payload.body,
+      icon: "/studentneed-monogram.png",
+      badge: "/favicon.png",
+      url: payload.url || "/",
+      tag: payload.tag || "default",
+      data: payload.data || { url: payload.url || "/" },
+    });
+
+    for (const devKey of deviceKeys) {
+      const devSub = subscriptionsMap[devKey];
+      if (!devSub?.endpoint || !devSub?.keys?.p256dh || !devSub?.keys?.auth) {
+        keysToRemove.push(devKey);
+        pruned++;
+        continue;
+      }
+
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: devSub.endpoint,
+            keys: {
+              p256dh: devSub.keys.p256dh,
+              auth: devSub.keys.auth,
+            },
+          },
+          stringPayload
+        );
+        sent++;
+      } catch (err: any) {
+        failed++;
+        if (err?.statusCode === 404 || err?.statusCode === 410) {
+          keysToRemove.push(devKey);
+          pruned++;
+        } else {
+          console.warn(`[WebPush] Push error on device ${devKey}:`, err?.message || err);
+        }
+      }
+    }
+
+    if (keysToRemove.length > 0) {
+      for (const k of keysToRemove) {
+        delete subscriptionsMap[k];
+      }
+      devPushStore.set(userId, subscriptionsMap);
+      if (systemToken) {
+        await fetch(
+          subDocUrl +
+            `?updateMask.fieldPaths=subscriptionsJson&updateMask.fieldPaths=deviceCount&updateMask.fieldPaths=updatedAt`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${systemToken}`,
+            },
+            body: JSON.stringify({
+              fields: {
+                subscriptionsJson: { stringValue: JSON.stringify(subscriptionsMap) },
+                deviceCount: { integerValue: Object.keys(subscriptionsMap).length.toString() },
+                updatedAt: { timestampValue: new Date().toISOString() },
+              },
+            }),
+          }
+        ).catch((err) => console.warn("[WebPush] Failed to prune expired subscriptions:", err));
+      }
+    }
+
+    return { sent, failed, pruned };
+  }
+
+  // 8a. Retrieve Public VAPID Key
+  app.get("/api/push/vapid-public-key", (req, res) => {
+    const key = process.env.VAPID_PUBLIC_KEY?.trim() || "";
+    if (!key) {
+      return res.status(503).json({ error: "Web Push is not configured on this server." });
+    }
+    return res.json({ publicKey: key });
+  });
+
+  // 8b. Register Push Subscription for Current Verified User
+  app.post("/api/push/subscribe", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid or expired authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const { subscription } = req.body || {};
+      if (!subscription || typeof subscription !== "object") {
+        return res.status(400).json({ error: "Valid subscription object is required." });
+      }
+      const { endpoint, keys } = subscription;
+      if (!endpoint || typeof endpoint !== "string" || !endpoint.startsWith("https://")) {
+        return res.status(400).json({ error: "Invalid subscription endpoint URL." });
+      }
+      if (
+        !keys ||
+        typeof keys.p256dh !== "string" ||
+        !keys.p256dh.trim() ||
+        typeof keys.auth !== "string" ||
+        !keys.auth.trim()
+      ) {
+        return res.status(400).json({ error: "Invalid subscription keys (p256dh and auth are required)." });
+      }
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      const subDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${callerUid}/private/push_subscriptions`;
+
+      let subscriptionsMap: Record<string, any> = {};
+      const existingRes = await fetch(subDocUrl, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (existingRes.ok) {
+        const existingData = await existingRes.json();
+        const rawJson = existingData.fields?.subscriptionsJson?.stringValue;
+        if (rawJson) {
+          try {
+            subscriptionsMap = JSON.parse(rawJson);
+          } catch {}
+        }
+      } else if (!systemToken) {
+        const cached = devPushStore.get(callerUid);
+        if (cached) subscriptionsMap = { ...cached };
+      }
+
+      const deviceKey = "dev_" + crypto.createHash("sha256").update(endpoint).digest("hex").slice(0, 24);
+      subscriptionsMap[deviceKey] = {
+        endpoint,
+        keys: {
+          p256dh: keys.p256dh.trim(),
+          auth: keys.auth.trim(),
+        },
+        userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"].slice(0, 200) : "",
+        updatedAt: new Date().toISOString(),
+      };
+
+      devPushStore.set(callerUid, subscriptionsMap);
+
+      const patchRes = await fetch(subDocUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${effectiveToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            subscriptionsJson: { stringValue: JSON.stringify(subscriptionsMap) },
+            deviceCount: { integerValue: Object.keys(subscriptionsMap).length.toString() },
+            updatedAt: { timestampValue: new Date().toISOString() },
+          },
+        }),
+      });
+
+      if (!patchRes.ok) {
+        console.warn("Firestore push subscription write warning:", await patchRes.text());
+        if (process.env.NODE_ENV === "production") {
+          return res.status(500).json({ error: "Failed to store push subscription." });
+        }
+      }
+
+      return res.json({ success: true, deviceKey });
+    } catch (err: any) {
+      console.error("Push subscribe error:", err);
+      return res.status(500).json({ error: "Internal server error subscribing to notifications." });
+    }
+  });
+
+  // 8c. Unsubscribe Device
+  app.post("/api/push/unsubscribe", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid or expired authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const { endpoint } = req.body || {};
+      if (!endpoint || typeof endpoint !== "string") {
+        return res.status(400).json({ error: "Subscription endpoint is required." });
+      }
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      const subDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${callerUid}/private/push_subscriptions`;
+      let subscriptionsMap: Record<string, any> = {};
+      const existingRes = await fetch(subDocUrl, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (existingRes.ok) {
+        const existingData = await existingRes.json();
+        const rawJson = existingData.fields?.subscriptionsJson?.stringValue;
+        if (rawJson) {
+          try {
+            subscriptionsMap = JSON.parse(rawJson);
+          } catch {}
+        }
+      } else if (!systemToken) {
+        const cached = devPushStore.get(callerUid);
+        if (cached) subscriptionsMap = { ...cached };
+      }
+
+      let removed = false;
+      for (const [k, v] of Object.entries(subscriptionsMap)) {
+        if (v?.endpoint === endpoint) {
+          delete subscriptionsMap[k];
+          removed = true;
+        }
+      }
+
+      devPushStore.set(callerUid, subscriptionsMap);
+
+      if (removed) {
+        await fetch(subDocUrl, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${effectiveToken}`,
+          },
+          body: JSON.stringify({
+            fields: {
+              subscriptionsJson: { stringValue: JSON.stringify(subscriptionsMap) },
+              deviceCount: { integerValue: Object.keys(subscriptionsMap).length.toString() },
+              updatedAt: { timestampValue: new Date().toISOString() },
+            },
+          }),
+        }).catch(() => {});
+      }
+
+      return res.json({ success: true, removed });
+    } catch (err: any) {
+      console.error("Push unsubscribe error:", err);
+      return res.status(500).json({ error: "Internal server error unsubscribing." });
+    }
+  });
+
+  // 8d. Secure, Authorized Chat Message Push Notification Dispatch
+  app.post("/api/push/notify-message", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`push-notify:${clientIp}`, 60, 60 * 1000)) {
+        return res.status(429).json({ error: "Too many notification requests. Please slow down." });
+      }
+
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid or expired authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const { chatId, messageId } = req.body || {};
+      if (!chatId || typeof chatId !== "string" || !messageId || typeof messageId !== "string") {
+        return res.status(400).json({ error: "Both chatId and messageId are required strings." });
+      }
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      // 1. Fetch chat document to verify participant status
+      const chatDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/chats/${chatId}`;
+      const chatRes = await fetch(chatDocUrl, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (chatRes.status === 404) {
+        return res.status(404).json({ error: "Chat conversation not found." });
+      }
+      if (chatRes.status === 403) {
+        return res.status(403).json({ error: "Forbidden: You are not a participant in this conversation." });
+      }
+      if (!chatRes.ok) {
+        return res.status(chatRes.status).json({ error: "Failed to verify chat conversation." });
+      }
+      const chatJson = await chatRes.json();
+      const participantsList = chatJson.fields?.participants?.arrayValue?.values || [];
+      const participants: string[] = participantsList.map((v: any) => v.stringValue).filter(Boolean);
+
+      if (!participants.includes(callerUid)) {
+        return res.status(403).json({ error: "Forbidden: You are not a participant in this conversation." });
+      }
+
+      // 2. Fetch the exact message document to verify caller is author
+      const messageDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/chats/${chatId}/messages/${messageId}`;
+      const msgRes = await fetch(messageDocUrl, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (msgRes.status === 404) {
+        return res.status(404).json({ error: "Message not found in the specified chat." });
+      }
+      if (msgRes.status === 403) {
+        return res.status(403).json({ error: "Forbidden: You cannot access this message." });
+      }
+      if (!msgRes.ok) {
+        return res.status(msgRes.status).json({ error: "Failed to verify message document." });
+      }
+      const msgJson = await msgRes.json();
+      const senderId = msgJson.fields?.senderId?.stringValue;
+      if (senderId !== callerUid) {
+        return res.status(403).json({ error: "Forbidden: You can only trigger notifications for your own messages." });
+      }
+
+      const messageText = msgJson.fields?.text?.stringValue || "";
+      const textSnippet = messageText.length > 100 ? messageText.slice(0, 97) + "..." : messageText;
+
+      // 3. Fetch sender's public profile name
+      let senderName = "Campus Peer";
+      try {
+        const profileUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${callerUid}`;
+        const profileRes = await fetch(profileUrl, {
+          headers: { Authorization: `Bearer ${effectiveToken}` },
+        });
+        if (profileRes.ok) {
+          const profileJson = await profileRes.json();
+          senderName = profileJson.fields?.name?.stringValue || "Campus Peer";
+        }
+      } catch {}
+
+      // 4. Determine recipients exclusively from trusted chat participants (excluding sender)
+      const recipients = participants.filter((p) => p !== callerUid);
+      if (recipients.length === 0) {
+        return res.json({ success: true, message: "No other participants to notify." });
+      }
+
+      let totalSent = 0;
+      let totalPruned = 0;
+      for (const recipientUid of recipients) {
+        const result = await sendPushToUser(recipientUid, {
+          title: `New message from ${senderName}`,
+          body: textSnippet || "Sent you a message.",
+          url: `/chat/${chatId}`,
+          tag: `chat_${chatId}`,
+          data: {
+            type: "chat_message",
+            chatId,
+            messageId,
+            url: `/chat/${chatId}`,
+          },
+        });
+        totalSent += result.sent;
+        totalPruned += result.pruned;
+      }
+
+      return res.json({
+        success: true,
+        deliveredCount: totalSent,
+        prunedCount: totalPruned,
+        recipientsCount: recipients.length,
+      });
+    } catch (err: any) {
+      console.error("Push notify-message error:", err);
+      return res.status(500).json({ error: "Internal server error dispatching push notification." });
     }
   });
 

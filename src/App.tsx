@@ -125,7 +125,7 @@ function AppContent() {
           </Routes>
         </Suspense>
       </main>
-      {!isLaunchActive && <StudentNeedChatbot />}
+      {location.pathname === '/' && Boolean(firebaseUser) && <StudentNeedChatbot />}
     </div>
   );
 }
