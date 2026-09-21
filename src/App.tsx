@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
 import { Navbar } from './components/Navbar';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { StudentNeedChatbot } from './components/StudentNeedChatbot';
@@ -133,9 +134,11 @@ export default function App() {
   return (
     <AuthProvider>
       <AppProvider>
-        <BrowserRouter>
-          <AppContent />
-        </BrowserRouter>
+        <NotificationProvider>
+          <BrowserRouter>
+            <AppContent />
+          </BrowserRouter>
+        </NotificationProvider>
       </AppProvider>
     </AuthProvider>
   );

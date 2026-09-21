@@ -117,6 +117,13 @@ export function ListingCard({ listing }: { listing: Listing }) {
           )}
         </div>
         
+        {listing.type === 'Exchange' && listing.wantedItem && (
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-brand-teal-hover bg-brand-teal-light px-2 py-1 rounded-md border border-brand-teal-border">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-brand-teal">Exchange:</span>
+            <span className="truncate">{listing.wantedItem}</span>
+          </div>
+        )}
+        
         <div className="mt-auto flex flex-col gap-2.5">
           <div className="flex items-center gap-1.5 text-sm text-brand-muted">
             <MapPin className="h-4 w-4 shrink-0 text-brand-muted group-hover:text-brand-teal transition-colors" />

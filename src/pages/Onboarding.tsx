@@ -4,9 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { auth } from '../lib/firebase';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { UserCircle2, Upload, Link2, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { UserCircle2, Upload, X } from 'lucide-react';
 import { AUTH_ENDPOINTS } from '../config/api';
-import { cn } from '../lib/utils';
 import { uploadImageToCloudinary, validateImageFile } from '../lib/cloudinary';
 
 export function Onboarding() {
@@ -15,13 +14,8 @@ export function Onboarding() {
   
   const [name, setName] = useState('');
   const [department, setDepartment] = useState('Computer Science');
-  const [avatarSource, setAvatarSource] = useState<'upload' | 'url'>('upload');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarUrlInput, setAvatarUrlInput] = useState<string>('');
   const [avatarPreview, setAvatarPreview] = useState<string>('');
-  const [isCheckingUrl, setIsCheckingUrl] = useState<boolean>(false);
-  const [urlError, setUrlError] = useState<string | null>(null);
-  const [isUrlValid, setIsUrlValid] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,102 +27,29 @@ export function Onboarding() {
     }
   }, [firebaseUser, currentUser, navigate]);
 
-  // Handle URL validation and image loading preview
-  useEffect(() => {
-    if (avatarSource !== 'url') return;
-
-    const trimmed = avatarUrlInput.trim();
-    if (!trimmed) {
-      setAvatarPreview('');
-      setUrlError(null);
-      setIsUrlValid(false);
-      setIsCheckingUrl(false);
-      return;
-    }
-
-    // Validate URL syntax
-    try {
-      const parsed = new URL(trimmed);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        setUrlError('Please enter a URL starting with http:// or https://');
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const validation = validateImageFile(file);
+      if (!validation.valid) {
+        setError(validation.error || 'Invalid image file.');
+        setAvatarFile(null);
         setAvatarPreview('');
-        setIsUrlValid(false);
-        setIsCheckingUrl(false);
+        e.target.value = '';
         return;
       }
-    } catch {
-      setUrlError('Please enter a valid URL');
-      setAvatarPreview('');
-      setIsUrlValid(false);
-      setIsCheckingUrl(false);
-      return;
-    }
-
-    setIsCheckingUrl(true);
-    setUrlError(null);
-
-    let isMounted = true;
-    const img = new Image();
-    const timer = setTimeout(() => {
-      if (isMounted) {
-        setIsCheckingUrl(false);
-        setUrlError('Image took too long to load. Please try another link.');
-        setAvatarPreview('');
-        setIsUrlValid(false);
-      }
-    }, 7000);
-
-    img.onload = () => {
-      if (isMounted) {
-        clearTimeout(timer);
-        setIsCheckingUrl(false);
-        setUrlError(null);
-        setIsUrlValid(true);
-        setAvatarPreview(trimmed);
-      }
-    };
-
-    img.onerror = () => {
-      if (isMounted) {
-        clearTimeout(timer);
-        setIsCheckingUrl(false);
-        setUrlError('Unable to load image from this URL. Please verify the link.');
-        setAvatarPreview('');
-        setIsUrlValid(false);
-      }
-    };
-
-    img.src = trimmed;
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-    };
-  }, [avatarUrlInput, avatarSource]);
-
-  const handleSourceChange = (newSource: 'upload' | 'url') => {
-    setAvatarSource(newSource);
-    setError(null);
-    if (newSource === 'upload') {
-      // Clear URL state and restore file preview if a file is already picked
-      setAvatarUrlInput('');
-      setUrlError(null);
-      setIsUrlValid(false);
-      setIsCheckingUrl(false);
-      if (avatarFile) {
-        setAvatarPreview(URL.createObjectURL(avatarFile));
-      } else {
-        setAvatarPreview('');
-      }
+      setError(null);
+      setAvatarFile(file);
+      setAvatarPreview(URL.createObjectURL(file));
     } else {
-      // Clear file state and restore validated URL preview if available
       setAvatarFile(null);
-      if (avatarUrlInput.trim() && isUrlValid) {
-        setAvatarPreview(avatarUrlInput.trim());
-      } else {
-        setAvatarPreview('');
-      }
+      setAvatarPreview('');
     }
+  };
+
+  const handleRemovePhoto = () => {
+    setAvatarFile(null);
+    setAvatarPreview('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -139,25 +60,10 @@ export function Onboarding() {
     setError(null);
     
     try {
-      // Use the provided image URL, uploaded image, or generate a default avatar using initials
+      // Use uploaded image or generate default avatar using initials
       let finalAvatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=000000`;
       
-      if (avatarSource === 'url') {
-        const trimmedUrl = avatarUrlInput.trim();
-        if (trimmedUrl) {
-          if (isCheckingUrl) {
-            setError('Please wait for image URL verification to complete.');
-            setIsLoading(false);
-            return;
-          }
-          if (urlError || !isUrlValid) {
-            setError('Please provide a valid, loadable image URL or clear the field to continue.');
-            setIsLoading(false);
-            return;
-          }
-          finalAvatarUrl = trimmedUrl;
-        }
-      } else if (avatarSource === 'upload' && avatarFile) {
+      if (avatarFile) {
         try {
           const secureUrl = await uploadImageToCloudinary(avatarFile, {
             folder: 'studentneed/avatars',
@@ -258,127 +164,50 @@ export function Onboarding() {
             </div>
             
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium text-brand-charcoal">
-                  Profile Image <span className="text-brand-muted font-normal">(Optional)</span>
-                </label>
-                <div className="inline-flex rounded-lg border border-brand-border p-0.5 bg-slate-100 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => handleSourceChange('upload')}
-                    className={cn(
-                      "flex items-center gap-1 px-2.5 py-1 rounded-md font-medium transition-colors",
-                      avatarSource === 'upload' 
-                        ? "bg-brand-teal text-white shadow-xs" 
-                        : "text-brand-muted hover:text-brand-charcoal"
-                    )}
-                  >
-                    <Upload className="h-3 w-3" />
-                    <span>Upload Photo</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSourceChange('url')}
-                    className={cn(
-                      "flex items-center gap-1 px-2.5 py-1 rounded-md font-medium transition-colors",
-                      avatarSource === 'url' 
-                        ? "bg-brand-teal text-white shadow-xs" 
-                        : "text-brand-muted hover:text-brand-charcoal"
-                    )}
-                  >
-                    <Link2 className="h-3 w-3" />
-                    <span>Image URL</span>
-                  </button>
-                </div>
-              </div>
+              <label className="block text-sm font-medium text-brand-charcoal mb-1.5">
+                Profile picture <span className="text-brand-muted font-normal">(Optional)</span>
+              </label>
 
-              <div className="mt-2 flex items-start gap-4">
-                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center">
+              <div className="mt-2 flex items-center gap-4">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-zinc-100 border border-brand-border flex items-center justify-center">
                   {avatarPreview ? (
                     <img 
                       src={avatarPreview} 
                       alt="Preview" 
                       className="h-full w-full object-cover"
-                      referrerPolicy="no-referrer"
                     />
                   ) : (
                     <UserCircle2 className="h-8 w-8 text-zinc-400" />
                   )}
-                  {avatarSource === 'url' && isCheckingUrl && (
-                    <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
-                      <Loader2 className="h-4 w-4 animate-spin text-zinc-700" />
-                    </div>
-                  )}
                 </div>
 
-                <div className="flex-1">
-                  {avatarSource === 'upload' ? (
-                    <div>
-                      <Input 
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-border bg-white text-xs font-semibold text-brand-charcoal hover:border-brand-teal hover:text-brand-teal hover:bg-brand-teal-light/50 transition-all shadow-xs">
+                      <Upload className="h-3.5 w-3.5 text-brand-teal" />
+                      <span>{avatarPreview ? 'Change photo' : 'Upload photo'}</span>
+                      <input 
                         type="file" 
                         accept="image/jpeg,image/png,image/webp"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const validation = validateImageFile(file);
-                            if (!validation.valid) {
-                              setError(validation.error || 'Invalid image file.');
-                              setAvatarFile(null);
-                              setAvatarPreview('');
-                              e.target.value = '';
-                              return;
-                            }
-                            setError(null);
-                            setAvatarFile(file);
-                            setAvatarPreview(URL.createObjectURL(file));
-                          } else {
-                            setAvatarFile(null);
-                            setAvatarPreview('');
-                          }
-                        }}
-                        className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-zinc-100 file:text-zinc-900 hover:file:bg-zinc-200"
+                        onChange={handleFileChange}
+                        className="sr-only"
                       />
-                      <p className="mt-1 text-xs text-zinc-500">
-                        JPG, JPEG, PNG, or WEBP. Max 5MB.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      <div className="relative">
-                        <Input 
-                          type="url"
-                          placeholder="https://example.com/avatar.jpg"
-                          value={avatarUrlInput}
-                          onChange={(e) => setAvatarUrlInput(e.target.value)}
-                          className={cn(
-                            "text-sm pr-9",
-                            urlError && "border-red-300 focus:border-red-400 focus:ring-red-500/10",
-                            isUrlValid && "border-emerald-300 focus:border-emerald-400 focus:ring-emerald-500/10"
-                          )}
-                        />
-                        <div className="absolute right-2.5 top-2.5 flex items-center pointer-events-none">
-                          {isCheckingUrl ? (
-                            <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
-                          ) : isUrlValid ? (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                          ) : urlError ? (
-                            <AlertCircle className="h-4 w-4 text-red-500" />
-                          ) : (
-                            <Link2 className="h-4 w-4 text-zinc-400" />
-                          )}
-                        </div>
-                      </div>
-                      {urlError ? (
-                        <p className="text-xs text-red-600">
-                          {urlError}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-zinc-500">
-                          Paste a direct link to any public image (JPG, PNG, WebP, SVG).
-                        </p>
-                      )}
-                    </div>
-                  )}
+                    </label>
+
+                    {avatarPreview && (
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        <span>Remove</span>
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-brand-muted">
+                    JPG, PNG, or WEBP up to 5MB.
+                  </p>
                 </div>
               </div>
             </div>
@@ -389,9 +218,9 @@ export function Onboarding() {
               type="submit" 
               className="w-full" 
               size="lg" 
-              disabled={isLoading || (avatarSource === 'url' && isCheckingUrl)}
+              disabled={isLoading}
             >
-              {isLoading ? 'Saving...' : (avatarSource === 'url' && isCheckingUrl) ? 'Verifying Image URL...' : 'Complete Registration'}
+              {isLoading ? 'Saving...' : 'Complete Registration'}
             </Button>
             <div className="mt-4 text-center">
               <button 

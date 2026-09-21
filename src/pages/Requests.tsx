@@ -5,14 +5,17 @@ import { collection, doc, getDoc, setDoc, query, where, onSnapshot, serverTimest
 import { db } from '../lib/firebase';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { cn } from '../lib/utils';
 import { ItemRequest, Chat } from '../types';
 
 export function Requests() {
   const navigate = useNavigate();
   const { requests, requestsLoading, requestsError, hasMoreRequests, loadMoreRequests, updateRequestStatus, cancelRequest, users } = useAppContext();
   const { currentUser, firebaseUser } = useAuth();
+  const { chatUnreadCounts } = useNotifications();
   const currentUserId = firebaseUser?.uid || currentUser?.id;
   
   const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
@@ -293,10 +296,20 @@ export function Requests() {
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               Opening Chat...
                             </>
+                          ) : existingChat ? (
+                            <>
+                              <MessageSquare className="h-3.5 w-3.5" />
+                              <span>Continue Chat</span>
+                              {Boolean(chatUnreadCounts[existingChat.id]) && (
+                                <span className="ml-1 rounded-full bg-white text-brand-teal px-1.5 py-0.5 text-[10px] font-bold shadow-xs">
+                                  {chatUnreadCounts[existingChat.id]}
+                                </span>
+                              )}
+                            </>
                           ) : (
                             <>
                               <MessageSquare className="h-3.5 w-3.5" />
-                              {existingChat ? 'Continue Chat' : 'Chat / Contact'}
+                              <span>Chat / Contact</span>
                             </>
                           )}
                         </Button>
@@ -360,6 +373,7 @@ export function Requests() {
                         {requestInquiries.map((chatItem) => {
                           const otherParticipantId = chatItem.participants.find(p => p !== currentUserId);
                           const responder = users.find(u => u.id === otherParticipantId);
+                          const unreadCount = chatUnreadCounts[chatItem.id] || 0;
                           return (
                             <Button
                               key={chatItem.id}
@@ -368,8 +382,13 @@ export function Requests() {
                               className="text-xs h-8 gap-1.5 border-brand-border bg-slate-50 hover:bg-brand-teal-light hover:text-brand-teal-hover hover:border-brand-teal-border text-brand-charcoal transition-all"
                               onClick={() => navigate(`/chat/${chatItem.id}`)}
                             >
-                              <div className="h-2 w-2 rounded-full bg-brand-teal" />
+                              <div className={cn("h-2 w-2 rounded-full", unreadCount > 0 ? "bg-brand-teal animate-pulse" : "bg-zinc-400")} />
                               <span>Chat with {responder?.name || 'Student'}</span>
+                              {unreadCount > 0 && (
+                                <span className="ml-1 rounded-full bg-brand-teal text-white px-1.5 py-0.5 text-[10px] font-bold">
+                                  {unreadCount}
+                                </span>
+                              )}
                             </Button>
                           );
                         })}

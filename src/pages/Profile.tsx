@@ -27,6 +27,7 @@ import { auth, db } from '../lib/firebase';
 import { updatePassword } from 'firebase/auth';
 import { doc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { uploadImageToCloudinary, validateImageFile } from '../lib/cloudinary';
+import { formatCurrency } from '../lib/utils';
 import { ListingCard } from '../components/ListingCard';
 import { EditListingModal } from '../components/EditListingModal';
 import { Button } from '../components/ui/Button';
@@ -544,7 +545,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                               </div>
 
                               <p className="mt-1 font-bold text-zinc-900 text-sm">
-                                {item ? (item.price === 0 ? 'Free' : `$${item.price}`) : '—'}
+                                {item ? formatCurrency(item.price) : '—'}
                               </p>
                             </div>
 

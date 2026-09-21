@@ -30,6 +30,7 @@ export type NewListingInput = {
   status?: Listing['status'];
   expirationDays?: number;
   expiresAt?: any;
+  wantedItem?: string;
 };
 
 export type NewRequestInput = {
@@ -279,6 +280,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               status: data.status || 'available',
               expirationDays: data.expirationDays ? Number(data.expirationDays) : 15,
               expiresAt,
+              wantedItem: data.wantedItem || undefined,
               createdAt,
               updatedAt,
             };
@@ -441,6 +443,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       newListingData.price = Number(listingInput.price);
     }
 
+    if (listingInput.type === 'Exchange' && listingInput.wantedItem?.trim()) {
+      newListingData.wantedItem = listingInput.wantedItem.trim();
+    }
+
     try {
       await setDoc(docRef, newListingData);
       return docRef.id;
@@ -512,6 +518,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } else {
         updatePayload.price = Math.max(0, Number(updates.price));
       }
+    }
+
+    if (updates.wantedItem !== undefined) {
+      updatePayload.wantedItem = updates.wantedItem.trim();
     }
 
     if (Array.isArray(updates.images)) {

@@ -69,6 +69,7 @@ export type Listing = {
   moderatedAt?: string;
   moderatedBy?: string;
   flaggedForReview?: boolean;
+  wantedItem?: string;
 };
 
 export type UpdateListingInput = {
@@ -80,6 +81,7 @@ export type UpdateListingInput = {
   condition?: Condition;
   location?: string;
   images?: string[];
+  wantedItem?: string;
 };
 
 export type ItemRequest = {
@@ -215,4 +217,19 @@ export type ActivityLog = {
   targetId: string;
   timestamp: string;
   details?: Record<string, any>;
+};
+
+export type NotificationType = 'chat' | 'reservation' | 'request' | 'system';
+
+export type AppNotification = {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  link: string;
+  chatId?: string;
+  reservationId?: string;
+  listingId?: string;
 };

@@ -6,6 +6,7 @@ import { db } from '../lib/firebase';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { StudentNeedLogo } from './StudentNeedLogo';
+import { NotificationBell } from './NotificationBell';
 
 export function Navbar() {
   const { currentUser } = useAuth();
@@ -108,7 +109,8 @@ export function Navbar() {
             </Link>
             
             {currentUser ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
+                <NotificationBell />
                 <Link to="/profile" className="flex items-center gap-2 rounded-full border border-brand-border p-1 pr-3 hover:bg-zinc-50 transition-colors">
                   <div className="relative">
                     <img 
@@ -140,6 +142,23 @@ export function Navbar() {
               </Link>
             )}
           </div>
+        </div>
+      </header>
+
+      {/* Mobile Top Header */}
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-brand-border bg-white/90 px-4 backdrop-blur-md md:hidden">
+        <Link to="/" className="flex items-center">
+          <StudentNeedLogo size="sm" />
+        </Link>
+        <div className="flex items-center gap-2.5">
+          {currentUser && <NotificationBell />}
+          <Link
+            to="/create-listing"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-teal text-white shadow-xs"
+            aria-label="Post Item"
+          >
+            <Plus className="h-4 w-4" />
+          </Link>
         </div>
       </header>
 

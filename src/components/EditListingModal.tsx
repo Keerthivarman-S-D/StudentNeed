@@ -33,6 +33,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
   const [title, setTitle] = useState(listing.title);
   const [description, setDescription] = useState(listing.description);
   const [price, setPrice] = useState(listing.price !== undefined ? String(listing.price) : '');
+  const [wantedItem, setWantedItem] = useState(listing.wantedItem || '');
   const [type, setType] = useState<ListingType>(listing.type);
   const [category, setCategory] = useState<Category>(listing.category);
   const [condition, setCondition] = useState<Condition>(listing.condition || 'Good');
@@ -133,6 +134,16 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
       if (type === 'Sale') {
         updates.price = Number(price);
+      }
+
+      if (type === 'Exchange') {
+        const trimmedWanted = wantedItem.trim();
+        if (!trimmedWanted) {
+          setError('Please specify what item you are looking for in exchange.');
+          setIsSaving(false);
+          return;
+        }
+        updates.wantedItem = trimmedWanted;
       }
 
       // Security guarantee: sellerId, createdAt, expiresAt, and expirationDays
@@ -307,6 +318,22 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                   placeholder="e.g. 450"
                   required
                 />
+              </div>
+            )}
+
+            {type === 'Exchange' && (
+              <div>
+                <label className="block text-xs font-semibold text-brand-charcoal mb-1">
+                  Wanted in exchange <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  value={wantedItem}
+                  onChange={(e) => setWantedItem(e.target.value)}
+                  placeholder="e.g. Scientific Calculator, Lab Coat, Engineering Book"
+                  required
+                  maxLength={100}
+                />
+                <p className="mt-1 text-[11px] text-brand-muted">Specify the item or equipment you wish to trade for.</p>
               </div>
             )}
 

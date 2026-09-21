@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { Chat, ChatMessage, User, Listing, Reservation, CAMPUS_MEETUP_LOCATIONS, CampusMeetupLocation, ItemRequest } from '../types';
 import { RESERVATION_ENDPOINTS } from '../config/api';
 import { Button } from '../components/ui/Button';
@@ -45,6 +46,7 @@ export function ChatPage() {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const { markChatAsRead } = useNotifications();
   const currentUserId = auth.currentUser?.uid || currentUser?.id;
 
   const [chat, setChat] = useState<Chat | null>(null);
@@ -296,6 +298,28 @@ export function ChatPage() {
     return () => unsubscribeMessages();
   }, [chatId, currentUserId, authError]);
 
+  // Track conversation read receipt strictly in user's isolated private document
+  useEffect(() => {
+    if (!chatId || !currentUserId || authError) return;
+
+    const tryMarkRead = () => {
+      if (document.visibilityState === 'visible') {
+        markChatAsRead(chatId);
+      }
+    };
+
+    // Mark read on initial render or when messages array updates while viewing
+    tryMarkRead();
+
+    window.addEventListener('focus', tryMarkRead);
+    document.addEventListener('visibilitychange', tryMarkRead);
+
+    return () => {
+      window.removeEventListener('focus', tryMarkRead);
+      document.removeEventListener('visibilitychange', tryMarkRead);
+    };
+  }, [chatId, currentUserId, authError, messages.length, markChatAsRead]);
+
   // 4. Send Message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -328,6 +352,9 @@ export function ChatPage() {
       await updateDoc(doc(db, 'chats', chatId), {
         updatedAt: serverTimestamp(),
       });
+
+      // Mark sender's own read receipt up to date
+      markChatAsRead(chatId);
 
       setInputText('');
     } catch (err: unknown) {

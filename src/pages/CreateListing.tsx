@@ -17,6 +17,7 @@ export function CreateListing() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [wantedItem, setWantedItem] = useState('');
   const [type, setType] = useState<ActiveListingType>('Sale');
   const [condition, setCondition] = useState<Condition>('Good');
   const [category, setCategory] = useState<Category>('Other');
@@ -168,6 +169,11 @@ export function CreateListing() {
       console.warn('Moderation pre-check failed or skipped:', modErr);
     }
 
+    if (type === 'Exchange' && !wantedItem.trim()) {
+      setError('Please specify what item you are looking for in exchange.');
+      return;
+    }
+
     const finalImages: string[] = uploadedImage ? [uploadedImage] : [];
     
     setIsSubmitting(true);
@@ -179,6 +185,7 @@ export function CreateListing() {
         title: title.trim(),
         description: description.trim(),
         price: type === 'Sale' && price ? Number(price) : undefined,
+        wantedItem: type === 'Exchange' ? wantedItem.trim() : undefined,
         type,
         condition,
         category,
@@ -329,6 +336,21 @@ export function CreateListing() {
                   value={price}
                   onChange={e => setPrice(e.target.value)}
                 />
+              </div>
+            )}
+
+            {type === 'Exchange' && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">
+                  Wanted in exchange <span className="text-red-500">*</span>
+                </label>
+                <Input 
+                  required 
+                  placeholder="e.g. Scientific Calculator, Lab Coat, Engineering Book" 
+                  value={wantedItem}
+                  onChange={e => setWantedItem(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-brand-muted">Specify the item or equipment you wish to trade for.</p>
               </div>
             )}
 

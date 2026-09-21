@@ -16,7 +16,8 @@ import {
   Edit3,
   Flag,
   ShieldAlert,
-  ImageOff
+  ImageOff,
+  RefreshCw
 } from 'lucide-react';
 import {
   doc,
@@ -595,6 +596,27 @@ export function ListingDetail() {
               </Badge>
             </div>
           </div>
+
+          {listing.type === 'Exchange' && (
+            <div className="mb-6 rounded-2xl border border-brand-teal-border bg-brand-teal-light p-4 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 text-brand-teal" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-brand-teal-hover">
+                  Exchange Preference
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-xl bg-white p-3 border border-brand-border shadow-xs">
+                  <p className="text-[11px] text-brand-muted mb-1 font-semibold uppercase tracking-wide">Offering</p>
+                  <p className="font-semibold text-brand-charcoal line-clamp-2">{listing.title}</p>
+                </div>
+                <div className="rounded-xl bg-white p-3 border border-brand-teal-border shadow-xs">
+                  <p className="text-[11px] text-brand-teal mb-1 font-bold uppercase tracking-wide">Wanted in exchange</p>
+                  <p className="font-semibold text-brand-charcoal line-clamp-2">{listing.wantedItem || 'Open to campus offers'}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-brand-charcoal mb-3">Description</h3>
