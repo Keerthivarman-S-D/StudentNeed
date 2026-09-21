@@ -175,17 +175,17 @@ export function StudentNeedChatbot() {
             type="button"
             onClick={() => setIsOpen(true)}
             aria-label="Open StudentNeed Campus Assistant"
-            className="group relative flex h-14 w-14 items-center justify-center rounded-full bg-zinc-900 text-white shadow-xl shadow-zinc-900/25 transition-all hover:scale-105 hover:bg-zinc-800 active:scale-95 focus:outline-hidden focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+            className="group relative flex h-14 w-14 items-center justify-center rounded-full bg-brand-teal text-white shadow-xl shadow-brand-teal/30 transition-all hover:scale-105 hover:bg-brand-teal-hover active:scale-95 focus:outline-hidden focus:ring-2 focus:ring-brand-teal focus:ring-offset-2"
           >
             <Bot className="h-6 w-6 transition-transform group-hover:rotate-6" />
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-white animate-pulse">
-              <Sparkles className="h-2.5 w-2.5 text-white" />
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-charcoal ring-2 ring-white animate-pulse">
+              <Sparkles className="h-2.5 w-2.5 text-brand-teal" />
             </span>
 
             {/* Introductory Tooltip Pill */}
             {!hasInteracted && (
-              <span className="absolute right-16 hidden md:flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-900 shadow-md border border-zinc-200 pointer-events-none animate-in fade-in slide-in-from-right-2 duration-300">
-                <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+              <span className="absolute right-16 hidden md:flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-brand-charcoal shadow-md border border-brand-border pointer-events-none animate-in fade-in slide-in-from-right-2 duration-300">
+                <Sparkles className="h-3.5 w-3.5 text-brand-teal" />
                 Ask StudentNeed
               </span>
             )}
@@ -199,7 +199,7 @@ export function StudentNeedChatbot() {
           role="dialog" 
           aria-label="StudentNeed Campus Assistant Chat"
           className={cn(
-            "fixed z-50 flex flex-col overflow-hidden bg-white shadow-2xl border border-zinc-200 transition-all animate-in fade-in zoom-in-95 duration-200",
+            "fixed z-50 flex flex-col overflow-hidden bg-white shadow-2xl border border-brand-border transition-all animate-in fade-in zoom-in-95 duration-200",
             // Mobile: positioned neatly above the bottom nav bar with safe margins
             "inset-x-3 bottom-20 top-16 rounded-2xl",
             // Desktop: sleek floating window in bottom-right corner
@@ -207,15 +207,15 @@ export function StudentNeedChatbot() {
           )}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-900 px-4 py-3.5 text-white">
+          <div className="flex items-center justify-between border-b border-brand-charcoal/20 bg-brand-charcoal px-4 py-3.5 text-white">
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-800 text-white border border-zinc-700">
-                <Bot className="h-5 w-5 text-emerald-400" />
+                <Bot className="h-5 w-5 text-brand-teal" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
                   <h3 className="text-sm font-bold tracking-tight text-white leading-tight">StudentNeed Guide</h3>
-                  <span className="inline-flex items-center rounded-md bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300 border border-emerald-500/30">
+                  <span className="inline-flex items-center rounded-md bg-brand-teal/20 px-1.5 py-0.5 text-[10px] font-medium text-brand-teal border border-brand-teal/30">
                     Anna Univ
                   </span>
                 </div>
@@ -261,16 +261,16 @@ export function StudentNeedChatbot() {
                     className={cn(
                       "px-3.5 py-2.5 shadow-2xs leading-relaxed",
                       isUser
-                        ? "bg-zinc-900 text-white rounded-2xl rounded-tr-xs"
-                        : "bg-white text-zinc-800 border border-zinc-200/80 rounded-2xl rounded-tl-xs"
+                        ? "bg-brand-teal text-white rounded-2xl rounded-tr-xs"
+                        : "bg-white text-brand-charcoal border border-brand-border rounded-2xl rounded-tl-xs"
                     )}
                   >
                     {renderMessageContent(msg.text)}
                   </div>
-                  <div className="flex items-center gap-1 text-[10px] text-zinc-400 mt-1 px-1">
+                  <div className="flex items-center gap-1 text-[10px] text-brand-muted mt-1 px-1">
                     <span>{msg.timestamp}</span>
                     {!isUser && msg.source === 'knowledge_base' && (
-                      <span className="text-[9px] text-zinc-400">• Verified</span>
+                      <span className="text-[9px] text-brand-teal font-medium">• Verified</span>
                     )}
                   </div>
                 </div>
@@ -279,8 +279,8 @@ export function StudentNeedChatbot() {
 
             {/* In-Flight Typing Indicator */}
             {isLoading && (
-              <div className="mr-auto flex items-center gap-2 rounded-2xl rounded-tl-xs bg-white border border-zinc-200/80 px-4 py-2.5 text-sm text-zinc-500 shadow-2xs">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-600" />
+              <div className="mr-auto flex items-center gap-2 rounded-2xl rounded-tl-xs bg-white border border-brand-border px-4 py-2.5 text-sm text-brand-muted shadow-2xs">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-teal" />
                 <span className="text-xs">Consulting StudentNeed guide...</span>
               </div>
             )}
@@ -315,8 +315,8 @@ export function StudentNeedChatbot() {
 
           {/* Quick Starter Suggestions (shown when conversation is fresh) */}
           {messages.length <= 2 && !isLoading && (
-            <div className="border-t border-zinc-100 bg-white px-3 py-2">
-              <p className="text-[11px] font-semibold text-zinc-400 mb-1.5 px-1 flex items-center gap-1">
+            <div className="border-t border-brand-border/60 bg-white px-3 py-2">
+              <p className="text-[11px] font-semibold text-brand-muted mb-1.5 px-1 flex items-center gap-1">
                 <HelpCircle className="h-3 w-3" />
                 Popular Questions
               </p>
@@ -326,7 +326,7 @@ export function StudentNeedChatbot() {
                     key={idx}
                     type="button"
                     onClick={() => handleSendMessage(q)}
-                    className="shrink-0 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-100 hover:border-zinc-300 transition-colors text-left"
+                    className="shrink-0 rounded-full border border-brand-border bg-slate-50 px-2.5 py-1 text-xs text-brand-charcoal hover:bg-brand-teal-light hover:text-brand-teal-hover hover:border-brand-teal-border transition-colors text-left"
                   >
                     {q}
                   </button>
@@ -336,7 +336,7 @@ export function StudentNeedChatbot() {
           )}
 
           {/* Input Form Bar */}
-          <div className="border-t border-zinc-200 bg-white p-3">
+          <div className="border-t border-brand-border bg-white p-3">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -354,7 +354,7 @@ export function StudentNeedChatbot() {
                   onKeyDown={handleKeyDown}
                   disabled={isLoading}
                   maxLength={600}
-                  className="w-full rounded-full border border-zinc-300 bg-zinc-50 px-4 py-2 text-xs text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-zinc-900 disabled:opacity-60 transition"
+                  className="w-full rounded-full border border-brand-border bg-slate-50 px-4 py-2 text-xs text-brand-charcoal placeholder:text-brand-muted focus:border-brand-teal focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-brand-teal disabled:opacity-60 transition"
                 />
               </div>
 
@@ -362,7 +362,7 @@ export function StudentNeedChatbot() {
                 type="submit"
                 size="icon"
                 disabled={isLoading || !inputText.trim()}
-                className="h-9 w-9 rounded-full bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-40 shrink-0"
+                className="h-9 w-9 rounded-full bg-brand-teal text-white hover:bg-brand-teal-hover disabled:opacity-40 shrink-0 shadow-xs"
                 aria-label="Send question"
               >
                 {isLoading ? (
@@ -372,9 +372,9 @@ export function StudentNeedChatbot() {
                 )}
               </Button>
             </form>
-            <div className="mt-1.5 flex items-center justify-between px-2 text-[10px] text-zinc-400">
+            <div className="mt-1.5 flex items-center justify-between px-2 text-[10px] text-brand-muted">
               <span className="flex items-center gap-1">
-                <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                <ShieldCheck className="h-3 w-3 text-brand-teal" />
                 Grounded in StudentNeed Verified Rules
               </span>
               <span>{inputText.length}/600</span>

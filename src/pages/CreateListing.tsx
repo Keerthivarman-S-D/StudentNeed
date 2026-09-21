@@ -254,16 +254,16 @@ export function CreateListing() {
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Type Selection */}
-        <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-zinc-900">What are you offering?</h2>
+        <section className="space-y-4 rounded-2xl border border-brand-border bg-white p-6">
+          <h2 className="text-lg font-semibold text-brand-charcoal">What are you offering?</h2>
           <div className="grid grid-cols-3 gap-3">
             {types.map(t => (
               <label 
                 key={t}
                 className={`flex cursor-pointer items-center justify-center rounded-xl border p-4 text-sm font-medium transition-colors ${
                   type === t 
-                    ? 'border-zinc-900 bg-zinc-900 text-white' 
-                    : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
+                    ? 'border-brand-teal bg-brand-teal text-white shadow-xs' 
+                    : 'border-brand-border bg-white text-zinc-600 hover:bg-slate-50'
                 }`}
               >
                 <input 
@@ -280,12 +280,12 @@ export function CreateListing() {
         </section>
 
         {/* Basic Details */}
-        <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-zinc-900">Item Details</h2>
+        <section className="space-y-4 rounded-2xl border border-brand-border bg-white p-6">
+          <h2 className="text-lg font-semibold text-brand-charcoal">Item Details</h2>
           
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-zinc-700">Title</label>
+              <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Title</label>
               <Input 
                 required 
                 placeholder="e.g. Casio Scientific Calculator" 
@@ -296,9 +296,9 @@ export function CreateListing() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-zinc-700">Category</label>
+                <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Category</label>
                 <select 
-                  className="flex h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                  className="flex h-10 w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
                   value={category}
                   onChange={e => setCategory(e.target.value as Category)}
                 >
@@ -307,9 +307,9 @@ export function CreateListing() {
               </div>
               
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-zinc-700">Condition</label>
+                <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Condition</label>
                 <select 
-                  className="flex h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                  className="flex h-10 w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
                   value={condition}
                   onChange={e => setCondition(e.target.value as Condition)}
                 >
@@ -320,7 +320,7 @@ export function CreateListing() {
 
             {type === 'Sale' && (
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-zinc-700">Price (₹)</label>
+                <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Price (₹)</label>
                 <Input 
                   required 
                   type="number" 
@@ -333,19 +333,19 @@ export function CreateListing() {
             )}
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-zinc-700">Description</label>
+              <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Description</label>
               <textarea 
                 required
                 rows={4}
                 placeholder="Describe the item, any defects, reason for selling/donating..."
-                className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                className="w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
               />
             </div>
             
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-zinc-700">Pickup Location on Campus</label>
+              <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Pickup Location on Campus</label>
               <Input 
                 required 
                 placeholder="e.g. CSE Block, Hostel A, Main Gate" 
@@ -357,18 +357,18 @@ export function CreateListing() {
         </section>
 
         {/* Listing Duration & Expiration Section */}
-        <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6">
+        <section className="space-y-4 rounded-2xl border border-brand-border bg-white p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-emerald-600" />
-              <h2 className="text-lg font-semibold text-zinc-900">Listing Duration</h2>
+              <Clock className="h-5 w-5 text-brand-teal" />
+              <h2 className="text-lg font-semibold text-brand-charcoal">Listing Duration</h2>
             </div>
-            <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+            <span className="text-xs font-medium text-brand-teal-hover bg-brand-teal-light px-2.5 py-1 rounded-full border border-brand-teal-border">
               Auto-Cleanup Enabled
             </span>
           </div>
 
-          <p className="text-xs text-zinc-500 leading-relaxed">
+          <p className="text-xs text-brand-muted leading-relaxed">
             To keep the student marketplace active and prevent stale listings, select how long your item should remain visible. Expired listings are automatically archived and their stored assets are securely removed.
           </p>
 
@@ -384,8 +384,8 @@ export function CreateListing() {
                 onClick={() => setExpirationDays(opt.days)}
                 className={`flex flex-col text-left p-3.5 rounded-xl border transition-all ${
                   expirationDays === opt.days
-                    ? 'border-zinc-900 bg-zinc-900 text-white shadow-sm ring-2 ring-zinc-900/10'
-                    : 'border-zinc-200 bg-zinc-50/60 hover:bg-zinc-100/80 text-zinc-800'
+                    ? 'border-brand-teal bg-brand-teal text-white shadow-xs ring-2 ring-brand-teal/20'
+                    : 'border-brand-border bg-slate-50/60 hover:bg-slate-100 text-brand-charcoal'
                 }`}
               >
                 <div className="flex items-center justify-between w-full mb-1">
@@ -394,18 +394,18 @@ export function CreateListing() {
                     <span className="text-[11px] font-medium bg-white/20 px-2 py-0.5 rounded-md text-white">Active</span>
                   )}
                 </div>
-                <span className={`text-xs ${expirationDays === opt.days ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                <span className={`text-xs ${expirationDays === opt.days ? 'text-zinc-100' : 'text-brand-muted'}`}>
                   {opt.desc}
                 </span>
               </button>
             ))}
           </div>
 
-          <div className="flex items-center gap-2 rounded-lg bg-zinc-50 border border-zinc-200/80 px-3.5 py-2.5 text-xs text-zinc-600">
-            <Calendar className="h-4 w-4 text-zinc-500 shrink-0" />
+          <div className="flex items-center gap-2 rounded-lg bg-slate-50 border border-brand-border px-3.5 py-2.5 text-xs text-brand-muted">
+            <Calendar className="h-4 w-4 text-brand-teal shrink-0" />
             <span>
               This listing will remain active until{' '}
-              <strong className="text-zinc-900">
+              <strong className="text-brand-charcoal">
                 {new Date(Date.now() + expirationDays * 86400000).toLocaleDateString('en-US', {
                   weekday: 'short',
                   month: 'short',
@@ -441,8 +441,8 @@ export function CreateListing() {
               </div>
               <div className="space-y-2">
                 {photoAddedFeedback && (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Photo added
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-teal-hover bg-brand-teal-light px-2.5 py-1 rounded-full border border-brand-teal-border">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-brand-teal" /> Photo added
                   </span>
                 )}
                 <p className="text-xs text-zinc-500">To replace this photo, select another file.</p>

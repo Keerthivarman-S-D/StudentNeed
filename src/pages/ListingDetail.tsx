@@ -513,7 +513,7 @@ export function ListingDetail() {
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
       <button
         onClick={() => navigate(-1)}
-        className="group flex items-center gap-1 text-sm font-medium text-zinc-500 hover:text-zinc-900 mb-6 transition-colors"
+        className="group flex items-center gap-1 text-sm font-medium text-brand-muted hover:text-brand-charcoal mb-6 transition-colors"
       >
         <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
         Back
@@ -521,7 +521,7 @@ export function ListingDetail() {
 
       <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:gap-12">
         {/* Image Gallery */}
-        <div className="relative aspect-square overflow-hidden rounded-3xl bg-zinc-100 border border-zinc-200 flex items-center justify-center">
+        <div className="relative aspect-square overflow-hidden rounded-3xl bg-slate-100 border border-brand-border flex items-center justify-center">
           {listing.images && listing.images.length > 0 && listing.images[0] ? (
             <img
               src={listing.images[0]}
@@ -529,9 +529,9 @@ export function ListingDetail() {
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex flex-col items-center justify-center p-8 text-center bg-zinc-50 text-zinc-400 h-full w-full select-none">
-              <ImageOff className="h-12 w-12 text-zinc-300 mb-2" />
-              <span className="text-sm font-medium text-zinc-400">No image</span>
+            <div className="flex flex-col items-center justify-center p-8 text-center bg-slate-50 text-brand-muted h-full w-full select-none">
+              <ImageOff className="h-12 w-12 text-slate-300 mb-2" />
+              <span className="text-sm font-medium text-brand-muted">No image</span>
             </div>
           )}
           <div className="absolute left-4 top-4 flex gap-2 flex-wrap">
@@ -554,7 +554,7 @@ export function ListingDetail() {
               </Badge>
             )}
             {!isExpired && expirationText && (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full shadow-md bg-zinc-900/80 text-white backdrop-blur-xs">
+              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full shadow-md bg-brand-charcoal/85 text-white backdrop-blur-xs">
                 <Timer className="h-3.5 w-3.5" />
                 {expirationText}
               </span>
@@ -564,19 +564,19 @@ export function ListingDetail() {
 
         {/* Details */}
         <div className="flex flex-col">
-          <div className="mb-6 border-b border-zinc-100 pb-6">
-            <h1 className="text-3xl font-bold text-zinc-900 mb-2">{listing.title}</h1>
+          <div className="mb-6 border-b border-brand-border pb-6">
+            <h1 className="text-3xl font-bold text-brand-charcoal mb-2">{listing.title}</h1>
             {listing.price !== undefined && (
-              <p className="text-3xl font-extrabold text-zinc-900 mb-4">₹{listing.price}</p>
+              <p className="text-3xl font-extrabold text-brand-charcoal mb-4">₹{listing.price}</p>
             )}
 
-            <div className="flex flex-wrap items-center gap-4 text-sm text-zinc-600">
+            <div className="flex flex-wrap items-center gap-4 text-sm text-brand-muted">
               <span className="flex items-center gap-1.5">
-                <MapPin className="h-4 w-4" />
+                <MapPin className="h-4 w-4 text-brand-teal" />
                 {listing.location}
               </span>
               <span className="flex items-center gap-1.5">
-                <Clock className="h-4 w-4" />
+                <Clock className="h-4 w-4 text-brand-muted" />
                 Posted {new Date(listing.createdAt).toLocaleDateString()}
               </span>
               {listing.expiresAt && (
@@ -586,39 +586,39 @@ export function ListingDetail() {
                 </span>
               )}
               {listing.condition && (
-                <Badge variant="outline" className="bg-zinc-50 font-medium">
+                <Badge variant="outline" className="bg-brand-bg font-medium border-brand-border">
                   {listing.condition}
                 </Badge>
               )}
-              <Badge variant="outline" className="bg-zinc-50 font-medium">
+              <Badge variant="outline" className="bg-brand-bg font-medium border-brand-border">
                 {listing.category}
               </Badge>
             </div>
           </div>
 
           <div className="mb-6">
-            <h3 className="text-lg font-semibold text-zinc-900 mb-3">Description</h3>
+            <h3 className="text-lg font-semibold text-brand-charcoal mb-3">Description</h3>
             <p className="text-zinc-700 leading-relaxed whitespace-pre-wrap">
               {listing.description}
             </p>
           </div>
 
-          <div className="mb-6 flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="mb-6 flex items-center justify-between rounded-2xl border border-brand-border bg-brand-bg p-4">
             <div className="flex items-center gap-3">
               {seller.avatarUrl ? (
                 <img
                   src={seller.avatarUrl}
                   alt={seller.name}
-                  className="h-12 w-12 rounded-full object-cover border border-zinc-200 bg-white"
+                  className="h-12 w-12 rounded-full object-cover border border-brand-border bg-white"
                 />
               ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900 text-white font-bold text-lg">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-teal text-white font-bold text-lg">
                   {seller.name.charAt(0).toUpperCase()}
                 </div>
               )}
               <div>
-                <p className="font-semibold text-zinc-900">{seller.name}</p>
-                <p className="text-sm text-zinc-500">{seller.department} • {seller.rating} ★</p>
+                <p className="font-semibold text-brand-charcoal">{seller.name}</p>
+                <p className="text-sm text-brand-muted">{seller.department} • {seller.rating} ★</p>
               </div>
             </div>
           </div>
@@ -644,9 +644,9 @@ export function ListingDetail() {
               )}
 
               {userReservation.status === 'accepted' && (
-                <div className="flex flex-col gap-2.5 rounded-xl bg-emerald-50/80 p-3.5 border border-emerald-200">
+                <div className="flex flex-col gap-2.5 rounded-xl bg-brand-teal-light p-3.5 border border-brand-teal-border">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-brand-teal-hover uppercase tracking-wider">
                       Reservation Status
                     </span>
                     <Badge variant="success" className="gap-1 font-medium text-xs">
@@ -654,14 +654,14 @@ export function ListingDetail() {
                       Accepted
                     </Badge>
                   </div>
-                  <p className="text-xs text-emerald-900 leading-relaxed">
+                  <p className="text-xs text-brand-charcoal leading-relaxed">
                     The seller has accepted your reservation! Please coordinate campus pickup details in chat.
                   </p>
 
                   {/* Meetup status info if available */}
                   {userReservation.meetup?.status === 'confirmed' && (
-                    <div className="flex items-center gap-2 rounded-lg bg-emerald-100/90 px-3 py-2 text-xs font-semibold text-emerald-900 border border-emerald-300/60">
-                      <MapPin className="h-4 w-4 text-emerald-700 shrink-0" />
+                    <div className="flex items-center gap-2 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-brand-teal-hover border border-brand-teal-border">
+                      <MapPin className="h-4 w-4 text-brand-teal shrink-0" />
                       <span>Meetup Confirmed: <strong>{userReservation.meetup.location}</strong></span>
                     </div>
                   )}
@@ -674,8 +674,8 @@ export function ListingDetail() {
                   )}
 
                   {(!userReservation.meetup || userReservation.meetup.status === 'not_set' || userReservation.meetup.status === 'cancelled') && (
-                    <div className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-1.5 text-xs text-zinc-600 border border-emerald-100">
-                      <MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                    <div className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-1.5 text-xs text-brand-muted border border-brand-teal-border">
+                      <MapPin className="h-3.5 w-3.5 text-brand-teal shrink-0" />
                       <span>Meetup: Not yet arranged (Select location in chat)</span>
                     </div>
                   )}
@@ -741,7 +741,7 @@ export function ListingDetail() {
                       {res.status === 'rejected' && <Badge variant="secondary">Declined</Badge>}
                       {res.status === 'cancelled' && <Badge variant="secondary">Cancelled</Badge>}
                       {res.status === 'accepted' && res.meetup?.status === 'confirmed' && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-teal-hover bg-brand-teal-light px-2 py-0.5 rounded-md border border-brand-teal-border">
                           <MapPin className="h-3 w-3" />
                           {res.meetup.location}
                         </span>
@@ -893,7 +893,7 @@ export function ListingDetail() {
                   {userReservation && (userReservation.status === 'pending' || userReservation.status === 'accepted') ? (
                     <Button
                       size="lg"
-                      className="flex-1 text-base gap-2 bg-zinc-900 text-white"
+                      className="flex-1 text-base gap-2 bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs"
                       disabled={isStartingChat}
                       onClick={handleContactStudent}
                     >
@@ -908,12 +908,12 @@ export function ListingDetail() {
                     <>
                       <Button
                         size="lg"
-                        className="flex-1 text-base gap-2 bg-zinc-900 text-white hover:bg-zinc-800"
+                        className="flex-1 text-base gap-2 bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs"
                         disabled={isReserving || isStartingChat}
                         onClick={handleReserveItem}
                       >
                         {isReserving ? (
-                          <Loader2 className="h-5 w-5 animate-spin" />
+                           <Loader2 className="h-5 w-5 animate-spin" />
                         ) : (
                           <BookmarkCheck className="h-5 w-5" />
                         )}

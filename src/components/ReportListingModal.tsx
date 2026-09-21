@@ -95,7 +95,7 @@ export function ReportListingModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-zinc-200">
         <div className="flex items-center justify-between pb-4 border-b border-zinc-100">
-          <div className="flex items-center gap-2 text-zinc-900">
+          <div className="flex items-center gap-2 text-brand-charcoal">
             <div className="p-2 rounded-xl bg-red-50 text-red-600">
               <Flag className="h-5 w-5" />
             </div>
@@ -117,10 +117,10 @@ export function ReportListingModal({
 
         {isSuccess ? (
           <div className="py-8 text-center space-y-3">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-teal-light text-brand-teal border border-brand-teal-border">
               <CheckCircle2 className="h-6 w-6" />
             </div>
-            <h4 className="font-semibold text-zinc-900">Report Submitted</h4>
+            <h4 className="font-semibold text-brand-charcoal">Report Submitted</h4>
             <p className="text-xs text-zinc-500 max-w-xs mx-auto">
               Thank you for keeping StudentNeed safe. Campus moderators have been notified and will review this listing shortly.
             </p>
@@ -145,7 +145,7 @@ export function ReportListingModal({
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-brand-charcoal uppercase tracking-wider mb-2">
                 Reason for reporting
               </label>
               <div className="space-y-2">
@@ -154,8 +154,8 @@ export function ReportListingModal({
                     key={r}
                     className={`flex items-center gap-3 p-2.5 rounded-xl border text-sm cursor-pointer transition-colors ${
                       selectedReason === r
-                        ? 'border-zinc-900 bg-zinc-50 font-medium text-zinc-900 ring-1 ring-zinc-900/10'
-                        : 'border-zinc-200 hover:bg-zinc-50 text-zinc-700'
+                        ? 'border-brand-teal bg-brand-teal-light/50 font-medium text-brand-charcoal ring-1 ring-brand-teal/20'
+                        : 'border-zinc-200 hover:bg-brand-bg text-zinc-700'
                     }`}
                   >
                     <input
@@ -164,7 +164,7 @@ export function ReportListingModal({
                       value={r}
                       checked={selectedReason === r}
                       onChange={() => setSelectedReason(r)}
-                      className="accent-zinc-900"
+                      className="accent-brand-teal"
                     />
                     <span>{r}</span>
                   </label>
@@ -173,7 +173,7 @@ export function ReportListingModal({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-semibold text-brand-charcoal uppercase tracking-wider mb-1.5">
                 Additional Details (Optional)
               </label>
               <textarea
@@ -182,7 +182,7 @@ export function ReportListingModal({
                 rows={3}
                 maxLength={400}
                 placeholder="Provide any specific context or details to help moderators review..."
-                className="w-full rounded-xl border border-zinc-200 p-3 text-xs outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-900/10 transition-all resize-none"
+                className="w-full rounded-xl border border-zinc-200 p-3 text-xs outline-none focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 transition-all resize-none"
               />
               <p className="text-[10px] text-zinc-400 text-right mt-1">
                 {description.length}/400

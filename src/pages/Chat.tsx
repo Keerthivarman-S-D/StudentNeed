@@ -918,16 +918,16 @@ export function ChatPage() {
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
               {/* Left Side: Listing Info & Status Badge */}
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-200/80 text-zinc-700">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-teal-light text-brand-teal-hover border border-brand-teal-border">
                   <Tag className="h-4 w-4" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-zinc-900 truncate max-w-[180px] sm:max-w-[240px]">
+                    <span className="text-xs font-semibold text-brand-charcoal truncate max-w-[180px] sm:max-w-[240px]">
                       {listing.title}
                     </span>
                     {listing.price !== undefined && (
-                      <span className="text-xs font-bold text-zinc-700">₹{listing.price}</span>
+                      <span className="text-xs font-bold text-brand-charcoal">₹{listing.price}</span>
                     )}
 
                     {/* Status Badge */}
@@ -946,24 +946,24 @@ export function ChatPage() {
                         Accepted
                       </Badge>
                     ) : reservation?.status === 'rejected' ? (
-                      <Badge variant="secondary" className="gap-1 font-medium text-zinc-600">
+                      <Badge variant="secondary" className="gap-1 font-medium text-brand-muted">
                         <X className="h-3 w-3" />
                         Declined
                       </Badge>
                     ) : reservation?.status === 'cancelled' ? (
-                      <Badge variant="secondary" className="gap-1 font-medium text-zinc-600">
+                      <Badge variant="secondary" className="gap-1 font-medium text-brand-muted">
                         <X className="h-3 w-3" />
                         Cancelled
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-zinc-500 font-normal">
+                      <Badge variant="outline" className="text-brand-muted font-normal">
                         No active request
                       </Badge>
                     )}
                   </div>
 
                   {/* Contextual Description */}
-                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                  <p className="text-[11px] text-brand-muted mt-0.5">
                     {listing.status === 'cancelled' && 'This listing has been cancelled by the seller.'}
                     {listing.status !== 'cancelled' && reservation?.status === 'pending' && isBuyer && 'Your reservation request is pending seller confirmation.'}
                     {listing.status !== 'cancelled' && reservation?.status === 'pending' && isSeller && `Incoming reservation request from ${otherUser?.name || 'student'}.`}
@@ -989,7 +989,7 @@ export function ChatPage() {
                     size="sm"
                     onClick={handleRequestReservation}
                     disabled={isActionLoading === 'reserving'}
-                    className="gap-1.5 text-xs h-8 px-3 font-medium bg-zinc-900 text-white hover:bg-zinc-800"
+                    className="gap-1.5 text-xs h-8 px-3 font-medium bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs"
                   >
                     {isActionLoading === 'reserving' ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1031,7 +1031,7 @@ export function ChatPage() {
                       size="sm"
                       onClick={() => handleUpdateReservationStatus('accepted')}
                       disabled={isActionLoading !== null}
-                      className="gap-1 text-xs h-8 px-3 font-medium bg-emerald-700 hover:bg-emerald-800 text-white"
+                      className="gap-1 text-xs h-8 px-3 font-medium bg-brand-teal hover:bg-brand-teal-hover text-white shadow-xs"
                     >
                       {isActionLoading === 'accepting' ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1045,7 +1045,7 @@ export function ChatPage() {
                       variant="outline"
                       onClick={() => handleUpdateReservationStatus('rejected')}
                       disabled={isActionLoading !== null}
-                      className="gap-1 text-xs h-8 px-3 font-medium border-zinc-300 text-zinc-700 hover:bg-zinc-100"
+                      className="gap-1 text-xs h-8 px-3 font-medium border-brand-border text-brand-charcoal hover:bg-slate-100"
                     >
                       {isActionLoading === 'rejecting' ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1064,12 +1064,12 @@ export function ChatPage() {
                       size="sm"
                       onClick={handleCompleteExchange}
                       disabled={isActionLoading !== null}
-                      className="gap-1.5 text-xs h-8 px-3 font-semibold bg-zinc-900 text-white hover:bg-zinc-800"
+                      className="gap-1.5 text-xs h-8 px-3 font-semibold bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs"
                     >
                       {isActionLoading === ('completing' as any) ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                        <CheckCircle2 className="h-3.5 w-3.5 text-white" />
                       )}
                       Complete Exchange
                     </Button>
@@ -1190,11 +1190,11 @@ export function ChatPage() {
                             className={cn(
                               'flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium border transition-all text-left',
                               isSelected
-                                ? 'border-zinc-900 bg-zinc-900 text-white shadow-2xs'
-                                : 'border-zinc-200 bg-zinc-50/70 text-zinc-700 hover:bg-zinc-100 hover:border-zinc-300'
+                                ? 'border-brand-teal bg-brand-teal text-white shadow-xs'
+                                : 'border-brand-border bg-brand-bg text-brand-charcoal hover:bg-slate-100 hover:border-brand-teal/40'
                             )}
                           >
-                            <Building2 className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-white' : 'text-zinc-500')} />
+                            <Building2 className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-white' : 'text-brand-muted')} />
                             <span className="truncate">{loc}</span>
                           </button>
                         );
@@ -1202,14 +1202,14 @@ export function ChatPage() {
                     </div>
 
                     <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-zinc-500">
+                      <span className="text-[11px] text-brand-muted">
                         {selectedMeetupLocation ? `Selected: ${selectedMeetupLocation}` : 'Pick a location to propose'}
                       </span>
                       <Button
                         size="sm"
                         disabled={!selectedMeetupLocation || isMeetupLoading !== null}
                         onClick={() => handleProposeMeetup()}
-                        className="text-xs h-8 px-3 gap-1.5 bg-zinc-900 text-white hover:bg-zinc-800"
+                        className="text-xs h-8 px-3 gap-1.5 bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs"
                       >
                         {isMeetupLoading === 'proposing' ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1274,7 +1274,7 @@ export function ChatPage() {
                             size="sm"
                             onClick={handleConfirmMeetup}
                             disabled={isMeetupLoading !== null}
-                            className="text-xs h-8 px-3 gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white"
+                            className="text-xs h-8 px-3 gap-1.5 bg-brand-teal hover:bg-brand-teal-hover text-white shadow-xs"
                           >
                             {isMeetupLoading === 'confirming' ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1306,22 +1306,22 @@ export function ChatPage() {
 
                 {/* State 3: Confirmed */}
                 {reservation.meetup?.status === 'confirmed' && (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 space-y-2.5">
+                  <div className="rounded-xl border border-brand-teal-border bg-brand-teal-light p-3.5 space-y-2.5">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-2xs">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-teal text-white shadow-2xs">
                           <MapPin className="h-5 w-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-emerald-950">
+                            <span className="text-xs font-bold text-brand-charcoal">
                               Confirmed Meetup Point
                             </span>
                             <Badge variant="success" className="text-[10px] py-0 px-1.5">
                               Agreed
                             </Badge>
                           </div>
-                          <p className="text-sm font-extrabold text-emerald-900 mt-0.5">
+                          <p className="text-sm font-extrabold text-brand-teal-hover mt-0.5">
                             {reservation.meetup.location}
                           </p>
                         </div>
@@ -1333,7 +1333,7 @@ export function ChatPage() {
                           variant="outline"
                           onClick={handleCancelMeetup}
                           disabled={isMeetupLoading !== null}
-                          className="text-xs h-7 px-2.5 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                          className="text-xs h-7 px-2.5 border-brand-teal-border text-brand-teal-hover hover:bg-white"
                         >
                           {isMeetupLoading === 'cancelling' ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -1345,7 +1345,7 @@ export function ChatPage() {
                       </div>
                     </div>
 
-                    <p className="text-[11px] text-emerald-800/90 leading-relaxed border-t border-emerald-200/60 pt-2">
+                    <p className="text-[11px] text-brand-charcoal leading-relaxed border-t border-brand-teal-border/60 pt-2">
                       Both students agreed to meet at <strong>{reservation.meetup.location}</strong>. Meet during daylight hours and inspect the item before completing the handover.
                     </p>
                   </div>
@@ -1369,15 +1369,15 @@ export function ChatPage() {
                 )}
 
                 {meetupSuccess && (
-                  <div className="mt-2.5 flex items-center justify-between rounded-lg bg-emerald-50 p-2 text-xs text-emerald-800 border border-emerald-200">
+                  <div className="mt-2.5 flex items-center justify-between rounded-lg bg-brand-teal-light p-2 text-xs text-brand-teal-hover border border-brand-teal-border">
                     <div className="flex items-center gap-1.5">
-                      <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      <Check className="h-3.5 w-3.5 shrink-0 text-brand-teal" />
                       <span>{meetupSuccess}</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => setMeetupSuccess(null)}
-                      className="text-emerald-600 hover:text-emerald-800 ml-2"
+                      className="text-brand-teal hover:text-brand-teal-hover ml-2"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -1390,19 +1390,19 @@ export function ChatPage() {
 
         {/* Request Context Bar */}
         {itemRequest && (
-          <div className="border-b border-zinc-200 bg-zinc-50/90 px-4 py-3 sm:px-6">
+          <div className="border-b border-brand-border bg-brand-bg px-4 py-3 sm:px-6">
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700 mt-0.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-teal-light text-brand-teal-hover mt-0.5 border border-brand-teal-border">
                   <MessageSquare className="h-4 w-4" />
                 </div>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-zinc-900 truncate max-w-[180px] sm:max-w-[260px]">
+                    <span className="text-xs font-semibold text-brand-charcoal truncate max-w-[180px] sm:max-w-[260px]">
                       {itemRequest.title}
                     </span>
                     {itemRequest.budget && (
-                      <span className="flex items-center text-xs font-bold text-green-700 bg-green-50 px-1.5 py-0.5 rounded">
+                      <span className="flex items-center text-xs font-bold text-brand-teal-hover bg-brand-teal-light border border-brand-teal-border px-1.5 py-0.5 rounded">
                         <IndianRupee className="h-3 w-3 mr-0.5" />
                         Budget: ₹{itemRequest.budget}
                       </span>
@@ -1415,20 +1415,20 @@ export function ChatPage() {
                     </Badge>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 mt-1">
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-brand-muted mt-1">
                     {itemRequest.location && (
                       <span className="flex items-center gap-1">
-                        <MapPin className="h-3 w-3 text-zinc-400" />
+                        <MapPin className="h-3 w-3 text-brand-teal" />
                         {itemRequest.location}
                       </span>
                     )}
                     {itemRequest.neededBy && (
                       <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3 text-zinc-400" />
+                        <Clock className="h-3 w-3 text-brand-muted" />
                         Needed by: {itemRequest.neededBy}
                       </span>
                     )}
-                    <span className="text-zinc-400">• Campus Request</span>
+                    <span className="text-brand-muted">• Campus Request</span>
                   </div>
 
                   {itemRequest.description && (
@@ -1441,7 +1441,7 @@ export function ChatPage() {
 
               <div className="self-end sm:self-auto shrink-0">
                 <Link to="/requests">
-                  <Button size="sm" variant="outline" className="text-xs h-7 px-2.5 text-zinc-700 border-zinc-200 hover:bg-zinc-100">
+                  <Button size="sm" variant="outline" className="text-xs h-7 px-2.5 text-brand-charcoal border-brand-border hover:bg-slate-100">
                     Back to Requests
                   </Button>
                 </Link>
@@ -1463,16 +1463,16 @@ export function ChatPage() {
         {/* Messages List Area */}
         <div 
           ref={messageListRef}
-          className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-zinc-50/50"
+          className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-brand-bg/60"
         >
           {messages.length === 0 ? (
             /* Empty State */
             <div className="flex h-full flex-col items-center justify-center text-center p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-500 mb-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white border border-brand-border text-brand-teal mb-3 shadow-xs">
                 <MessageSquare className="h-6 w-6" />
               </div>
-              <h3 className="text-base font-semibold text-zinc-900 mb-1">No messages yet</h3>
-              <p className="text-xs sm:text-sm text-zinc-500 max-w-xs">
+              <h3 className="text-base font-semibold text-brand-charcoal mb-1">No messages yet</h3>
+              <p className="text-xs sm:text-sm text-brand-muted max-w-xs">
                 Start the conversation with {otherUser?.name || 'this student'} about campus pickup or item details.
               </p>
             </div>
@@ -1486,15 +1486,15 @@ export function ChatPage() {
                   className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}
                 >
                   <div
-                    className={`rounded-2xl px-4 py-2.5 text-sm max-w-[85%] sm:max-w-[70%] break-words shadow-sm ${
+                    className={`rounded-2xl px-4 py-2.5 text-sm max-w-[85%] sm:max-w-[70%] break-words shadow-xs ${
                       isCurrentUser
-                        ? 'bg-zinc-900 text-white rounded-tr-sm'
-                        : 'bg-white text-zinc-900 border border-zinc-200/80 rounded-tl-sm'
+                        ? 'bg-brand-teal text-white rounded-tr-sm'
+                        : 'bg-white text-brand-charcoal border border-brand-border rounded-tl-sm'
                     }`}
                   >
                     <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
                   </div>
-                  <span className="mt-1 px-1 text-[10px] text-zinc-400">
+                  <span className="mt-1 px-1 text-[10px] text-brand-muted">
                     {formatTime(msg.createdAt)}
                   </span>
                 </div>

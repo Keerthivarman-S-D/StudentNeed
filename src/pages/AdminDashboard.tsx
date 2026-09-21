@@ -332,8 +332,8 @@ export function AdminDashboard() {
   if (isLoading) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center space-y-4">
-        <Loader2 className="w-8 h-8 animate-spin text-zinc-900" />
-        <p className="text-sm font-medium text-zinc-600">Loading StudentNeed Moderation Console...</p>
+        <Loader2 className="w-8 h-8 animate-spin text-brand-teal" />
+        <p className="text-sm font-medium text-brand-muted">Loading StudentNeed Moderation Console...</p>
       </div>
     );
   }
@@ -341,16 +341,16 @@ export function AdminDashboard() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-3xl border border-brand-border bg-white p-6 shadow-sm">
         <div>
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-800">
-            <Lock className="h-3.5 w-3.5 text-zinc-700" />
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-brand-charcoal">
+            <Lock className="h-3.5 w-3.5 text-brand-teal" />
             Admin Moderation v1
           </div>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl">
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-brand-charcoal sm:text-3xl">
             Campus Moderation Console
           </h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-brand-muted">
             Enforcing Anna University campus community safety & verified peer-to-peer trust.
           </p>
         </div>
@@ -374,13 +374,13 @@ export function AdminDashboard() {
         <div
           className={`flex items-center justify-between rounded-2xl p-4 text-sm font-medium border shadow-xs animate-in fade-in duration-200 ${
             feedbackMsg.type === 'success'
-              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+              ? 'bg-brand-teal-light text-brand-teal-hover border-brand-teal-border'
               : 'bg-red-50 text-red-900 border-red-200'
           }`}
         >
           <div className="flex items-center gap-2">
             {feedbackMsg.type === 'success' ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <CheckCircle2 className="h-4 w-4 text-brand-teal" />
             ) : (
               <AlertCircle className="h-4 w-4 text-red-600" />
             )}
@@ -396,7 +396,7 @@ export function AdminDashboard() {
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex overflow-x-auto border-b border-zinc-200 gap-2 pb-px no-scrollbar">
+      <div className="flex overflow-x-auto border-b border-brand-border gap-2 pb-px no-scrollbar">
         {[
           { id: 'overview', label: 'Overview', icon: SlidersHorizontal },
           { id: 'queue', label: `Moderation Queue (${pendingQueue.length})`, icon: Flag },
@@ -413,8 +413,8 @@ export function AdminDashboard() {
               onClick={() => setActiveTab(tab.id as Tab)}
               className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                 isActive
-                  ? 'border-zinc-900 text-zinc-900 font-semibold'
-                  : 'border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700'
+                  ? 'border-brand-teal text-brand-teal-hover font-semibold'
+                  : 'border-transparent text-brand-muted hover:border-zinc-300 hover:text-brand-charcoal'
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -1324,7 +1324,7 @@ export function AdminDashboard() {
                 onChange={(e) => setActionReason(e.target.value)}
                 rows={3}
                 placeholder="Explain the specific violation or moderation rationale..."
-                className="w-full rounded-xl border border-zinc-200 p-3 text-xs outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-900/10 transition-all resize-none"
+                className="w-full rounded-xl border border-zinc-200 p-3 text-xs outline-none focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 transition-all resize-none"
               />
             </div>
 

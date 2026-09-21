@@ -186,13 +186,13 @@ export function Requests() {
         </div>
       )}
 
-      <div className="mb-6 flex space-x-1 rounded-xl bg-zinc-100 p-1 w-fit">
+      <div className="mb-6 flex space-x-1.5 rounded-xl bg-slate-100 p-1 w-fit border border-brand-border/40">
         <button
           onClick={() => setActiveTab('all')}
           className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
             activeTab === 'all'
-              ? 'bg-white text-zinc-900 shadow-sm'
-              : 'text-zinc-500 hover:text-zinc-900'
+              ? 'bg-brand-teal-light text-brand-teal-hover font-semibold border border-brand-teal-border shadow-xs'
+              : 'text-brand-muted hover:text-brand-charcoal'
           }`}
         >
           Campus Requests
@@ -202,8 +202,8 @@ export function Requests() {
             onClick={() => setActiveTab('my')}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
               activeTab === 'my'
-                ? 'bg-white text-zinc-900 shadow-sm'
-                : 'text-zinc-500 hover:text-zinc-900'
+                ? 'bg-brand-teal-light text-brand-teal-hover font-semibold border border-brand-teal-border shadow-xs'
+                : 'text-brand-muted hover:text-brand-charcoal'
             }`}
           >
             My Requests {requests.filter(r => r.requesterId === (firebaseUser?.uid || currentUser?.id)).length > 0 && `(${requests.filter(r => r.requesterId === (firebaseUser?.uid || currentUser?.id)).length})`}
@@ -213,8 +213,8 @@ export function Requests() {
 
       {requestsLoading ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-zinc-600 mb-3" />
-          <p className="text-sm text-zinc-500 font-medium">Loading campus requests…</p>
+          <Loader2 className="h-8 w-8 animate-spin text-brand-teal mb-3" />
+          <p className="text-sm text-brand-muted font-medium">Loading campus requests…</p>
         </div>
       ) : requestsError ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
@@ -237,11 +237,11 @@ export function Requests() {
               const requestInquiries = userChats.filter(c => c.requestId === request.id);
               
               return (
-                <div key={request.id} className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-5 transition-shadow hover:shadow-md">
+                <div key={request.id} className="flex flex-col gap-4 rounded-2xl border border-brand-border bg-white p-5 transition-all hover:border-brand-teal/40 hover:shadow-md">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                     <div className="flex-1 space-y-2">
                       <div className="flex items-start justify-between">
-                        <h3 className="text-lg font-bold text-zinc-900">{request.title}</h3>
+                        <h3 className="text-lg font-bold text-brand-charcoal">{request.title}</h3>
                         {request.status !== 'open' && (
                           <Badge 
                             variant={request.status === 'matched' ? 'success' : request.status === 'cancelled' ? 'destructive' : 'secondary'} 
@@ -251,19 +251,19 @@ export function Requests() {
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-zinc-600 line-clamp-2">{request.description}</p>
+                      <p className="text-sm text-brand-muted line-clamp-2">{request.description}</p>
                       
-                      <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-zinc-500 pt-2">
-                        <span className="flex items-center gap-1 bg-zinc-50 px-2 py-1 rounded-md">
+                      <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-brand-muted pt-2">
+                        <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md">
                           <Clock className="h-3.5 w-3.5" />
                           Needed by: {request.neededBy}
                         </span>
-                        <span className="flex items-center gap-1 bg-zinc-50 px-2 py-1 rounded-md">
-                          <MapPin className="h-3.5 w-3.5" />
+                        <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md">
+                          <MapPin className="h-3.5 w-3.5 text-brand-teal" />
                           {request.location}
                         </span>
                         {request.budget && (
-                          <span className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded-md">
+                          <span className="flex items-center gap-1 bg-brand-teal-light text-brand-teal-hover border border-brand-teal-border px-2.5 py-1 rounded-md font-semibold">
                             <IndianRupee className="h-3.5 w-3.5" />
                             Budget: ₹{request.budget}
                           </span>
@@ -271,20 +271,20 @@ export function Requests() {
                       </div>
                     </div>
                     
-                    <div className="flex flex-col items-start gap-4 border-t border-zinc-100 pt-4 sm:items-end sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 shrink-0">
+                    <div className="flex flex-col items-start gap-4 border-t border-brand-border/60 pt-4 sm:items-end sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 shrink-0">
                       <div className="flex items-center gap-2">
                         {requester?.avatarUrl ? (
-                          <img src={requester.avatarUrl} alt={requester.name} className="h-8 w-8 rounded-full object-cover bg-zinc-100" />
+                          <img src={requester.avatarUrl} alt={requester.name} className="h-8 w-8 rounded-full object-cover bg-slate-100" />
                         ) : (
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-semibold text-white">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-teal text-xs font-semibold text-white">
                             {requester?.name ? requester.name.charAt(0).toUpperCase() : 'S'}
                           </div>
                         )}
-                        <span className="text-sm font-medium text-zinc-900">{requester?.name || (isOwner ? currentUser?.name || 'You' : 'Student Requester')}</span>
+                        <span className="text-sm font-medium text-brand-charcoal">{requester?.name || (isOwner ? currentUser?.name || 'You' : 'Student Requester')}</span>
                       </div>
                       {!isOwner && request.status === 'open' ? (
                         <Button 
-                          className="w-full sm:w-auto text-xs h-9 gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white font-medium"
+                          className="w-full sm:w-auto text-xs h-9 gap-1.5 bg-brand-teal hover:bg-brand-teal-hover text-white font-medium shadow-xs"
                           disabled={startingChatId === request.id}
                           onClick={() => handleStartChat(request)}
                         >
@@ -348,13 +348,13 @@ export function Requests() {
 
                   {/* Show incoming inquiries from other students if user is the request owner */}
                   {isOwner && requestInquiries.length > 0 && (
-                    <div className="border-t border-zinc-100 pt-3 mt-1">
+                    <div className="border-t border-brand-border/60 pt-3 mt-1">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-zinc-700 flex items-center gap-1.5">
-                          <MessageSquare className="h-3.5 w-3.5 text-zinc-500" />
+                        <span className="text-xs font-semibold text-brand-charcoal flex items-center gap-1.5">
+                          <MessageSquare className="h-3.5 w-3.5 text-brand-teal" />
                           Student Responses ({requestInquiries.length})
                         </span>
-                        <span className="text-[11px] text-zinc-400 hidden sm:inline">Tap to open direct chat</span>
+                        <span className="text-[11px] text-brand-muted hidden sm:inline">Tap to open direct chat</span>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {requestInquiries.map((chatItem) => {
@@ -365,10 +365,10 @@ export function Requests() {
                               key={chatItem.id}
                               size="sm"
                               variant="outline"
-                              className="text-xs h-8 gap-1.5 border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-800"
+                              className="text-xs h-8 gap-1.5 border-brand-border bg-slate-50 hover:bg-brand-teal-light hover:text-brand-teal-hover hover:border-brand-teal-border text-brand-charcoal transition-all"
                               onClick={() => navigate(`/chat/${chatItem.id}`)}
                             >
-                              <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                              <div className="h-2 w-2 rounded-full bg-brand-teal" />
                               <span>Chat with {responder?.name || 'Student'}</span>
                             </Button>
                           );
@@ -385,7 +385,7 @@ export function Requests() {
               <Button
                 variant="outline"
                 onClick={loadMoreRequests}
-                className="gap-2 px-6 h-10 border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-medium text-sm"
+                className="gap-2 px-6 h-10 border-brand-border text-brand-charcoal hover:border-brand-teal hover:text-brand-teal-hover hover:bg-brand-teal-light font-medium text-sm transition-all"
               >
                 Load More Requests
               </Button>

@@ -14,7 +14,7 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
-        <Loader2 className="w-8 h-8 animate-spin text-zinc-900" />
+        <Loader2 className="w-8 h-8 animate-spin text-brand-teal" />
         <p className="text-sm font-medium text-zinc-600">Verifying administrative credentials...</p>
       </div>
     );
@@ -31,13 +31,13 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
   if (!isAdmin) {
     return (
       <div className="mx-auto max-w-lg px-4 py-24 text-center">
-        <div className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
+        <div className="rounded-3xl border border-brand-border bg-white p-8 shadow-xs">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-100 text-red-600">
             <ShieldAlert className="h-7 w-7" />
           </div>
-          <h2 className="text-2xl font-bold tracking-tight text-zinc-900">Access Restricted</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-brand-charcoal">Access Restricted</h2>
           <p className="mt-2 text-sm text-zinc-600 leading-relaxed">
-            The StudentNeed Moderation Console is strictly restricted to authorized campus administrators. Your account (<span className="font-mono text-zinc-900 font-medium">{userEmail}</span>) does not possess administrative privileges.
+            The StudentNeed Moderation Console is strictly restricted to authorized campus administrators. Your account (<span className="font-mono text-brand-charcoal font-medium">{userEmail}</span>) does not possess administrative privileges.
           </p>
           <div className="mt-6 flex justify-center">
             <Link to="/marketplace">

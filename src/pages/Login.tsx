@@ -239,20 +239,20 @@ export function Login() {
     <div className="flex min-h-[80vh] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 mb-4 border border-indigo-200 shadow-sm">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-teal-light text-brand-teal mb-4 border border-brand-teal-border shadow-xs">
             <ShieldCheck className="h-6 w-6" />
           </div>
-          <h2 className="text-3xl font-bold tracking-tight text-zinc-900">
+          <h2 className="text-3xl font-bold tracking-tight text-brand-charcoal">
             {isSignup 
               ? (signupStep === 1 ? 'Create an account' : signupStep === 2 ? 'Verify Email' : 'Set Password') 
               : 'Welcome back'}
           </h2>
-          <p className="mt-2 text-sm text-zinc-600">
+          <p className="mt-2 text-sm text-brand-muted">
             {isSignup ? 'Join the exclusive Anna University marketplace.' : 'Sign in to access your account.'}
           </p>
         </div>
 
-        <div className="rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
+        <div className="rounded-2xl border border-brand-border bg-white p-8 shadow-sm">
           {error && (
             <div className="p-3 mb-4 text-sm text-red-600 bg-red-50 rounded-lg border border-red-100">
               {error}
@@ -269,7 +269,7 @@ export function Login() {
             // SIGN IN FORM
             <form className="space-y-4" onSubmit={handleLogin}>
               <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">College Email Address</label>
+                <label className="block text-sm font-medium text-brand-charcoal mb-1">College Email Address</label>
                 <Input 
                   type="email" 
                   required 
@@ -280,11 +280,11 @@ export function Login() {
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-zinc-700">Password</label>
+                  <label className="block text-sm font-medium text-brand-charcoal">Password</label>
                   <button 
                     type="button"
                     onClick={handleResetPassword}
-                    className="text-xs font-medium text-indigo-600 hover:text-indigo-500 focus:outline-none"
+                    className="text-xs font-semibold text-brand-teal-hover hover:text-brand-teal focus:outline-none transition-colors"
                   >
                     Forgot Password?
                   </button>
@@ -412,11 +412,11 @@ export function Login() {
           )}
         </div>
 
-        <p className="text-center text-sm text-zinc-600">
+        <p className="text-center text-sm text-brand-muted">
           {isSignup ? 'Already have an account? ' : "Don't have an account? "}
           <button
             onClick={toggleMode}
-            className="font-semibold text-indigo-600 hover:text-indigo-500 focus:outline-none"
+            className="font-semibold text-brand-teal-hover hover:text-brand-teal focus:outline-none transition-colors"
           >
             {isSignup ? 'Sign in' : 'Sign up'}
           </button>

@@ -38,23 +38,23 @@ export function LaunchFooter() {
               <li>
                 <button
                   onClick={() => scrollToSection('how-it-works')}
-                  className="hover:text-zinc-900 transition-colors cursor-pointer text-left"
+                  className="hover:text-brand-teal transition-colors cursor-pointer text-left"
                 >
                   How It Works
                 </button>
               </li>
               <li>
-                <Link to="/marketplace" className="hover:text-zinc-900 transition-colors inline-flex items-center gap-0.5">
+                <Link to="/marketplace" className="hover:text-brand-teal transition-colors inline-flex items-center gap-0.5">
                   Marketplace <ArrowUpRight className="h-3 w-3" />
                 </Link>
               </li>
               <li>
-                <Link to="/requests" className="hover:text-zinc-900 transition-colors inline-flex items-center gap-0.5">
+                <Link to="/requests" className="hover:text-brand-teal transition-colors inline-flex items-center gap-0.5">
                   Requests <ArrowUpRight className="h-3 w-3" />
                 </Link>
               </li>
               <li>
-                <Link to="/login" className="hover:text-zinc-900 transition-colors">
+                <Link to="/login" className="hover:text-brand-teal transition-colors">
                   Get Started
                 </Link>
               </li>
@@ -70,7 +70,7 @@ export function LaunchFooter() {
               <li>
                 <button
                   onClick={() => scrollToSection('campus-first')}
-                  className="hover:text-zinc-900 transition-colors cursor-pointer text-left"
+                  className="hover:text-brand-teal transition-colors cursor-pointer text-left"
                 >
                   About
                 </button>
@@ -78,7 +78,7 @@ export function LaunchFooter() {
               <li>
                 <button
                   onClick={() => scrollToSection('contact')}
-                  className="hover:text-zinc-900 transition-colors cursor-pointer text-left"
+                  className="hover:text-brand-teal transition-colors cursor-pointer text-left"
                 >
                   Contact
                 </button>
@@ -107,8 +107,8 @@ export function LaunchFooter() {
             <p className="text-xs text-zinc-500 leading-relaxed">
               Madras Institute of Technology, Chromepet, Chennai.
             </p>
-            <div className="inline-flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <div className="inline-flex items-center gap-1.5 text-xs text-brand-teal-hover bg-brand-teal-light px-2.5 py-1 rounded-md border border-brand-teal-border font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-brand-teal" />
               Active Campus
             </div>
           </div>

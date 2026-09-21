@@ -72,22 +72,22 @@ export function VerifyEmail() {
   return (
     <div className="flex min-h-[80vh] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 text-center">
-        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 mb-4 border border-indigo-100">
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-brand-teal-light text-brand-teal mb-4 border border-brand-teal-border">
           <MailCheck className="h-10 w-10" />
         </div>
         
-        <h2 className="text-3xl font-bold tracking-tight text-zinc-900">
+        <h2 className="text-3xl font-bold tracking-tight text-brand-charcoal">
           Verify your email
         </h2>
         
-        <div className="rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm text-left">
+        <div className="rounded-2xl border border-brand-border bg-white p-8 shadow-xs text-left">
           <p className="text-zinc-600 mb-6 text-center">
             We sent a verification link to <br/>
-            <span className="font-semibold text-zinc-900">{firebaseUser.email}</span>
+            <span className="font-semibold text-brand-charcoal">{firebaseUser.email}</span>
           </p>
 
           {message.text && (
-            <div className={`p-3 mb-6 text-sm rounded-lg border text-center ${message.type === 'error' ? 'text-red-600 bg-red-50 border-red-100' : 'text-green-600 bg-green-50 border-green-100'}`}>
+            <div className={`p-3 mb-6 text-sm rounded-lg border text-center ${message.type === 'error' ? 'text-red-600 bg-red-50 border-red-100' : 'text-brand-teal-hover bg-brand-teal-light border-brand-teal-border'}`}>
               {message.text}
             </div>
           )}
@@ -106,7 +106,7 @@ export function VerifyEmail() {
         
         <button
           onClick={handleLogout}
-          className="text-sm font-medium text-zinc-500 hover:text-zinc-900 flex items-center justify-center gap-2 mx-auto transition-colors"
+          className="text-sm font-medium text-brand-muted hover:text-brand-charcoal flex items-center justify-center gap-2 mx-auto transition-colors"
         >
           <LogOut className="h-4 w-4" />
           Sign out and try a different account

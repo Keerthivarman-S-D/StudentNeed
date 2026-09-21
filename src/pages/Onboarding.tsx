@@ -211,19 +211,19 @@ export function Onboarding() {
     <div className="flex min-h-[80vh] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 text-zinc-900 mb-4 border border-zinc-200">
-            <UserCircle2 className="h-8 w-8 text-zinc-500" />
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-teal-light text-brand-teal mb-4 border border-brand-teal-border shadow-xs">
+            <UserCircle2 className="h-8 w-8 text-brand-teal" />
           </div>
-          <h2 className="text-3xl font-bold tracking-tight text-zinc-900">
+          <h2 className="text-3xl font-bold tracking-tight text-brand-charcoal">
             Complete your profile
           </h2>
-          <p className="mt-2 text-sm text-zinc-600">
+          <p className="mt-2 text-sm text-brand-muted">
             Tell us a bit about yourself so other students know who they are trading with.
           </p>
         </div>
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="space-y-4 rounded-xl bg-white p-6 shadow-sm border border-zinc-200">
+          <div className="space-y-4 rounded-xl bg-white p-6 shadow-sm border border-brand-border">
             
             {error && (
               <div className="p-3 text-sm text-red-600 bg-red-50 rounded-lg border border-red-100">
@@ -232,7 +232,7 @@ export function Onboarding() {
             )}
             
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Full Name</label>
+              <label className="block text-sm font-medium text-brand-charcoal mb-1">Full Name</label>
               <Input 
                 required 
                 placeholder="Enter your full name" 
@@ -242,9 +242,9 @@ export function Onboarding() {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Department</label>
+              <label className="block text-sm font-medium text-brand-charcoal mb-1">Department</label>
               <select 
-                className="flex h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                className="flex h-10 w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
               >
@@ -259,18 +259,18 @@ export function Onboarding() {
             
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium text-zinc-700">
-                  Profile Image <span className="text-zinc-400 font-normal">(Optional)</span>
+                <label className="block text-sm font-medium text-brand-charcoal">
+                  Profile Image <span className="text-brand-muted font-normal">(Optional)</span>
                 </label>
-                <div className="inline-flex rounded-lg border border-zinc-200 p-0.5 bg-zinc-100 text-xs">
+                <div className="inline-flex rounded-lg border border-brand-border p-0.5 bg-slate-100 text-xs">
                   <button
                     type="button"
                     onClick={() => handleSourceChange('upload')}
                     className={cn(
                       "flex items-center gap-1 px-2.5 py-1 rounded-md font-medium transition-colors",
                       avatarSource === 'upload' 
-                        ? "bg-white text-zinc-900 shadow-sm" 
-                        : "text-zinc-500 hover:text-zinc-900"
+                        ? "bg-brand-teal text-white shadow-xs" 
+                        : "text-brand-muted hover:text-brand-charcoal"
                     )}
                   >
                     <Upload className="h-3 w-3" />
@@ -282,8 +282,8 @@ export function Onboarding() {
                     className={cn(
                       "flex items-center gap-1 px-2.5 py-1 rounded-md font-medium transition-colors",
                       avatarSource === 'url' 
-                        ? "bg-white text-zinc-900 shadow-sm" 
-                        : "text-zinc-500 hover:text-zinc-900"
+                        ? "bg-brand-teal text-white shadow-xs" 
+                        : "text-brand-muted hover:text-brand-charcoal"
                     )}
                   >
                     <Link2 className="h-3 w-3" />

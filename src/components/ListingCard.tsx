@@ -50,7 +50,7 @@ export function ListingCard({ listing }: { listing: Listing }) {
   return (
     <Link 
       to={`/listing/${listing.id}`} 
-      className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition-all hover:shadow-md hover:border-zinc-300"
+      className="group flex flex-col overflow-hidden rounded-2xl border border-brand-border bg-white shadow-xs transition-all hover:shadow-md hover:border-brand-teal/40 hover:shadow-brand-teal/5"
     >
       <div className="relative aspect-square overflow-hidden bg-zinc-100 flex items-center justify-center">
         {listing.images && listing.images.length > 0 && listing.images[0] ? (
@@ -70,7 +70,7 @@ export function ListingCard({ listing }: { listing: Listing }) {
             e.preventDefault();
             toggleSaveListing(listing.id);
           }}
-          className="absolute right-3 top-3 rounded-full bg-white/80 p-2 text-zinc-600 backdrop-blur-sm transition-colors hover:text-red-500 hover:bg-white"
+          className="absolute right-3 top-3 rounded-full bg-white/80 p-2 text-zinc-600 backdrop-blur-sm transition-colors hover:text-red-500 hover:bg-white cursor-pointer"
           aria-label={isSaved ? "Remove from saved" : "Save listing"}
         >
           <Heart 
@@ -107,22 +107,22 @@ export function ListingCard({ listing }: { listing: Listing }) {
       
       <div className="flex flex-1 flex-col p-4">
         <div className="mb-2 flex items-start justify-between gap-2">
-          <h3 className="line-clamp-2 font-semibold text-zinc-900 leading-tight">
+          <h3 className="line-clamp-2 font-semibold text-brand-charcoal leading-tight group-hover:text-brand-teal-hover transition-colors">
             {listing.title}
           </h3>
           {listing.price !== undefined && (
-            <p className="shrink-0 font-bold text-zinc-900">
+            <p className="shrink-0 font-bold text-brand-charcoal">
               ₹{listing.price}
             </p>
           )}
         </div>
         
         <div className="mt-auto flex flex-col gap-2.5">
-          <div className="flex items-center gap-1.5 text-sm text-zinc-500">
-            <MapPin className="h-4 w-4 shrink-0" />
+          <div className="flex items-center gap-1.5 text-sm text-brand-muted">
+            <MapPin className="h-4 w-4 shrink-0 text-brand-muted group-hover:text-brand-teal transition-colors" />
             <span className="truncate">{listing.location}</span>
             <span className="mx-1">•</span>
-            <span className="truncate text-zinc-700">{seller?.name || 'Student'}</span>
+            <span className="truncate text-brand-charcoal font-medium">{seller?.name || 'Student'}</span>
           </div>
           
           <div className="flex items-center justify-between text-xs text-zinc-500 border-t border-zinc-100 pt-3">

@@ -71,11 +71,11 @@ export function Marketplace() {
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       {/* Unauthenticated Verified Student Prompt */}
       {!currentUser && (
-        <div className="mb-8 overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 p-6 text-white shadow-sm sm:p-8">
+        <div className="mb-8 overflow-hidden rounded-2xl border border-brand-border bg-gradient-to-r from-brand-charcoal via-zinc-800 to-brand-charcoal p-6 text-white shadow-sm sm:p-8">
           <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             <div className="max-w-2xl space-y-2">
               <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-zinc-200 backdrop-blur-sm">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                <ShieldCheck className="h-3.5 w-3.5 text-brand-teal" />
                 Anna University Verified Network
               </div>
               <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">
@@ -87,7 +87,7 @@ export function Marketplace() {
             </div>
             <div className="flex flex-wrap items-center gap-3 shrink-0">
               <Link to="/login">
-                <Button className="bg-white text-zinc-900 hover:bg-zinc-100 font-semibold gap-1.5 shadow-sm">
+                <Button className="bg-brand-teal text-white hover:bg-brand-teal-hover font-semibold gap-1.5 shadow-sm">
                   Sign In with Student Email
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -101,13 +101,13 @@ export function Marketplace() {
         {/* Mobile Filter Toggle */}
         <div className="flex items-center gap-2 md:hidden">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-muted" />
             <input
               type="text"
               placeholder="What do you need?"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full rounded-lg border border-zinc-200 bg-white pl-9 pr-4 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              className="h-10 w-full rounded-lg border border-brand-border bg-white pl-9 pr-4 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
             />
           </div>
           <Button 
@@ -122,39 +122,41 @@ export function Marketplace() {
         {/* Filters Sidebar */}
         <aside className={`w-full shrink-0 md:block md:w-64 space-y-8 ${showFilters ? 'block' : 'hidden'}`}>
           <div className="hidden md:block relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-muted" />
             <input
               type="text"
               placeholder="What do you need?"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full rounded-lg border border-zinc-200 bg-white pl-9 pr-4 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              className="h-10 w-full rounded-lg border border-brand-border bg-white pl-9 pr-4 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
             />
           </div>
 
           <div>
-            <h3 className="font-semibold text-zinc-900 mb-3">Listing Type</h3>
+            <h3 className="font-semibold text-brand-charcoal mb-3">Listing Type</h3>
             <div className="space-y-2">
               {types.map(type => (
-                <label key={type} className="flex items-center gap-2 cursor-pointer">
+                <label key={type} className="flex items-center gap-2.5 cursor-pointer group">
                   <input 
                     type="radio" 
                     name="type" 
                     checked={selectedType === type}
                     onChange={() => setSelectedType(type)}
-                    className="text-zinc-900 focus:ring-zinc-900 h-4 w-4 border-zinc-300"
+                    className="accent-brand-teal text-brand-teal focus:ring-brand-teal h-4 w-4 border-brand-border"
                   />
-                  <span className="text-sm text-zinc-700">{type === 'Sale' ? 'For Sale' : type}</span>
+                  <span className={`text-sm transition-colors ${selectedType === type ? 'text-brand-teal-hover font-semibold' : 'text-zinc-700 group-hover:text-brand-charcoal'}`}>
+                    {type === 'Sale' ? 'For Sale' : type}
+                  </span>
                 </label>
               ))}
             </div>
           </div>
 
           <div>
-            <h3 className="font-semibold text-zinc-900 mb-3">Category</h3>
+            <h3 className="font-semibold text-brand-charcoal mb-3">Category</h3>
             <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
               {categories.map(cat => (
-                <label key={cat} className="flex items-center gap-2 cursor-pointer">
+                <label key={cat} className="flex items-center gap-2.5 cursor-pointer group">
                   <input 
                     type="radio" 
                     name="category" 
@@ -166,9 +168,11 @@ export function Marketplace() {
                         setSearchParams(searchParams);
                       }
                     }}
-                    className="text-zinc-900 focus:ring-zinc-900 h-4 w-4 border-zinc-300"
+                    className="accent-brand-teal text-brand-teal focus:ring-brand-teal h-4 w-4 border-brand-border"
                   />
-                  <span className="text-sm text-zinc-700">{cat}</span>
+                  <span className={`text-sm transition-colors ${selectedCategory === cat ? 'text-brand-teal-hover font-semibold' : 'text-zinc-700 group-hover:text-brand-charcoal'}`}>
+                    {cat}
+                  </span>
                 </label>
               ))}
             </div>
@@ -183,11 +187,11 @@ export function Marketplace() {
             </h1>
             
             <div className="flex items-center gap-2">
-              <span className="text-sm text-zinc-500 hidden sm:inline-block">Sort by:</span>
+              <span className="text-sm text-brand-muted hidden sm:inline-block">Sort by:</span>
               <select 
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="h-9 rounded-lg border border-zinc-200 bg-white px-3 py-1 text-sm text-zinc-700 outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-900/10"
+                className="h-9 rounded-lg border border-brand-border bg-white px-3 py-1 text-sm text-brand-charcoal outline-none focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 transition-all"
               >
                 <option value="newest">Newest first</option>
                 <option value="price_low">Price: Low to High</option>
@@ -198,8 +202,8 @@ export function Marketplace() {
 
           {listingsLoading ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <Loader2 className="h-8 w-8 animate-spin text-zinc-600 mb-3" />
-              <p className="text-sm text-zinc-500 font-medium">Loading campus listings…</p>
+              <Loader2 className="h-8 w-8 animate-spin text-brand-teal mb-3" />
+              <p className="text-sm text-brand-muted font-medium">Loading campus listings…</p>
             </div>
           ) : listingsError ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
@@ -224,7 +228,7 @@ export function Marketplace() {
                   <Button
                     variant="outline"
                     onClick={loadMoreListings}
-                    className="gap-2 px-6 h-10 border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-medium text-sm"
+                    className="gap-2 px-6 h-10 border-brand-border text-brand-charcoal hover:border-brand-teal hover:text-brand-teal-hover hover:bg-brand-teal-light font-medium text-sm transition-all"
                   >
                     Load More Listings
                   </Button>

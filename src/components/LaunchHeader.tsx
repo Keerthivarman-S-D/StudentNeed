@@ -25,7 +25,7 @@ export function LaunchHeader() {
         {/* Left: Branding */}
         <Link 
           to="/" 
-          className="flex items-center group focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 rounded-lg"
+          className="flex items-center group focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded-lg"
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         >
           <StudentNeedLogo size="lg" iconClassName="group-hover:scale-105" />
@@ -57,13 +57,13 @@ export function LaunchHeader() {
         <div className="hidden md:flex items-center gap-3">
           <Link
             to="/login"
-            className="px-3.5 py-2 text-sm font-medium text-zinc-700 hover:text-zinc-900 transition-colors"
+            className="px-3.5 py-2 text-sm font-medium text-brand-charcoal hover:text-brand-teal transition-colors"
           >
             Sign in
           </Link>
           <Link
             to="/login"
-            className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-zinc-800 transition-all hover:gap-2 active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand-teal px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-brand-teal-hover transition-all hover:gap-2 active:scale-95"
           >
             Get Started
             <ArrowRight className="h-4 w-4" />
@@ -74,7 +74,7 @@ export function LaunchHeader() {
         <div className="flex items-center gap-2 md:hidden">
           <Link
             to="/login"
-            className="inline-flex items-center rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+            className="inline-flex items-center rounded-full bg-brand-teal px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-brand-teal-hover"
           >
             Get Started
           </Link>
@@ -92,23 +92,23 @@ export function LaunchHeader() {
 
       {/* Mobile Navigation Drawer */}
       {mobileMenuOpen && (
-        <div className="border-b border-zinc-200 bg-white px-4 pt-2 pb-6 md:hidden animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="border-b border-brand-border bg-white px-4 pt-2 pb-6 md:hidden animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex flex-col space-y-3 pt-2">
             <button
               onClick={() => scrollToSection('how-it-works')}
-              className="text-left py-2 text-base font-medium text-zinc-700 hover:text-zinc-900 border-b border-zinc-100"
+              className="text-left py-2 text-base font-medium text-brand-charcoal hover:text-brand-teal border-b border-zinc-100"
             >
               How It Works
             </button>
             <button
               onClick={() => scrollToSection('campus-first')}
-              className="text-left py-2 text-base font-medium text-zinc-700 hover:text-zinc-900 border-b border-zinc-100"
+              className="text-left py-2 text-base font-medium text-brand-charcoal hover:text-brand-teal border-b border-zinc-100"
             >
               About
             </button>
             <button
               onClick={() => scrollToSection('contact')}
-              className="text-left py-2 text-base font-medium text-zinc-700 hover:text-zinc-900 border-b border-zinc-100"
+              className="text-left py-2 text-base font-medium text-brand-charcoal hover:text-brand-teal border-b border-zinc-100"
             >
               Contact
             </button>
@@ -117,14 +117,14 @@ export function LaunchHeader() {
               <Link
                 to="/login"
                 onClick={() => setMobileMenuOpen(false)}
-                className="w-full flex items-center justify-center rounded-xl bg-zinc-900 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-zinc-800 transition-colors"
+                className="w-full flex items-center justify-center rounded-xl bg-brand-teal py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-brand-teal-hover transition-colors"
               >
                 Get Started
               </Link>
               <Link
                 to="/login"
                 onClick={() => setMobileMenuOpen(false)}
-                className="w-full flex items-center justify-center rounded-xl border border-zinc-300 bg-white py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 transition-colors"
+                className="w-full flex items-center justify-center rounded-xl border border-brand-border bg-white py-2 text-sm font-medium text-brand-charcoal hover:bg-brand-teal-light hover:text-brand-teal-hover transition-colors"
               >
                 Sign in
               </Link>

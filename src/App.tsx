@@ -28,11 +28,11 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50 space-y-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-brand-bg space-y-4">
         <StudentNeedIcon size="2xl" />
-        <div className="flex items-center gap-2 text-sm font-medium text-zinc-500">
-          <div className="h-4 w-4 rounded-full border-2 border-[#19bf96] border-t-transparent animate-spin" />
-          <span>Loading <strong className="font-semibold text-zinc-900">Student<span className="text-[#19bf96]">Need</span></strong>...</span>
+        <div className="flex items-center gap-2 text-sm font-medium text-brand-muted">
+          <div className="h-4 w-4 rounded-full border-2 border-brand-teal border-t-transparent animate-spin" />
+          <span>Loading <strong className="font-semibold text-brand-charcoal">Student<span className="text-brand-teal">Need</span></strong>...</span>
         </div>
       </div>
     );
@@ -43,7 +43,7 @@ function AppContent() {
   const isLaunchActive = isLaunchExplicit || isRootLaunch;
 
   return (
-    <div className={`flex min-h-screen flex-col bg-zinc-50 ${isLaunchActive ? '' : 'pb-16 md:pb-0'}`}>
+    <div className={`flex min-h-screen flex-col bg-brand-bg ${isLaunchActive ? '' : 'pb-16 md:pb-0'}`}>
       {!isLaunchActive && <Navbar />}
       <main className="flex-1">
         <Routes>

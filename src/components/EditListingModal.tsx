@@ -153,11 +153,11 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
   return (
     <div id="edit-listing-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="relative w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl border border-zinc-200 my-8">
-        <div className="flex items-center justify-between pb-4 border-b border-zinc-100">
+      <div className="relative w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl border border-brand-border my-8">
+        <div className="flex items-center justify-between pb-4 border-b border-brand-border/60">
           <div>
-            <h2 className="text-xl font-bold text-zinc-900">Edit Listing</h2>
-            <p className="text-xs text-zinc-500 mt-0.5">
+            <h2 className="text-xl font-bold text-brand-charcoal">Edit Listing</h2>
+            <p className="text-xs text-brand-muted mt-0.5">
               Update listing details while preserving security immutability guarantees.
             </p>
           </div>
@@ -178,8 +178,8 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         )}
 
         {successMessage && (
-          <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 p-3.5 flex items-center gap-2 text-emerald-700 text-sm">
-            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+          <div className="mt-4 rounded-xl bg-brand-teal-light border border-brand-teal-border p-3.5 flex items-center gap-2 text-brand-teal-hover text-sm">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-brand-teal" />
             <span>{successMessage}</span>
           </div>
         )}
@@ -200,7 +200,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         ) : (
           <form onSubmit={handleSubmit} className="mt-4 space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 mb-1">
+              <label className="block text-xs font-semibold text-brand-charcoal mb-1">
                 Title <span className="text-red-500">*</span>
               </label>
               <Input
@@ -214,7 +214,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
             {/* Offering Type / Legacy Borrow Conversion */}
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 mb-1">
+              <label className="block text-xs font-semibold text-brand-charcoal mb-1">
                 Offering Type <span className="text-red-500">*</span>
               </label>
               {type === 'Borrow' ? (
@@ -246,7 +246,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 <select
                   value={type}
                   onChange={(e) => setType(e.target.value as ActiveListingType)}
-                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
+                  className="w-full rounded-xl border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 focus:outline-hidden"
                 >
                   <option value="Sale">Sell</option>
                   <option value="Donate">Donate</option>
@@ -257,13 +257,13 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
             <div className={`grid ${type !== 'Borrow' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-4`}>
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                <label className="block text-xs font-semibold text-brand-charcoal mb-1">
                   Category <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as Category)}
-                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
+                  className="w-full rounded-xl border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 focus:outline-hidden"
                 >
                   {CATEGORIES.map((cat) => (
                     <option key={cat} value={cat}>
@@ -275,13 +275,13 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
               {type !== 'Borrow' && (
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  <label className="block text-xs font-semibold text-brand-charcoal mb-1">
                     Condition <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={condition}
                     onChange={(e) => setCondition(e.target.value as Condition)}
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
+                    className="w-full rounded-xl border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 focus:outline-hidden"
                   >
                     {CONDITIONS.map((cond) => (
                       <option key={cond} value={cond}>
@@ -295,7 +295,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
             {type === 'Sale' && (
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                <label className="block text-xs font-semibold text-brand-charcoal mb-1">
                   Price (₹) <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -311,7 +311,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 mb-1">
+              <label className="block text-xs font-semibold text-brand-charcoal mb-1">
                 Campus / Pickup Location <span className="text-red-500">*</span>
               </label>
               <Input
@@ -324,14 +324,14 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 mb-1">
+              <label className="block text-xs font-semibold text-brand-charcoal mb-1">
                 Description <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="w-full rounded-xl border border-zinc-300 bg-white p-3 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
+                className="w-full rounded-xl border border-brand-border bg-white p-3 text-sm text-brand-charcoal focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 focus:outline-hidden"
                 placeholder="Provide detailed description of the item..."
                 required
                 maxLength={600}
@@ -340,13 +340,13 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
             {/* Photo (Optional, max 1) */}
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+              <label className="block text-xs font-semibold text-brand-charcoal mb-1.5">
                 Photo <span className="text-zinc-400 font-normal">(Optional, max 1)</span>
               </label>
 
               {image ? (
                 <div className="flex items-center gap-3">
-                  <div className="relative h-24 w-24 rounded-xl overflow-hidden border border-zinc-200 bg-zinc-100 shrink-0">
+                  <div className="relative h-24 w-24 rounded-xl overflow-hidden border border-brand-border bg-zinc-100 shrink-0">
                     <img src={image} alt="Listing photo" className="h-full w-full object-cover" />
                     <button
                       type="button"
@@ -358,8 +358,8 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                     </button>
                   </div>
                   <div className="space-y-1">
-                    <label className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-700 hover:text-zinc-900 cursor-pointer border border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white hover:bg-zinc-50 transition">
-                      <ImagePlus className="h-3.5 w-3.5" />
+                    <label className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-charcoal hover:text-brand-teal-hover cursor-pointer border border-brand-border rounded-lg px-2.5 py-1.5 bg-white hover:bg-brand-teal-light/30 transition">
+                      <ImagePlus className="h-3.5 w-3.5 text-brand-teal" />
                       Change photo
                       <input
                         type="file"
@@ -369,13 +369,13 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                         disabled={isUploading}
                       />
                     </label>
-                    <p className="text-[11px] text-zinc-400">Selecting a new photo will replace this one.</p>
+                    <p className="text-[11px] text-brand-muted">Selecting a new photo will replace this one.</p>
                   </div>
                 </div>
               ) : (
-                <label className="h-24 w-24 flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 hover:border-zinc-400 bg-zinc-50 cursor-pointer text-zinc-500 hover:text-zinc-700 transition">
+                <label className="h-24 w-24 flex flex-col items-center justify-center rounded-xl border border-dashed border-brand-border hover:border-brand-teal/60 bg-brand-bg cursor-pointer text-brand-muted hover:text-brand-charcoal transition">
                   {isUploading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-zinc-500" />
+                    <Loader2 className="h-5 w-5 animate-spin text-brand-teal" />
                   ) : (
                     <>
                       <ImagePlus className="h-5 w-5 mb-1 text-zinc-400" />
@@ -392,8 +392,8 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 </label>
               )}
               {isUploading && (
-                <p className="text-xs text-zinc-500 mt-2 flex items-center gap-1.5">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-600" />
+                <p className="text-xs text-brand-teal mt-2 flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-teal" />
                   Uploading photo…
                 </p>
               )}
