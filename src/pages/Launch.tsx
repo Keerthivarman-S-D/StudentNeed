@@ -770,10 +770,10 @@ export function Launch() {
                     <Mail className="h-4 w-4 text-brand-teal" /> Email
                   </div>
                   <a
-                    href="mailto:auth@studentneed.me"
+                    href="mailto:studentneed.info@gmail.com"
                     className="text-xs text-brand-muted hover:text-brand-teal underline block transition-colors"
                   >
-                    auth@studentneed.me
+                    studentneed.info@gmail.com
                   </a>
                 </div>
 

@@ -17,6 +17,8 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const [isLoading, setIsLoading] = useState(false);
   const [isSignup, setIsSignup] = useState(false);
@@ -233,6 +235,8 @@ export function Login() {
     setConfirmPassword('');
     setOtp('');
     setShowPassword(false);
+    setShowCreatePassword(false);
+    setShowConfirmPassword(false);
   };
 
   return (
@@ -373,6 +377,8 @@ export function Login() {
                       setOtp('');
                       setError(null);
                       setSuccessMessage(null);
+                      setShowCreatePassword(false);
+                      setShowConfirmPassword(false);
                     }}
                     className="text-sm text-zinc-500 hover:text-zinc-900 w-full flex items-center justify-center gap-1 mt-2"
                   >
@@ -385,23 +391,55 @@ export function Login() {
                 <form onSubmit={handleCreateAccount} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-zinc-700 mb-1">Create Password</label>
-                    <Input 
-                      type="password" 
-                      required 
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
+                    <div className="relative flex items-center">
+                      <Input 
+                        type={showCreatePassword ? "text" : "password"} 
+                        required 
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pr-11"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCreatePassword((prev) => !prev)}
+                        className="absolute right-0 flex h-full items-center justify-center px-3 text-zinc-400 hover:text-zinc-600 focus:outline-none focus-visible:text-zinc-600 transition-colors"
+                        aria-label={showCreatePassword ? "Hide password" : "Show password"}
+                        title={showCreatePassword ? "Hide password" : "Show password"}
+                      >
+                        {showCreatePassword ? (
+                          <EyeOff className="h-5 w-5" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-5 w-5" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-zinc-700 mb-1">Confirm Password</label>
-                    <Input 
-                      type="password" 
-                      required 
-                      placeholder="••••••••"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                    />
+                    <div className="relative flex items-center">
+                      <Input 
+                        type={showConfirmPassword ? "text" : "password"} 
+                        required 
+                        placeholder="••••••••"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="pr-11"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword((prev) => !prev)}
+                        className="absolute right-0 flex h-full items-center justify-center px-3 text-zinc-400 hover:text-zinc-600 focus:outline-none focus-visible:text-zinc-600 transition-colors"
+                        aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                        title={showConfirmPassword ? "Hide password" : "Show password"}
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-5 w-5" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-5 w-5" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? 'Creating account...' : 'Create Account'}

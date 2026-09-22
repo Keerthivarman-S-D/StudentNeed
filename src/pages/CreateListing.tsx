@@ -383,22 +383,22 @@ export function CreateListing() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-brand-teal" />
-              <h2 className="text-lg font-semibold text-brand-charcoal">Listing Duration</h2>
+              <h2 className="text-lg font-semibold text-brand-charcoal">How long should your listing stay active?</h2>
             </div>
             <span className="text-xs font-medium text-brand-teal-hover bg-brand-teal-light px-2.5 py-1 rounded-full border border-brand-teal-border">
-              Auto-Cleanup Enabled
+              Automatic expiry
             </span>
           </div>
 
           <p className="text-xs text-brand-muted leading-relaxed">
-            To keep the student marketplace active and prevent stale listings, select how long your item should remain visible. Expired listings are automatically archived and their stored assets are securely removed.
+            Choose how long you want your item to be available. After this period, the listing will no longer be active.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
-              { days: 7 as const, label: '7 Days', desc: 'Urgent / Exam prep / Quick sale' },
-              { days: 15 as const, label: '15 Days', desc: 'Standard campus exchange (Recommended)' },
-              { days: 30 as const, label: '30 Days', desc: 'Extended / Semester term' },
+              { days: 7 as const, label: '7 Days', desc: 'Best for quick sales or urgent needs' },
+              { days: 15 as const, label: '15 Days', desc: 'Good for most campus listings' },
+              { days: 30 as const, label: '30 Days', desc: 'Best for longer-term or semester needs' },
             ].map((opt) => (
               <button
                 key={opt.days}
@@ -426,7 +426,7 @@ export function CreateListing() {
           <div className="flex items-center gap-2 rounded-lg bg-slate-50 border border-brand-border px-3.5 py-2.5 text-xs text-brand-muted">
             <Calendar className="h-4 w-4 text-brand-teal shrink-0" />
             <span>
-              This listing will remain active until{' '}
+              Your listing will stay active until{' '}
               <strong className="text-brand-charcoal">
                 {new Date(Date.now() + expirationDays * 86400000).toLocaleDateString('en-US', {
                   weekday: 'short',
