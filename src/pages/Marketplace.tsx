@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Search, SlidersHorizontal, AlertCircle, Loader2, GraduationCap, ShieldCheck, ArrowRight } from 'lucide-react';
 import { ListingType, ActiveListingType, Category } from '../types';
@@ -13,6 +13,16 @@ export function Marketplace() {
   const [searchParams, setSearchParams] = useSearchParams();
   
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // 300ms debounce for search query
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
+
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>(
     (searchParams.get('category') as Category) || 'All'
   );
@@ -36,10 +46,11 @@ export function Marketplace() {
       new Date(l.expiresAt).getTime() > now
     );
 
-    if (search) {
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase().trim();
       result = result.filter(l => 
-        l.title.toLowerCase().includes(search.toLowerCase()) ||
-        l.description.toLowerCase().includes(search.toLowerCase())
+        l.title.toLowerCase().includes(q) ||
+        l.description.toLowerCase().includes(q)
       );
     }
 
@@ -65,7 +76,7 @@ export function Marketplace() {
     }
 
     return result;
-  }, [listings, search, selectedCategory, selectedType, sortBy]);
+  }, [listings, debouncedSearch, selectedCategory, selectedType, sortBy]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -254,6 +265,7 @@ export function Marketplace() {
                   className="mt-6"
                   onClick={() => {
                     setSearch('');
+                    setDebouncedSearch('');
                     setSelectedCategory('All');
                     setSelectedType('All');
                   }}

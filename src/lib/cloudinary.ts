@@ -392,3 +392,47 @@ function uploadToCloudinaryEndpoint(
     xhr.send(formData);
   });
 }
+
+/**
+ * Generates an optimized, resized thumbnail URL using Cloudinary URL transformations,
+ * preventing downloading original high-resolution assets for small preview cards.
+ * Also supports Unsplash URLs if encountered in existing/mock listings.
+ */
+export function getOptimizedImageUrl(
+  url: string | null | undefined,
+  options?: { width?: number; height?: number; quality?: string | number }
+): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+
+  const width = options?.width || 400;
+  const quality = options?.quality || 'auto';
+
+  // Cloudinary image transformation
+  if (trimmed.includes('res.cloudinary.com') && trimmed.includes('/image/upload/')) {
+    const uploadMarker = '/image/upload/';
+    const markerIndex = trimmed.indexOf(uploadMarker);
+    const prefix = trimmed.slice(0, markerIndex + uploadMarker.length);
+    const suffix = trimmed.slice(markerIndex + uploadMarker.length);
+
+    // If the path immediately following /upload/ already contains transformation parameters, return as is
+    if (/^[a-z]_[a-z0-9_,-]+\//i.test(suffix)) {
+      return trimmed;
+    }
+
+    const transform = `c_fill,w_${width},q_${quality},f_auto`;
+    return `${prefix}${transform}/${suffix}`;
+  }
+
+  // Unsplash image transformation
+  if (trimmed.includes('images.unsplash.com')) {
+    const separator = trimmed.includes('?') ? '&' : '?';
+    if (!trimmed.includes('w=')) {
+      return `${trimmed}${separator}w=${width}&q=80&auto=format`;
+    }
+  }
+
+  return trimmed;
+}
+

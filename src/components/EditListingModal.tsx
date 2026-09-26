@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, Loader2, AlertCircle, ShieldAlert, CheckCircle2, ImagePlus } from 'lucide-react';
-import { Listing, Category, Condition, UpdateListingInput, ActiveListingType, ListingType } from '../types';
+import { X, Loader2, AlertCircle, ShieldAlert, CheckCircle2, ImagePlus, Trash2 } from 'lucide-react';
+import { Listing, Category, Condition, UpdateListingInput, ActiveListingType, ListingType, APPROVED_CAMPUS_LOCATIONS, isValidApprovedLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -19,6 +19,7 @@ const CATEGORIES: Category[] = [
 
 const CONDITIONS: Condition[] = ['New', 'Like New', 'Good', 'Fair', 'Poor'];
 const ACTIVE_TYPES: ActiveListingType[] = ['Sale', 'Donate', 'Exchange'];
+const MAX_IMAGES = 3;
 
 interface EditListingModalProps {
   listing: Listing;
@@ -38,7 +39,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
   const [category, setCategory] = useState<Category>(listing.category);
   const [condition, setCondition] = useState<Condition>(listing.condition || 'Good');
   const [location, setLocation] = useState(listing.location);
-  const [image, setImage] = useState<string | null>(listing.images?.[0] || null);
+  const [images, setImages] = useState<string[]>(listing.images ? [...listing.images].slice(0, MAX_IMAGES) : []);
 
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -53,18 +54,31 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const file = files[0];
-    const validation = validateImageFile(file);
-    if (!validation.valid) {
-      setError(validation.error || 'Invalid image file.');
+    const remainingSlots = MAX_IMAGES - images.length;
+    if (remainingSlots <= 0) {
+      setError(`Maximum ${MAX_IMAGES} photos allowed per listing.`);
       return;
+    }
+
+    const selectedFiles = Array.from(files).slice(0, remainingSlots);
+
+    for (const file of selectedFiles) {
+      const validation = validateImageFile(file);
+      if (!validation.valid) {
+        setError(validation.error || 'Invalid image file.');
+        return;
+      }
     }
 
     setError(null);
     setIsUploading(true);
     try {
-      const url = await uploadImageToCloudinary(file, { folder: 'studentneed/listings' });
-      setImage(url);
+      const uploadedUrls: string[] = [];
+      for (const file of selectedFiles) {
+        const url = await uploadImageToCloudinary(file, { folder: 'studentneed/listings' });
+        uploadedUrls.push(url);
+      }
+      setImages((prev) => [...prev, ...uploadedUrls].slice(0, MAX_IMAGES));
     } catch (err: any) {
       console.error('Failed to upload image:', err);
       setError('Failed to upload photo. Please try again.');
@@ -74,8 +88,8 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
     }
   };
 
-  const handleRemoveImage = () => {
-    setImage(null);
+  const handleRemoveImage = (indexToRemove: number) => {
+    setImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -89,14 +103,14 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
     }
 
     const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      setError('Title cannot be empty.');
+    if (trimmedTitle.length < 3 || trimmedTitle.length > 50) {
+      setError('Title must be between 3 and 50 characters.');
       return;
     }
 
     const trimmedDesc = description.trim();
-    if (!trimmedDesc) {
-      setError('Description cannot be empty.');
+    if (trimmedDesc.length < 10 || trimmedDesc.length > 100) {
+      setError('Description must be between 10 and 100 characters.');
       return;
     }
 
@@ -105,13 +119,22 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
       setError('Campus/pickup location cannot be empty.');
       return;
     }
+    if (!isValidApprovedLocation(trimmedLoc)) {
+      setError(`Please select an approved campus location: ${APPROVED_CAMPUS_LOCATIONS.join(', ')}.`);
+      return;
+    }
 
     if (type === 'Sale') {
       const parsedPrice = Number(price);
-      if (isNaN(parsedPrice) || parsedPrice <= 0) {
-        setError('Please enter a valid price greater than 0.');
+      if (isNaN(parsedPrice) || parsedPrice < 1 || parsedPrice > 10000) {
+        setError('Price must be between ₹1 and ₹10,000 for sale items.');
         return;
       }
+    }
+
+    if (images.length > MAX_IMAGES) {
+      setError(`Maximum ${MAX_IMAGES} images allowed.`);
+      return;
     }
 
     setIsSaving(true);
@@ -121,7 +144,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         description: trimmedDesc,
         category,
         location: trimmedLoc,
-        images: image ? [image] : [],
+        images: images.slice(0, MAX_IMAGES),
       };
 
       if (type !== listing.type) {
@@ -211,15 +234,21 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         ) : (
           <form onSubmit={handleSubmit} className="mt-4 space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-brand-charcoal mb-1">
-                Title <span className="text-red-500">*</span>
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-semibold text-brand-charcoal">
+                  Title <span className="text-red-500">*</span>
+                </label>
+                <span className={`text-[11px] ${title.trim().length >= 3 && title.trim().length <= 50 ? 'text-zinc-400' : 'text-amber-600 font-medium'}`}>
+                  {title.trim().length} / 50 (min 3)
+                </span>
+              </div>
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Scientific Calculator - Casio fx-991EX"
                 required
-                maxLength={80}
+                minLength={3}
+                maxLength={50}
               />
             </div>
 
@@ -306,18 +335,25 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
             {type === 'Sale' && (
               <div>
-                <label className="block text-xs font-semibold text-brand-charcoal mb-1">
-                  Price (₹) <span className="text-red-500">*</span>
-                </label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-brand-charcoal">
+                    Price (₹) <span className="text-red-500">*</span>
+                  </label>
+                  <span className="text-[11px] text-zinc-400">₹1 – ₹10,000</span>
+                </div>
                 <Input
                   type="number"
                   min="1"
+                  max="10000"
                   step="1"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   placeholder="e.g. 450"
                   required
                 />
+                {price && (Number(price) < 1 || Number(price) > 10000) && (
+                  <p className="mt-1 text-xs text-red-500">Price must be between ₹1 and ₹10,000.</p>
+                )}
               </div>
             )}
 
@@ -339,85 +375,99 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
             <div>
               <label className="block text-xs font-semibold text-brand-charcoal mb-1">
-                Campus / Pickup Location <span className="text-red-500">*</span>
+                Campus / Meetup Location <span className="text-red-500">*</span>
               </label>
-              <Input
+              <select
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                placeholder="e.g. CEG Hostel Block 2 or Library Gate"
+                className="w-full rounded-xl border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 focus:outline-hidden"
                 required
-                maxLength={100}
-              />
+              >
+                {!APPROVED_CAMPUS_LOCATIONS.includes(location as any) && (
+                  <option value={location}>{location} (Current Location)</option>
+                )}
+                {APPROVED_CAMPUS_LOCATIONS.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-brand-charcoal mb-1">
-                Description <span className="text-red-500">*</span>
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-semibold text-brand-charcoal">
+                  Description <span className="text-red-500">*</span>
+                </label>
+                <span
+                  className={`text-[11px] font-mono ${
+                    description.trim().length >= 10 && description.trim().length <= 100
+                      ? 'text-zinc-400'
+                      : 'text-amber-600 font-semibold'
+                  }`}
+                >
+                  {description.length} / 100
+                </span>
+              </div>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
                 className="w-full rounded-xl border border-brand-border bg-white p-3 text-sm text-brand-charcoal focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 focus:outline-hidden"
-                placeholder="Provide detailed description of the item..."
+                placeholder="Provide detailed description of the item (10–100 characters)..."
                 required
-                maxLength={600}
+                maxLength={100}
               />
+              <p className="mt-1 text-[11px] text-zinc-500">
+                Must be between 10 and 100 characters.
+              </p>
             </div>
 
-            {/* Photo (Optional, max 1) */}
+            {/* Photos (Optional, max 3) */}
             <div>
-              <label className="block text-xs font-semibold text-brand-charcoal mb-1.5">
-                Photo <span className="text-zinc-400 font-normal">(Optional, max 1)</span>
-              </label>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="block text-xs font-semibold text-brand-charcoal">
+                  Photos <span className="text-zinc-400 font-normal">(Optional, max {MAX_IMAGES})</span>
+                </label>
+                <span className="text-[11px] text-zinc-400">{images.length} / {MAX_IMAGES}</span>
+              </div>
 
-              {image ? (
-                <div className="flex items-center gap-3">
-                  <div className="relative h-24 w-24 rounded-xl overflow-hidden border border-brand-border bg-zinc-100 shrink-0">
-                    <img src={image} alt="Listing photo" className="h-full w-full object-cover" />
+              <div className="flex flex-wrap items-center gap-3">
+                {images.map((imgUrl, index) => (
+                  <div key={index} className="relative h-20 w-20 rounded-xl overflow-hidden border border-brand-border bg-zinc-100 shrink-0">
+                    <img src={imgUrl} alt={`Listing photo ${index + 1}`} className="h-full w-full object-cover" />
                     <button
                       type="button"
-                      onClick={handleRemoveImage}
-                      className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-1 opacity-90 hover:opacity-100 transition"
+                      onClick={() => handleRemoveImage(index)}
+                      className="absolute top-1 right-1 bg-black/70 hover:bg-red-600 text-white rounded-full p-1 transition"
                       title="Remove photo"
                     >
                       <X className="h-3 w-3" />
                     </button>
                   </div>
-                  <div className="space-y-1">
-                    <label className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-charcoal hover:text-brand-teal-hover cursor-pointer border border-brand-border rounded-lg px-2.5 py-1.5 bg-white hover:bg-brand-teal-light/30 transition">
-                      <ImagePlus className="h-3.5 w-3.5 text-brand-teal" />
-                      Change photo
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={handleImageUpload}
-                        disabled={isUploading}
-                      />
-                    </label>
-                    <p className="text-[11px] text-brand-muted">Selecting a new photo will replace this one.</p>
-                  </div>
-                </div>
-              ) : (
-                <label className="h-24 w-24 flex flex-col items-center justify-center rounded-xl border border-dashed border-brand-border hover:border-brand-teal/60 bg-brand-bg cursor-pointer text-brand-muted hover:text-brand-charcoal transition">
-                  {isUploading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-brand-teal" />
-                  ) : (
-                    <>
-                      <ImagePlus className="h-5 w-5 mb-1 text-zinc-400" />
-                      <span className="text-[11px] font-medium">Add photo</span>
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="hidden"
-                    onChange={handleImageUpload}
-                    disabled={isUploading}
-                  />
-                </label>
-              )}
+                ))}
+
+                {images.length < MAX_IMAGES && (
+                  <label className="h-20 w-20 flex flex-col items-center justify-center rounded-xl border border-dashed border-brand-border hover:border-brand-teal/60 bg-brand-bg cursor-pointer text-brand-muted hover:text-brand-charcoal transition">
+                    {isUploading ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-brand-teal" />
+                    ) : (
+                      <>
+                        <ImagePlus className="h-5 w-5 mb-1 text-zinc-400" />
+                        <span className="text-[10px] font-medium">Add photo</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      className="hidden"
+                      onChange={handleImageUpload}
+                      disabled={isUploading}
+                    />
+                  </label>
+                )}
+              </div>
               {isUploading && (
                 <p className="text-xs text-brand-teal mt-2 flex items-center gap-1.5">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-teal" />

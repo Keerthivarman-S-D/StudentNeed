@@ -91,21 +91,55 @@ service cloud.firestore {
              );
     }
 
+    function isValidCampusLocation(loc) {
+      return loc is string && (
+        loc == 'Main Gate' ||
+        loc == 'Central Library' ||
+        loc == 'Library' ||
+        loc == 'Food Court' ||
+        loc == 'Hostel' ||
+        loc == 'CSE Block' ||
+        loc == 'ECE Block'
+      );
+    }
+
     function validListingImages(data) {
       return !('images' in data) || data.images == null || (
         data.images is list &&
-        data.images.size() <= 5 &&
+        data.images.size() <= 3 &&
         (
           data.images.size() == 0 ||
           (
             isValidImageUrl(data.images[0]) &&
             (data.images.size() < 2 || isValidImageUrl(data.images[1])) &&
-            (data.images.size() < 3 || isValidImageUrl(data.images[2])) &&
-            (data.images.size() < 4 || isValidImageUrl(data.images[3])) &&
-            (data.images.size() < 5 || isValidImageUrl(data.images[4]))
+            (data.images.size() < 3 || isValidImageUrl(data.images[2]))
           )
         )
       );
+    }
+
+    function isValidListingContent(data) {
+      return ('title' in data) &&
+             data.title is string &&
+             data.title.size() >= 3 &&
+             data.title.size() <= 50 &&
+             ('description' in data) &&
+             data.description is string &&
+             data.description.size() >= 10 &&
+             data.description.size() <= 100 &&
+             ('location' in data) &&
+             isValidCampusLocation(data.location) &&
+             validListingImages(data) &&
+             (
+               // If type is Sale, price is required and must be between 1 and 10000
+               (data.type == 'Sale' && ('price' in data) &&
+                (data.price is int || data.price is float || data.price is number) &&
+                data.price >= 1 && data.price <= 10000) ||
+               // If type is not Sale, price is optional, but if present must be 1 to 10000
+               (data.type != 'Sale' && (!('price' in data) || data.price == null ||
+                ((data.price is int || data.price is float || data.price is number) &&
+                 data.price >= 1 && data.price <= 10000)))
+             );
     }
 
     function isValidExpiration(reqData) {
@@ -120,19 +154,19 @@ service cloud.firestore {
       allow read: if isAuthorizedStudent();
 
       // Only authenticated Anna Univ students can create listings where sellerId matches their UID
-      // Must start with available/active status, satisfy image constraints, and provide valid expiration
+      // Must start with available/active status, satisfy content & image constraints, and provide valid expiration
       allow create: if isAnnaUnivStudent() &&
                        isUserActive() &&
                        request.resource.data.sellerId == request.auth.uid &&
                        request.resource.data.status in ['available', 'active'] &&
-                       validListingImages(request.resource.data) &&
+                       isValidListingContent(request.resource.data) &&
                        isValidExpiration(request.resource.data);
 
       // Updates:
       // - Cannot transition if already cancelled, completed, or removed
       // - ONLY the listing owner (seller) or admin can modify or change listing status
       // - Arbitrary non-owner status tampering (IDOR/DoS) is strictly forbidden
-      // - Owner can modify listing details while preserving images constraint and sellerId
+      // - Owner can modify listing details while preserving images constraint, valid bounds, and sellerId
       // - Expiration date and creation date are strictly immutable by seller to prevent immortal listings
       // - Owner cannot alter moderation fields (reportCount, moderationReason, moderatedAt, moderatedBy, flaggedForReview)
       allow update: if isAuthorizedStudent() && (
@@ -152,8 +186,8 @@ service cloud.firestore {
           (
             // Cancellation transition
             (request.resource.data.status == 'cancelled' && resource.data.status in ['available', 'active', 'reserved']) ||
-            // Regular active/available/reserved edit by owner (completed can only be set via legitimate reservation completion workflow / admin)
-            (request.resource.data.status in ['available', 'active', 'reserved'] && validListingImages(request.resource.data))
+            // Regular active/available/reserved edit by owner (must satisfy valid listing constraints)
+            (request.resource.data.status in ['available', 'active', 'reserved'] && isValidListingContent(request.resource.data))
           )
         ) ||
         isAdmin() ||
@@ -192,14 +226,7 @@ service cloud.firestore {
       allow delete: if isAdmin() || isInternalSystem();
     }
 
-    function isValidCampusLocation(loc) {
-      return loc == 'Main Gate' ||
-             loc == 'Central Library' ||
-             loc == 'Food Court' ||
-             loc == 'Hostel' ||
-             loc == 'CSE Block' ||
-             loc == 'ECE Block';
-    }
+
 
     function isMeetupParticipant(resData) {
       return request.auth.uid == resData.buyerId || request.auth.uid == resData.sellerId;
@@ -285,6 +312,7 @@ service cloud.firestore {
           request.resource.data.listingId == resource.data.listingId &&
           request.resource.data.chatId == resource.data.chatId &&
           resource.data.status == 'pending' &&
+          (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected') &&
           (
             request.resource.data.status == 'rejected' ||
             (

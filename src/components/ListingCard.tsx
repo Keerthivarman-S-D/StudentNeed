@@ -4,9 +4,10 @@ import { Listing } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { Badge } from './ui/Badge';
 import { cn } from '../lib/utils';
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
+import { getOptimizedImageUrl } from '../lib/cloudinary';
 
-export function ListingCard({ listing }: { listing: Listing }) {
+export const ListingCard = memo(function ListingCard({ listing }: { listing: Listing }) {
   const { savedListings, toggleSaveListing, users } = useAppContext();
   
   const isSaved = savedListings.includes(listing.id);
@@ -55,8 +56,10 @@ export function ListingCard({ listing }: { listing: Listing }) {
       <div className="relative aspect-square overflow-hidden bg-zinc-100 flex items-center justify-center">
         {listing.images && listing.images.length > 0 && listing.images[0] ? (
           <img 
-            src={listing.images[0]} 
+            src={getOptimizedImageUrl(listing.images[0], { width: 400, quality: 'auto' })} 
             alt={listing.title} 
+            loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
@@ -147,4 +150,4 @@ export function ListingCard({ listing }: { listing: Listing }) {
       </div>
     </Link>
   );
-}
+});

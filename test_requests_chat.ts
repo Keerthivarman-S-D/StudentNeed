@@ -172,28 +172,28 @@ console.log('\n--- Running StudentNeed Requests Chat & UX Verification Tests ---
   );
 }
 
-// Test 8: Single Photo and Optional Photo in CreateListing.tsx
+// Test 8: Max 3 Photos and Optional Photos in CreateListing.tsx
 {
   const createListingSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/CreateListing.tsx'), 'utf-8').replace(/\r\n/g, '\n');
   assert(
-    createListingSrc.includes('const [uploadedImage, setUploadedImage] = useState<string | null>(null);'),
-    'CreateListing tracks a single uploadedImage state instead of an array of images'
+    createListingSrc.includes('const MAX_IMAGES = 3;'),
+    'CreateListing enforces MAX_IMAGES = 3'
   );
   assert(
-    !createListingSrc.includes('up to 4 images') && !createListingSrc.includes('MAX_IMAGES = 4'),
-    'CreateListing removed "up to 4 images" and MAX_IMAGES = 4'
+    createListingSrc.includes('uploadedImages.length + selectedFiles.length > MAX_IMAGES'),
+    'CreateListing rejects more than 3 images'
   );
   assert(
-    createListingSrc.includes('1 photo (up to 5MB)'),
-    'CreateListing indicates single photo limit of 1 photo (up to 5MB)'
+    createListingSrc.toLowerCase().includes('max 3 photos') || createListingSrc.toLowerCase().includes('up to 3 photos'),
+    'CreateListing indicates maximum 3 photos allowed'
   );
   assert(
     !createListingSrc.includes('Sale listings require at least one photo'),
     'CreateListing does NOT mandate photos for Sale listings (photos are optional)'
   );
   assert(
-    createListingSrc.includes('images: finalImages') && createListingSrc.includes('uploadedImage ? [uploadedImage] : [];'),
-    'CreateListing formats images as 0 or 1 item array for database compatibility'
+    createListingSrc.includes('images: finalImages') && createListingSrc.includes('uploadedImages.slice(0, MAX_IMAGES)'),
+    'CreateListing formats images up to 3 items array for database compatibility'
   );
 }
 
@@ -218,12 +218,16 @@ console.log('\n--- Running StudentNeed Requests Chat & UX Verification Tests ---
   );
 }
 
-// Test 10: Single Photo and Optional Photo in EditListingModal.tsx
+// Test 10: Max 3 Photos and Optional Photo in EditListingModal.tsx
 {
   const editListingSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/EditListingModal.tsx'), 'utf-8').replace(/\r\n/g, '\n');
   assert(
-    editListingSrc.includes('const [image, setImage] = useState<string | null>(listing.images?.[0] || null);'),
-    'EditListingModal initializes single photo from existing listing images[0]'
+    editListingSrc.includes('const MAX_IMAGES = 3;'),
+    'EditListingModal defines MAX_IMAGES = 3'
+  );
+  assert(
+    editListingSrc.includes('const [images, setImages] = useState'),
+    'EditListingModal initializes images array from existing listing images'
   );
   assert(
     !editListingSrc.includes('Sale listings require at least one photo') &&
@@ -231,12 +235,8 @@ console.log('\n--- Running StudentNeed Requests Chat & UX Verification Tests ---
     'EditListingModal does NOT require photo for Sale listings'
   );
   assert(
-    !editListingSrc.includes('You can upload a maximum of 4 images'),
-    'EditListingModal removed 4 image limit check'
-  );
-  assert(
-    editListingSrc.includes('images: image ? [image] : []'),
-    'EditListingModal submits 0 or 1 image in updates'
+    editListingSrc.includes('images: images.slice(0, MAX_IMAGES)'),
+    'EditListingModal submits up to 3 images in updates'
   );
 }
 

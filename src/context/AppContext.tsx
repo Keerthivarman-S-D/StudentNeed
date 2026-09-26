@@ -4,17 +4,20 @@ import {
   onSnapshot,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   serverTimestamp,
   query,
   orderBy,
   limit,
+  startAfter,
+  QueryDocumentSnapshot,
   Timestamp
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
-import { User, Listing, ItemRequest, RequestStatus, UpdateListingInput } from '../types';
+import { User, Listing, ItemRequest, RequestStatus, UpdateListingInput, isValidApprovedLocation } from '../types';
 import { mockUsers } from '../data';
 
 export type NewListingInput = {
@@ -67,14 +70,65 @@ type AppContextType = {
   fetchUserProfile: (userId: string) => Promise<User | null>;
 };
 
+function parseListingSnapshot(docSnap: any): Listing {
+  const data = docSnap.data();
+  const createdAt = data.createdAt?.toDate
+    ? data.createdAt.toDate().toISOString()
+    : typeof data.createdAt === 'string'
+    ? data.createdAt
+    : new Date().toISOString();
+  const updatedAt = data.updatedAt?.toDate
+    ? data.updatedAt.toDate().toISOString()
+    : typeof data.updatedAt === 'string'
+    ? data.updatedAt
+    : new Date().toISOString();
+
+  // Compute or fallback expiresAt
+  const rawExpires = data.expiresAt;
+  let expiresAt = '';
+  if (rawExpires?.toDate) {
+    expiresAt = rawExpires.toDate().toISOString();
+  } else if (typeof rawExpires === 'string') {
+    expiresAt = rawExpires;
+  } else if (data.createdAt) {
+    const cDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
+    expiresAt = new Date(cDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  } else {
+    expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  return {
+    id: docSnap.id,
+    title: data.title || '',
+    description: data.description || '',
+    price: data.price !== undefined ? Number(data.price) : undefined,
+    type: data.type || 'Sale',
+    condition: data.type === 'Borrow' ? undefined : (data.condition || undefined),
+    category: data.category || 'Other',
+    location: data.location || '',
+    sellerId: data.sellerId || '',
+    images: Array.isArray(data.images)
+      ? data.images.filter((img): img is string => typeof img === 'string' && img.trim().length > 0)
+      : [],
+    status: data.status || 'available',
+    expirationDays: data.expirationDays ? Number(data.expirationDays) : 15,
+    expiresAt,
+    wantedItem: data.wantedItem || undefined,
+    createdAt,
+    updatedAt,
+  };
+}
+
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [listingsLoading, setListingsLoading] = useState<boolean>(true);
   const [listingsError, setListingsError] = useState<string | null>(null);
-  const [listingsLimit, setListingsLimit] = useState<number>(24);
   const [hasMoreListings, setHasMoreListings] = useState<boolean>(true);
+  const [lastListingDoc, setLastListingDoc] = useState<QueryDocumentSnapshot | null>(null);
+  const [isLoadingMoreListings, setIsLoadingMoreListings] = useState<boolean>(false);
+  const LISTINGS_PAGE_SIZE = 10;
 
   const [requests, setRequests] = useState<ItemRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState<boolean>(true);
@@ -116,8 +170,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [savedListings]);
 
-  const loadMoreListings = () => {
-    setListingsLimit((prev) => prev + 24);
+  const loadMoreListings = async () => {
+    if (!lastListingDoc || isLoadingMoreListings || !hasMoreListings) return;
+    setIsLoadingMoreListings(true);
+    try {
+      const nextQuery = query(
+        collection(db, 'listings'),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastListingDoc),
+        limit(LISTINGS_PAGE_SIZE)
+      );
+
+      const snapshot = await getDocs(nextQuery);
+      const docs = snapshot.docs;
+      const nextListings = docs.map(parseListingSnapshot);
+
+      setListings((prev) => [...prev, ...nextListings]);
+      setLastListingDoc(docs.length > 0 ? docs[docs.length - 1] : null);
+      setHasMoreListings(docs.length >= LISTINGS_PAGE_SIZE);
+      setIsLoadingMoreListings(false);
+
+      const sellerIds = Array.from(new Set(nextListings.map((l) => l.sellerId).filter(Boolean)));
+      prefetchUsers(sellerIds);
+    } catch (err: any) {
+      console.error('Error loading more listings:', err);
+      setIsLoadingMoreListings(false);
+    }
   };
 
   const loadMoreRequests = () => {
@@ -213,109 +291,63 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // Subscribe to real-time listings with limit
+  // Fetch initial listings with pagination cursor (no unnecessary real-time listener)
   useEffect(() => {
     if (!authUser) {
       setListings([]);
       setListingsLoading(false);
       setListingsError(null);
       setHasMoreListings(false);
+      setLastListingDoc(null);
       return;
     }
 
+    let isMounted = true;
     setListingsLoading(true);
     setListingsError(null);
 
-    let unsubscribe: (() => void) | null = null;
-    try {
-      const listingsQuery = query(
-        collection(db, 'listings'),
-        orderBy('createdAt', 'desc'),
-        limit(listingsLimit)
-      );
+    const fetchInitialListings = async () => {
+      try {
+        const listingsQuery = query(
+          collection(db, 'listings'),
+          orderBy('createdAt', 'desc'),
+          limit(LISTINGS_PAGE_SIZE)
+        );
 
-      unsubscribe = onSnapshot(
-        listingsQuery,
-        (snapshot) => {
-          const liveListings: Listing[] = snapshot.docs.map((docSnap) => {
-            const data = docSnap.data();
-            const createdAt = data.createdAt?.toDate
-              ? data.createdAt.toDate().toISOString()
-              : typeof data.createdAt === 'string'
-              ? data.createdAt
-              : new Date().toISOString();
-            const updatedAt = data.updatedAt?.toDate
-              ? data.updatedAt.toDate().toISOString()
-              : typeof data.updatedAt === 'string'
-              ? data.updatedAt
-              : new Date().toISOString();
+        const snapshot = await getDocs(listingsQuery);
+        if (!isMounted) return;
 
-            // Compute or fallback expiresAt
-            const rawExpires = data.expiresAt;
-            let expiresAt = '';
-            if (rawExpires?.toDate) {
-              expiresAt = rawExpires.toDate().toISOString();
-            } else if (typeof rawExpires === 'string') {
-              expiresAt = rawExpires;
-            } else if (data.createdAt) {
-              const cDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
-              expiresAt = new Date(cDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-            } else {
-              expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-            }
+        const docs = snapshot.docs;
+        const liveListings = docs.map(parseListingSnapshot);
 
-            return {
-              id: docSnap.id,
-              title: data.title || '',
-              description: data.description || '',
-              price: data.price !== undefined ? Number(data.price) : undefined,
-              type: data.type || 'Sale',
-              condition: data.type === 'Borrow' ? undefined : (data.condition || undefined),
-              category: data.category || 'Other',
-              location: data.location || '',
-              sellerId: data.sellerId || '',
-              images: Array.isArray(data.images)
-                ? data.images.filter((img): img is string => typeof img === 'string' && img.trim().length > 0)
-                : [],
-              status: data.status || 'available',
-              expirationDays: data.expirationDays ? Number(data.expirationDays) : 15,
-              expiresAt,
-              wantedItem: data.wantedItem || undefined,
-              createdAt,
-              updatedAt,
-            };
-          });
+        setListings(liveListings);
+        setLastListingDoc(docs.length > 0 ? docs[docs.length - 1] : null);
+        setHasMoreListings(docs.length >= LISTINGS_PAGE_SIZE);
+        setListingsLoading(false);
+        setListingsError(null);
 
-          setListings(liveListings);
-          setHasMoreListings(snapshot.docs.length >= listingsLimit);
-          setListingsLoading(false);
-          setListingsError(null);
-
-          // Prefetch seller profiles on demand
-          const sellerIds = Array.from(new Set(liveListings.map((l) => l.sellerId).filter(Boolean)));
-          prefetchUsers(sellerIds);
-        },
-        (err) => {
-          console.error('Error listening to listings:', err);
-          setListingsLoading(false);
-          setListingsError('Unable to load campus listings right now. Please refresh.');
-          try {
-            handleFirestoreError(err, OperationType.LIST, 'listings');
-          } catch {
-            // error logged
-          }
+        // Prefetch seller profiles on demand
+        const sellerIds = Array.from(new Set(liveListings.map((l) => l.sellerId).filter(Boolean)));
+        prefetchUsers(sellerIds);
+      } catch (err: any) {
+        if (!isMounted) return;
+        console.error('Error listening to listings:', err);
+        setListingsLoading(false);
+        setListingsError('Unable to load campus listings right now. Please refresh.');
+        try {
+          handleFirestoreError(err, OperationType.LIST, 'listings');
+        } catch {
+          // error logged
         }
-      );
-    } catch (err: any) {
-      console.error('Failed to initialize listings query:', err);
-      setListingsLoading(false);
-      setListingsError('Unable to load campus listings right now. Please refresh.');
-    }
+      }
+    };
+
+    fetchInitialListings();
 
     return () => {
-      if (unsubscribe) unsubscribe();
+      isMounted = false;
     };
-  }, [authUser, listingsLimit]);
+  }, [authUser]);
 
   // Subscribe to real-time requests with limit
   useEffect(() => {
@@ -405,6 +437,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Authentication required: please log in to publish a listing.');
     }
 
+    const trimmedTitle = (listingInput.title || '').trim();
+    if (trimmedTitle.length < 3 || trimmedTitle.length > 50) {
+      throw new Error('Listing title must be between 3 and 50 characters.');
+    }
+
+    const trimmedDesc = (listingInput.description || '').trim();
+    if (trimmedDesc.length < 10 || trimmedDesc.length > 100) {
+      throw new Error('Listing description must be between 10 and 100 characters.');
+    }
+
+    const trimmedLoc = (listingInput.location || '').trim();
+    if (!isValidApprovedLocation(trimmedLoc)) {
+      throw new Error('Please select an approved campus pickup location.');
+    }
+
     const sellerId = auth.currentUser.uid;
     const docRef = doc(collection(db, 'listings'));
 
@@ -417,17 +464,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const rawImages = Array.isArray(listingInput.images) ? listingInput.images : [];
     const sanitizedImages = rawImages
-      .filter((img): img is string => typeof img === 'string' && img.trim().length > 0 && img.startsWith('https://'))
-      .slice(0, 1);
+      .filter((img): img is string => typeof img === 'string' && img.trim().length > 0 && img.startsWith('https://'));
+
+    if (sanitizedImages.length > 3) {
+      throw new Error('Maximum 3 images allowed per listing.');
+    }
+    const finalImages = sanitizedImages.slice(0, 3);
 
     const newListingData: Record<string, any> = {
-      title: listingInput.title.trim(),
-      description: listingInput.description.trim(),
+      title: trimmedTitle,
+      description: trimmedDesc,
       type: listingInput.type,
       category: listingInput.category,
-      location: listingInput.location.trim(),
+      location: trimmedLoc,
       sellerId: sellerId, // strictly enforced from authenticated user
-      images: sanitizedImages,
+      images: finalImages,
       status: listingInput.status || 'available',
       expirationDays: durationDays,
       expiresAt: expiresAtTimestamp,
@@ -439,8 +490,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       newListingData.condition = listingInput.condition;
     }
 
-    if (listingInput.price !== undefined && listingInput.price !== null && !isNaN(Number(listingInput.price))) {
-      newListingData.price = Number(listingInput.price);
+    if (listingInput.type === 'Sale') {
+      const parsedPrice = Number(listingInput.price);
+      if (isNaN(parsedPrice) || parsedPrice < 1) {
+        throw new Error('Minimum listing price is ₹1.');
+      }
+      if (parsedPrice > 10000) {
+        throw new Error('Maximum listing price is ₹10,000.');
+      }
+      newListingData.price = parsedPrice;
+    } else if (listingInput.price !== undefined && listingInput.price !== null && !isNaN(Number(listingInput.price))) {
+      const parsedPrice = Number(listingInput.price);
+      if (parsedPrice < 1 || parsedPrice > 10000) {
+        throw new Error('Price must be between ₹1 and ₹10,000.');
+      }
+      newListingData.price = parsedPrice;
     }
 
     if (listingInput.type === 'Exchange' && listingInput.wantedItem?.trim()) {
@@ -449,6 +513,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     try {
       await setDoc(docRef, newListingData);
+
+      // Prepend to local state for instantaneous UX
+      const newlyCreated: Listing = {
+        id: docRef.id,
+        title: newListingData.title,
+        description: newListingData.description,
+        price: newListingData.price,
+        type: newListingData.type,
+        condition: newListingData.condition,
+        category: newListingData.category,
+        location: newListingData.location,
+        sellerId: newListingData.sellerId,
+        images: newListingData.images,
+        status: newListingData.status,
+        expirationDays: newListingData.expirationDays,
+        expiresAt: expiresAtDate.toISOString(),
+        wantedItem: newListingData.wantedItem,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setListings((prev) => [newlyCreated, ...prev]);
+
       return docRef.id;
     } catch (err: unknown) {
       handleFirestoreError(err, OperationType.CREATE, `listings/${docRef.id}`);
@@ -483,13 +569,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     if (updates.title !== undefined) {
       const trimmed = updates.title.trim();
-      if (!trimmed) throw new Error('Listing title cannot be empty.');
+      if (trimmed.length < 3 || trimmed.length > 50) {
+        throw new Error('Listing title must be between 3 and 50 characters.');
+      }
       updatePayload.title = trimmed;
     }
 
     if (updates.description !== undefined) {
       const trimmed = updates.description.trim();
-      if (!trimmed) throw new Error('Listing description cannot be empty.');
+      if (trimmed.length < 10 || trimmed.length > 100) {
+        throw new Error('Listing description must be between 10 and 100 characters.');
+      }
       updatePayload.description = trimmed;
     }
 
@@ -508,7 +598,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     if (updates.location !== undefined) {
       const trimmed = updates.location.trim();
-      if (!trimmed) throw new Error('Campus/pickup location cannot be empty.');
+      if (!isValidApprovedLocation(trimmed)) {
+        throw new Error('Please select an approved campus pickup location.');
+      }
       updatePayload.location = trimmed;
     }
 
@@ -516,7 +608,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (updates.price === null || isNaN(Number(updates.price))) {
         // Leave undefined or keep price
       } else {
-        updatePayload.price = Math.max(0, Number(updates.price));
+        const num = Number(updates.price);
+        if (num < 1) {
+          throw new Error('Minimum listing price is ₹1.');
+        }
+        if (num > 10000) {
+          throw new Error('Maximum listing price is ₹10,000.');
+        }
+        updatePayload.price = num;
       }
     }
 
@@ -525,13 +624,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (Array.isArray(updates.images)) {
-      updatePayload.images = updates.images
-        .filter((img): img is string => typeof img === 'string' && img.trim().length > 0 && img.startsWith('https://'))
-        .slice(0, 1);
+      const sanitized = updates.images
+        .filter((img): img is string => typeof img === 'string' && img.trim().length > 0 && img.startsWith('https://'));
+      if (sanitized.length > 3) {
+        throw new Error('Maximum 3 images allowed per listing.');
+      }
+      updatePayload.images = sanitized.slice(0, 3);
     }
 
     try {
       await updateDoc(docRef, updatePayload);
+      setListings((prev) =>
+        prev.map((l) => (l.id === listingId ? { ...l, ...updates, updatedAt: new Date().toISOString() } : l))
+      );
     } catch (err: unknown) {
       handleFirestoreError(err, OperationType.UPDATE, `listings/${listingId}`);
     }
@@ -561,6 +666,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         status: 'cancelled',
         updatedAt: serverTimestamp(),
       });
+      setListings((prev) =>
+        prev.map((l) => (l.id === listingId ? { ...l, status: 'cancelled', updatedAt: new Date().toISOString() } : l))
+      );
     } catch (err: unknown) {
       handleFirestoreError(err, OperationType.UPDATE, `listings/${listingId}`);
     }

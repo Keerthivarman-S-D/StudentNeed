@@ -41,6 +41,7 @@ import { EditListingModal } from '../components/EditListingModal';
 import { ReportListingModal } from '../components/ReportListingModal';
 import { cn } from '../lib/utils';
 import { Listing, User, Reservation } from '../types';
+import { getOptimizedImageUrl } from '../lib/cloudinary';
 
 export function ListingDetail() {
   const { id } = useParams<{ id: string }>();
@@ -56,6 +57,7 @@ export function ListingDetail() {
   const [isStartingChat, setIsStartingChat] = useState(false);
   const [isReserving, setIsReserving] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   // Edit Listing state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -522,45 +524,73 @@ export function ListingDetail() {
 
       <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:gap-12">
         {/* Image Gallery */}
-        <div className="relative aspect-square overflow-hidden rounded-3xl bg-slate-100 border border-brand-border flex items-center justify-center">
-          {listing.images && listing.images.length > 0 && listing.images[0] ? (
-            <img
-              src={listing.images[0]}
-              alt={listing.title}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center p-8 text-center bg-slate-50 text-brand-muted h-full w-full select-none">
-              <ImageOff className="h-12 w-12 text-slate-300 mb-2" />
-              <span className="text-sm font-medium text-brand-muted">No image</span>
+        <div className="flex flex-col gap-3">
+          <div className="relative aspect-square overflow-hidden rounded-3xl bg-slate-100 border border-brand-border flex items-center justify-center">
+            {listing.images && listing.images.length > 0 && (listing.images[selectedImageIndex] || listing.images[0]) ? (
+              <img
+                src={listing.images[selectedImageIndex] || listing.images[0]}
+                alt={listing.title}
+                className="h-full w-full object-cover transition-all duration-200"
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center p-8 text-center bg-zinc-50 text-brand-muted h-full w-full select-none">
+                <ImageOff className="h-12 w-12 text-zinc-300 mb-2" />
+                <span className="text-sm font-medium text-zinc-400">No image</span>
+              </div>
+            )}
+            <div className="absolute left-4 top-4 flex gap-2 flex-wrap">
+              <Badge variant={getTypeColor(listing.type) as any} className="text-sm px-3 py-1 shadow-md">
+                {listing.type}
+              </Badge>
+              {listing.status === 'completed' && (
+                <Badge variant="outline" className="text-sm px-3 py-1 shadow-md bg-blue-50 text-blue-700 border-blue-200">
+                  Exchange completed
+                </Badge>
+              )}
+              {listing.status === 'cancelled' && (
+                <Badge variant="destructive" className="text-sm px-3 py-1 shadow-md bg-red-600 text-white">
+                  Cancelled
+                </Badge>
+              )}
+              {isExpired && (
+                <Badge variant="destructive" className="text-sm px-3 py-1 shadow-md bg-red-700 text-white">
+                  Expired
+                </Badge>
+              )}
+              {!isExpired && expirationText && (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full shadow-md bg-brand-charcoal/85 text-white backdrop-blur-xs">
+                  <Timer className="h-3.5 w-3.5" />
+                  {expirationText}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Multiple Image Thumbnails (up to 3) */}
+          {listing.images && listing.images.length > 1 && (
+            <div className="flex items-center gap-3">
+              {listing.images.slice(0, 3).map((imgUrl, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setSelectedImageIndex(idx)}
+                  className={cn(
+                    "relative aspect-square w-16 sm:w-20 overflow-hidden rounded-xl border-2 transition-all cursor-pointer bg-slate-100",
+                    selectedImageIndex === idx
+                      ? "border-brand-teal ring-2 ring-brand-teal/20"
+                      : "border-brand-border opacity-70 hover:opacity-100"
+                  )}
+                >
+                  <img
+                    src={getOptimizedImageUrl(imgUrl, { width: 160 })}
+                    alt={`Thumbnail ${idx + 1}`}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </button>
+              ))}
             </div>
           )}
-          <div className="absolute left-4 top-4 flex gap-2 flex-wrap">
-            <Badge variant={getTypeColor(listing.type) as any} className="text-sm px-3 py-1 shadow-md">
-              {listing.type}
-            </Badge>
-            {listing.status === 'completed' && (
-              <Badge variant="outline" className="text-sm px-3 py-1 shadow-md bg-blue-50 text-blue-700 border-blue-200">
-                Exchange completed
-              </Badge>
-            )}
-            {listing.status === 'cancelled' && (
-              <Badge variant="destructive" className="text-sm px-3 py-1 shadow-md bg-red-600 text-white">
-                Cancelled
-              </Badge>
-            )}
-            {isExpired && (
-              <Badge variant="destructive" className="text-sm px-3 py-1 shadow-md bg-red-700 text-white">
-                Expired
-              </Badge>
-            )}
-            {!isExpired && expirationText && (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full shadow-md bg-brand-charcoal/85 text-white backdrop-blur-xs">
-                <Timer className="h-3.5 w-3.5" />
-                {expirationText}
-              </span>
-            )}
-          </div>
         </div>
 
         {/* Details */}

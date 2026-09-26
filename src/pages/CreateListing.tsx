@@ -5,9 +5,10 @@ import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Category, ActiveListingType, Condition } from '../types';
+import { Category, ActiveListingType, Condition, APPROVED_CAMPUS_LOCATIONS, isValidApprovedLocation } from '../types';
 import { uploadImageToCloudinary, validateImageFile, UploadCancelledError } from '../lib/cloudinary';
 import { MODERATION_ENDPOINTS } from '../config/api';
+import { cn } from '../lib/utils';
 
 export function CreateListing() {
   const navigate = useNavigate();
@@ -24,8 +25,9 @@ export function CreateListing() {
   const [location, setLocation] = useState('');
   const [expirationDays, setExpirationDays] = useState<7 | 15 | 30>(15);
   
-  // Single optional photo upload state
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  // Up to 3 photos
+  const MAX_IMAGES = 3;
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadingFileName, setUploadingFileName] = useState<string>('');
@@ -49,7 +51,7 @@ export function CreateListing() {
     };
   }, []);
 
-  // Handle switching listing types (preserve optional photo state)
+  // Handle switching listing types
   const handleTypeChange = (newType: ActiveListingType) => {
     setType(newType);
   };
@@ -77,28 +79,43 @@ export function CreateListing() {
     setError(null);
     setPhotoAddedFeedback(false);
 
-    const file = e.target.files[0];
-    const validation = validateImageFile(file);
-    if (!validation.valid) {
-      setError(validation.error || 'Invalid image file.');
+    const selectedFiles = Array.from(e.target.files);
+    if (uploadedImages.length + selectedFiles.length > MAX_IMAGES) {
+      setError(`Maximum ${MAX_IMAGES} images allowed per listing.`);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
+    }
+
+    for (const file of selectedFiles) {
+      const validation = validateImageFile(file);
+      if (!validation.valid) {
+        setError(validation.error || 'Invalid image file.');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
     }
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
     setIsUploading(true);
     setUploadProgress(0);
-    setUploadingFileName(file.name);
 
+    const newlyUploaded: string[] = [];
     try {
-      const secureUrl = await uploadImageToCloudinary(file, {
-        folder: 'studentneed/listings',
-        signal: controller.signal,
-        onProgress: (pct) => setUploadProgress(pct),
-      });
-      // Replace previous image with newly uploaded single photo
-      setUploadedImage(secureUrl);
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        setUploadingFileName(file.name);
+        const secureUrl = await uploadImageToCloudinary(file, {
+          folder: 'studentneed/listings',
+          signal: controller.signal,
+          onProgress: (pct) => {
+            const overall = Math.round(((i + pct / 100) / selectedFiles.length) * 100);
+            setUploadProgress(overall);
+          },
+        });
+        newlyUploaded.push(secureUrl);
+      }
+      setUploadedImages((prev) => [...prev, ...newlyUploaded].slice(0, MAX_IMAGES));
       setPhotoAddedFeedback(true);
       setTimeout(() => setPhotoAddedFeedback(false), 3000);
     } catch (err: any) {
@@ -121,8 +138,8 @@ export function CreateListing() {
     }
   };
 
-  const handleRemoveImage = () => {
-    setUploadedImage(null);
+  const handleRemoveImage = (indexToRemove: number) => {
+    setUploadedImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
     setPhotoAddedFeedback(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -174,7 +191,50 @@ export function CreateListing() {
       return;
     }
 
-    const finalImages: string[] = uploadedImage ? [uploadedImage] : [];
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle || trimmedTitle.length < 3) {
+      setError('Title must be at least 3 characters.');
+      return;
+    }
+    if (trimmedTitle.length > 50) {
+      setError('Title cannot exceed 50 characters.');
+      return;
+    }
+
+    const trimmedDesc = description.trim();
+    if (!trimmedDesc || trimmedDesc.length < 10) {
+      setError('Description must be at least 10 characters.');
+      return;
+    }
+    if (trimmedDesc.length > 100) {
+      setError('Description cannot exceed 100 characters.');
+      return;
+    }
+
+    const trimmedLoc = location.trim();
+    if (!isValidApprovedLocation(trimmedLoc)) {
+      setError('Please select an approved campus pickup location.');
+      return;
+    }
+
+    if (type === 'Sale') {
+      const parsedPrice = Number(price);
+      if (!price || isNaN(parsedPrice) || parsedPrice < 1) {
+        setError('Minimum listing price is ₹1.');
+        return;
+      }
+      if (parsedPrice > 10000) {
+        setError('Maximum listing price is ₹10,000.');
+        return;
+      }
+    }
+
+    if (uploadedImages.length > MAX_IMAGES) {
+      setError(`Maximum ${MAX_IMAGES} images allowed per listing.`);
+      return;
+    }
+
+    const finalImages: string[] = uploadedImages.slice(0, MAX_IMAGES);
     
     setIsSubmitting(true);
     setError(null);
@@ -182,14 +242,14 @@ export function CreateListing() {
     
     try {
       const listingId = await addListing({
-        title: title.trim(),
-        description: description.trim(),
+        title: trimmedTitle,
+        description: trimmedDesc,
         price: type === 'Sale' && price ? Number(price) : undefined,
         wantedItem: type === 'Exchange' ? wantedItem.trim() : undefined,
         type,
         condition,
         category,
-        location: location.trim(),
+        location: trimmedLoc,
         images: finalImages,
         status: 'available',
         expirationDays: expirationDays,
@@ -204,7 +264,7 @@ export function CreateListing() {
     } catch (err: any) {
       console.error('Failed to create listing:', err);
       setIsSubmitting(false);
-      setError('Could not publish listing. Please try again.');
+      setError(err?.message || 'Could not publish listing. Please try again.');
     }
   };
 
@@ -292,13 +352,21 @@ export function CreateListing() {
           
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Title</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-brand-charcoal">Title</label>
+                <span className="text-xs text-brand-muted">{title.length} / 50</span>
+              </div>
               <Input 
                 required 
+                minLength={3}
+                maxLength={50}
                 placeholder="e.g. Casio Scientific Calculator" 
                 value={title}
                 onChange={e => setTitle(e.target.value)}
               />
+              {title.length > 0 && title.trim().length < 3 && (
+                <p className="mt-1 text-xs text-red-600 font-medium">Title must be at least 3 characters.</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -331,11 +399,23 @@ export function CreateListing() {
                 <Input 
                   required 
                   type="number" 
-                  min="0"
+                  min="1"
+                  max="10000"
                   placeholder="e.g. 450" 
                   value={price}
                   onChange={e => setPrice(e.target.value)}
                 />
+                {price !== '' && Number(price) >= 1 && Number(price) <= 10000 && (
+                  <p className="mt-1 text-xs text-green-600 font-medium flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Valid.
+                  </p>
+                )}
+                {price !== '' && Number(price) < 1 && (
+                  <p className="mt-1 text-xs text-red-600 font-medium">Minimum listing price is ₹1.</p>
+                )}
+                {price !== '' && Number(price) > 10000 && (
+                  <p className="mt-1 text-xs text-red-600 font-medium">Maximum listing price is ₹10,000.</p>
+                )}
               </div>
             )}
 
@@ -355,25 +435,43 @@ export function CreateListing() {
             )}
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Description</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-brand-charcoal">Description</label>
+                <span className={cn("text-xs", description.length >= 100 ? "text-amber-600 font-semibold" : "text-brand-muted")}>
+                  {description.length} / 100
+                </span>
+              </div>
               <textarea 
                 required
                 rows={4}
-                placeholder="Describe the item, any defects, reason for selling/donating..."
+                maxLength={100}
+                placeholder="Describe the item, condition, defects, or reasons for giving away..."
                 className="w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
               />
+              <div className="mt-1 flex items-center justify-between text-xs">
+                {description.length > 0 && description.trim().length < 10 ? (
+                  <span className="text-red-600 font-medium">Description must be at least 10 characters.</span>
+                ) : (
+                  <span className="text-brand-muted">Between 10 and 100 characters.</span>
+                )}
+              </div>
             </div>
             
             <div>
               <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Pickup Location on Campus</label>
-              <Input 
+              <select 
                 required 
-                placeholder="e.g. CSE Block, Hostel A, Main Gate" 
+                className="flex h-10 w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
                 value={location}
                 onChange={e => setLocation(e.target.value)}
-              />
+              >
+                <option value="" disabled>Select approved campus pickup location...</option>
+                {APPROVED_CAMPUS_LOCATIONS.map(loc => (
+                  <option key={loc} value={loc}>{loc}</option>
+                ))}
+              </select>
             </div>
           </div>
         </section>
@@ -440,45 +538,44 @@ export function CreateListing() {
           </div>
         </section>
 
-        {/* Photo Section: Optional single photo for all listing types */}
+        {/* Photo Section: Optional photos (up to 3) */}
         <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-900">Photo (Optional)</h2>
-            <span className="text-xs text-zinc-500">1 photo (up to 5MB)</span>
+            <div>
+              <h2 className="text-lg font-semibold text-zinc-900">Photos (Optional)</h2>
+              <p className="text-xs text-zinc-500">Up to 3 photos (up to 5MB each)</p>
+            </div>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-zinc-600">
+              {uploadedImages.length} / {MAX_IMAGES}
+            </span>
           </div>
 
-          {/* Uploaded Single Image Preview */}
-          {uploadedImage && !isUploading && (
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="relative aspect-square w-32 sm:w-40 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
-                <img src={uploadedImage} alt="Uploaded preview" className="h-full w-full object-cover" />
-                <button
-                  type="button"
-                  onClick={handleRemoveImage}
-                  className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900/80 text-white transition-opacity hover:bg-zinc-900"
-                  title="Remove photo"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+          {/* Uploaded Images Preview Grid */}
+          {uploadedImages.length > 0 && !isUploading && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {uploadedImages.map((imgUrl, idx) => (
+                  <div key={idx} className="relative aspect-square overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+                    <img src={imgUrl} alt={`Upload ${idx + 1}`} className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(idx)}
+                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900/80 text-white transition-opacity hover:bg-zinc-900"
+                      title="Remove photo"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                      #{idx + 1}
+                    </span>
+                  </div>
+                ))}
               </div>
-              <div className="space-y-2">
-                {photoAddedFeedback && (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-teal-hover bg-brand-teal-light px-2.5 py-1 rounded-full border border-brand-teal-border">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-brand-teal" /> Photo added
-                  </span>
-                )}
-                <p className="text-xs text-zinc-500">To replace this photo, select another file.</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-xs gap-1.5"
-                >
-                  <ImagePlus className="h-3.5 w-3.5" />
-                  Change Photo
-                </Button>
-              </div>
+              {photoAddedFeedback && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-teal-hover bg-brand-teal-light px-2.5 py-1 rounded-full border border-brand-teal-border">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-brand-teal" /> Photos updated
+                </span>
+              )}
             </div>
           )}
 
@@ -512,33 +609,22 @@ export function CreateListing() {
             </div>
           )}
 
-          {/* Upload Dropzone (when photo is not yet selected and not uploading) */}
-          {!isUploading && !uploadedImage && (
-            <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 transition-colors hover:border-zinc-400 hover:bg-zinc-100">
+          {/* Upload Dropzone (when fewer than 3 photos and not uploading) */}
+          {!isUploading && uploadedImages.length < MAX_IMAGES && (
+            <label className="flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 transition-colors hover:border-zinc-400 hover:bg-zinc-100">
               <input 
                 ref={fileInputRef}
                 type="file" 
                 accept="image/jpeg,image/png,image/webp"
+                multiple
                 onChange={handleFileChange}
                 className="hidden" 
                 disabled={isSubmitting || isUploading}
               />
-              <ImagePlus className="h-8 w-8 text-zinc-400 mb-2" />
-              <span className="text-sm font-medium text-zinc-600">Click to upload photo</span>
-              <span className="text-xs text-zinc-400 mt-1">JPG, JPEG, PNG, or WEBP up to 5MB</span>
+              <ImagePlus className="h-7 w-7 text-zinc-400 mb-1" />
+              <span className="text-sm font-medium text-zinc-600">Click to upload photo ({uploadedImages.length}/3)</span>
+              <span className="text-xs text-zinc-400 mt-0.5">JPG, JPEG, PNG, or WEBP up to 5MB</span>
             </label>
-          )}
-
-          {/* Hidden input for change photo button */}
-          {!isUploading && uploadedImage && (
-            <input 
-              ref={fileInputRef}
-              type="file" 
-              accept="image/jpeg,image/png,image/webp"
-              onChange={handleFileChange}
-              className="hidden" 
-              disabled={isSubmitting || isUploading}
-            />
           )}
         </section>
 

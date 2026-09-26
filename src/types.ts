@@ -112,6 +112,23 @@ export const CAMPUS_MEETUP_LOCATIONS = [
 
 export type CampusMeetupLocation = typeof CAMPUS_MEETUP_LOCATIONS[number];
 
+// Centralized source of truth for approved campus locations
+export const APPROVED_CAMPUS_LOCATIONS = CAMPUS_MEETUP_LOCATIONS;
+export type ApprovedCampusLocation = CampusMeetupLocation;
+
+/**
+ * Validates campus location against approved list with backward compatibility
+ * for legacy alternate naming (such as 'Library').
+ */
+export function isValidApprovedLocation(loc: string | null | undefined): boolean {
+  if (!loc || typeof loc !== 'string') return false;
+  const trimmed = loc.trim();
+  return (
+    (APPROVED_CAMPUS_LOCATIONS as readonly string[]).includes(trimmed) ||
+    trimmed === 'Library'
+  );
+}
+
 export type MeetupStatus = 'not_set' | 'proposed' | 'confirmed' | 'cancelled';
 
 export type MeetupInfo = {
