@@ -7,6 +7,8 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'fire
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { AUTH_ENDPOINTS, COLLEGE_EMAIL_DOMAIN } from '../config/api';
+import { validatePassword } from '../lib/passwordSecurity';
+import { PasswordRequirements } from '../components/PasswordRequirements';
 
 export function Login() {
   const navigate = useNavigate();
@@ -170,8 +172,14 @@ export function Login() {
     }
   };
 
+  const passwordValidation = validatePassword(password);
+
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!passwordValidation.isValid) {
+      setError(passwordValidation.errors[0] || "Password does not meet the security requirements.");
+      return;
+    }
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -182,14 +190,27 @@ export function Login() {
     
     try {
       const cleanEmail = email.trim().toLowerCase();
-      await createUserWithEmailAndPassword(auth, cleanEmail, password);
+
+      // 1. Submit to backend create-account endpoint (validates password & OTP server-side)
+      const res = await fetch(AUTH_ENDPOINTS.createAccount, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || (data.details ? data.details[0] : "Failed to create account."));
+      }
+
+      // 2. Establish client Firebase Auth session
+      await signInWithEmailAndPassword(auth, cleanEmail, password);
       // Redirect handled by useEffect
     } catch (err: any) {
       console.warn("Account creation error:", err.code || err.message);
       if (err.code === 'auth/email-already-in-use') {
         setError("Email is already in use. Try signing in instead, or use a different email.");
       } else if (err.code === 'auth/weak-password') {
-        setError("Password should be at least 6 characters.");
+        setError("Password does not meet the security requirements.");
       } else {
         setError(err.message || "An error occurred. Please try again.");
       }
@@ -414,6 +435,8 @@ export function Login() {
                         )}
                       </button>
                     </div>
+                    {/* Password requirements checklist & strength meter */}
+                    <PasswordRequirements password={password} validation={passwordValidation} className="mt-2.5" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-zinc-700 mb-1">Confirm Password</label>
@@ -440,8 +463,18 @@ export function Login() {
                         )}
                       </button>
                     </div>
+                    {confirmPassword.length > 0 && password !== confirmPassword && (
+                      <p className="text-xs text-rose-600 mt-1 font-medium">Passwords do not match.</p>
+                    )}
+                    {confirmPassword.length > 0 && password === confirmPassword && (
+                      <p className="text-xs text-emerald-600 mt-1 font-medium">Passwords match.</p>
+                    )}
                   </div>
-                  <Button type="submit" className="w-full" disabled={isLoading}>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={isLoading || !passwordValidation.isValid || password !== confirmPassword}
+                  >
                     {isLoading ? 'Creating account...' : 'Create Account'}
                   </Button>
                 </form>

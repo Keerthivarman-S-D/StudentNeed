@@ -115,6 +115,40 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000).unref();
 
+// Password security policies and server-side validation
+const SPECIAL_CHARS_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/;
+const MIN_PASSWORD_LEN = 8;
+const MAX_PASSWORD_LEN = 128;
+
+function validatePassword(password: unknown): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (typeof password !== "string") {
+    return { valid: false, errors: ["Password is required and must be a string."] };
+  }
+  if (password.length < MIN_PASSWORD_LEN) {
+    errors.push("Password must be at least 8 characters long.");
+  }
+  if (password.length > MAX_PASSWORD_LEN) {
+    errors.push(`Password must not exceed ${MAX_PASSWORD_LEN} characters.`);
+  }
+  if (!/[A-Z]/.test(password)) {
+    errors.push("Password must contain at least 1 uppercase letter (A-Z).");
+  }
+  if (!/[a-z]/.test(password)) {
+    errors.push("Password must contain at least 1 lowercase letter (a-z).");
+  }
+  if (!/[0-9]/.test(password)) {
+    errors.push("Password must contain at least 1 number (0-9).");
+  }
+  if (!SPECIAL_CHARS_REGEX.test(password)) {
+    errors.push("Password must contain at least 1 special character (!@#$%^&*()_+-=[]{};':\"\\|,.<>/?).");
+  }
+  if (/\s/.test(password)) {
+    errors.push("Password must not contain any whitespace characters.");
+  }
+  return { valid: errors.length === 0, errors };
+}
+
 // In-memory development fallback store for temporary OTP records when system token is not configured
 const devOtpStore = new Map<string, OtpFirestoreDoc>();
 
@@ -764,6 +798,78 @@ CORE PRODUCT KNOWLEDGE & RULES:
     }
   });
 
+  // 2b. Account Creation with server-side strong password validation
+  const handleAccountCreation = async (req: express.Request, res: express.Response) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`create-account:ip:${clientIp}`, 20, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many account creation requests. Please wait 10 minutes." });
+      }
+
+      const { email, password } = req.body;
+      if (!email || typeof email !== "string" || !password || typeof password !== "string") {
+        return res.status(400).json({ error: "Email and password are required." });
+      }
+
+      // Strong password validation on backend - reject invalid passwords immediately
+      const validation = validatePassword(password);
+      if (!validation.valid) {
+        return res.status(400).json({
+          error: "Password does not meet the security requirements.",
+          details: validation.errors,
+        });
+      }
+
+      const normalizedEmail = email.toLowerCase().trim();
+      const rawDomain = (process.env.COLLEGE_EMAIL_DOMAIN || "student.annauniv.edu").trim().replace(/^@/, '');
+      const allowedDomain = `@${rawDomain}`;
+
+      if (!normalizedEmail.endsWith(allowedDomain)) {
+        return res.status(403).json({ error: "Please use your official college email address." });
+      }
+
+      // Verify that this email completed OTP verification
+      const emailDocId = crypto.createHash("sha256").update(normalizedEmail).digest("hex");
+      const verifiedRecord = await getOtpRecord(emailDocId);
+
+      if (!verifiedRecord || !verifiedRecord.verified || !verifiedRecord.verifiedExpiresAt || Date.now() > verifiedRecord.verifiedExpiresAt) {
+        return res.status(403).json({ error: "Email not verified or verification expired. Please complete email verification first." });
+      }
+
+      // Create user via Google Identity Toolkit
+      const signUpUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`;
+      const signUpRes = await fetch(signUpUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password: password,
+          returnSecureToken: true,
+        }),
+      });
+
+      const signUpData = await signUpRes.json();
+      if (!signUpRes.ok) {
+        if (signUpData?.error?.message === "EMAIL_EXISTS") {
+          return res.status(409).json({ error: "Email is already in use. Try signing in instead, or use a different email." });
+        }
+        return res.status(400).json({ error: signUpData?.error?.message || "Failed to create account." });
+      }
+
+      // Never log or return the password in the response
+      return res.status(201).json({
+        message: "Account created successfully.",
+        uid: signUpData.localId,
+      });
+    } catch (error: any) {
+      console.error("Create Account Error:", error?.message || "Internal error");
+      return res.status(500).json({ error: "Failed to create account. Please try again." });
+    }
+  };
+
+  app.post("/api/auth/create-account", handleAccountCreation);
+  app.post("/api/auth/register", handleAccountCreation);
+
   // 3. Finalize Account using REST API: Writes public profile without PII and private profile to /users/{uid}/private/profile
   app.post("/api/auth/finalize-account", async (req, res) => {
     try {
@@ -774,7 +880,8 @@ CORE PRODUCT KNOWLEDGE & RULES:
       }
 
       const normalizedEmail = email.toLowerCase().trim();
-      const allowedDomain = (process.env.COLLEGE_EMAIL_DOMAIN || "@student.annauniv.edu").trim();
+      const rawDomain = (process.env.COLLEGE_EMAIL_DOMAIN || "student.annauniv.edu").trim().replace(/^@/, '');
+      const allowedDomain = `@${rawDomain}`;
       if (!normalizedEmail.endsWith(allowedDomain)) {
         return res.status(403).json({ error: "Please use your official college email address." });
       }
@@ -956,6 +1063,18 @@ CORE PRODUCT KNOWLEDGE & RULES:
 
       if (!fbRes.ok) {
         const fbErr = await fbRes.text();
+        if (fbErr.includes("EMAIL_NOT_FOUND")) {
+          // Mitigate account enumeration: return uniform success response when email is not registered
+          await saveOtpRecord(emailDocId, {
+            hash: "reset",
+            expiresAt: Date.now() + 15 * 60 * 1000,
+            attempts: 0,
+            lastRequestedAt: Date.now(),
+            used: false,
+            verified: false,
+          });
+          return res.json({ message: "Password reset email sent." });
+        }
         console.error("[Password Reset Firebase Error]:", fbErr);
         return res.status(500).json({ error: "Unable to send password reset email. Please try again." });
       }
@@ -1037,6 +1156,99 @@ CORE PRODUCT KNOWLEDGE & RULES:
       console.error("Forgot Password Error:", error?.message || error);
       res.status(500).json({ error: "Unable to send password reset email. Please try again." });
     }
+  });
+
+  // 5. Change Password with server-side strong password validation
+  app.post("/api/auth/change-password", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkIpRateLimit(`change-password:ip:${clientIp}`, 15, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many password change attempts. Please wait 10 minutes." });
+      }
+
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required to change password." });
+      }
+      const idToken = authHeader.split(" ")[1];
+
+      // Verify caller token via Google Identity Toolkit lookup
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid or expired session. Please sign in again." });
+      }
+
+      const callerUid = verifyData.users[0].localId;
+      if (!checkIpRateLimit(`change-password:uid:${callerUid}`, 5, 10 * 60 * 1000)) {
+        return res.status(429).json({ error: "Too many password changes requested. Please wait 10 minutes." });
+      }
+
+      const { newPassword } = req.body;
+      if (!newPassword || typeof newPassword !== "string") {
+        return res.status(400).json({ error: "New password is required." });
+      }
+
+      // Backend strong password validation
+      const validation = validatePassword(newPassword);
+      if (!validation.valid) {
+        return res.status(400).json({
+          error: "Password does not meet the security requirements.",
+          details: validation.errors,
+        });
+      }
+
+      // Update password via Google Identity Toolkit
+      const updateUrl = `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${apiKey}`;
+      const updateRes = await fetch(updateUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idToken,
+          password: newPassword,
+          returnSecureToken: true,
+        }),
+      });
+
+      const updateData = await updateRes.json();
+      if (!updateRes.ok) {
+        return res.status(400).json({ error: updateData?.error?.message || "Failed to update password." });
+      }
+
+      // Never log or return the password in the response
+      return res.json({ message: "Password updated successfully." });
+    } catch (error: any) {
+      console.error("Change Password Error:", error?.message || "Internal error");
+      return res.status(500).json({ error: "Failed to update password. Please try again." });
+    }
+  });
+
+  // 6. Direct Password Validation Endpoint (for API checks and testing)
+  app.post("/api/auth/validate-password", (req, res) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkIpRateLimit(`validate-pwd:ip:${clientIp}`, 60, 60 * 1000)) {
+      return res.status(429).json({ error: "Too many requests. Please wait a minute." });
+    }
+
+    const { password } = req.body;
+    const validation = validatePassword(password);
+    if (!validation.valid) {
+      return res.status(400).json({
+        valid: false,
+        error: "Password does not meet security requirements.",
+        details: validation.errors,
+      });
+    }
+
+    return res.json({
+      valid: true,
+      message: "Password satisfies all security requirements.",
+    });
   });
 
   // Helper to retrieve Cloudinary configuration securely from environment variables

@@ -28,6 +28,15 @@ export const AUTH_ENDPOINTS = {
   get forgotPassword() {
     return `${getApiBaseUrl()}/api/auth/forgot-password`;
   },
+  get createAccount() {
+    return `${getApiBaseUrl()}/api/auth/create-account`;
+  },
+  get changePassword() {
+    return `${getApiBaseUrl()}/api/auth/change-password`;
+  },
+  get validatePassword() {
+    return `${getApiBaseUrl()}/api/auth/validate-password`;
+  },
   get health() {
     return `${getApiBaseUrl()}/api/health`;
   },

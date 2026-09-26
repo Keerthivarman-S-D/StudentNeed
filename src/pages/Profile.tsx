@@ -19,7 +19,9 @@ import {
   AlertCircle,
   Trash2,
   ShieldAlert,
-  Edit3
+  Edit3,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -34,6 +36,9 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Reservation, Listing } from '../types';
+import { AUTH_ENDPOINTS } from '../config/api';
+import { validatePassword } from '../lib/passwordSecurity';
+import { PasswordRequirements } from '../components/PasswordRequirements';
 
 export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' | 'saved' | 'settings' } = {}) {
   const navigate = useNavigate();
@@ -71,8 +76,12 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
+
+  const newPasswordValidation = validatePassword(newPassword);
 
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageMessage, setImageMessage] = useState({ type: '', text: '' });
@@ -201,6 +210,13 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firebaseUser) return;
+    if (!newPasswordValidation.isValid) {
+      setPasswordMessage({
+        type: 'error',
+        text: newPasswordValidation.errors[0] || 'Password does not meet the security requirements.',
+      });
+      return;
+    }
     if (newPassword !== confirmNewPassword) {
       setPasswordMessage({ type: 'error', text: 'Passwords do not match.' });
       return;
@@ -208,12 +224,30 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
     setIsSavingPassword(true);
     setPasswordMessage({ type: '', text: '' });
     try {
-      await updatePassword(firebaseUser, newPassword);
+      const idToken = await firebaseUser.getIdToken();
+      const res = await fetch(AUTH_ENDPOINTS.changePassword, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || (data.details ? data.details[0] : 'Failed to update password.'));
+      }
       setPasswordMessage({ type: 'success', text: 'Password updated successfully.' });
       setNewPassword('');
       setConfirmNewPassword('');
+      setShowNewPassword(false);
+      setShowConfirmNewPassword(false);
     } catch (err: any) {
-      if (err.code === 'auth/requires-recent-login') {
+      if (
+        err.code === 'auth/requires-recent-login' ||
+        err.message?.includes('requires-recent-login') ||
+        err.message?.includes('CREDENTIAL_TOO_OLD_LOGIN_AGAIN')
+      ) {
         setPasswordMessage({ type: 'error', text: 'Please sign out and sign in again to update your password.' });
       } else {
         setPasswordMessage({ type: 'error', text: err.message || 'Failed to update password.' });
@@ -932,29 +966,72 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                 <form onSubmit={handleUpdatePassword} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-zinc-700 mb-1">New Password</label>
-                    <Input 
-                      type="password" 
-                      required 
-                      minLength={6}
-                      placeholder="••••••••"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                    />
+                    <div className="relative flex items-center">
+                      <Input 
+                        type={showNewPassword ? "text" : "password"} 
+                        required 
+                        placeholder="••••••••"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="pr-11"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword((prev) => !prev)}
+                        className="absolute right-0 flex h-full items-center justify-center px-3 text-zinc-400 hover:text-zinc-600 focus:outline-none focus-visible:text-zinc-600 transition-colors"
+                        aria-label={showNewPassword ? "Hide password" : "Show password"}
+                        title={showNewPassword ? "Hide password" : "Show password"}
+                      >
+                        {showNewPassword ? (
+                          <EyeOff className="h-5 w-5" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-5 w-5" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
+                    {/* Password requirements checklist & strength meter */}
+                    <PasswordRequirements password={newPassword} validation={newPasswordValidation} className="mt-2.5" />
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-zinc-700 mb-1">Confirm New Password</label>
-                    <Input 
-                      type="password" 
-                      required 
-                      minLength={6}
-                      placeholder="••••••••"
-                      value={confirmNewPassword}
-                      onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    />
+                    <div className="relative flex items-center">
+                      <Input 
+                        type={showConfirmNewPassword ? "text" : "password"} 
+                        required 
+                        placeholder="••••••••"
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        className="pr-11"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmNewPassword((prev) => !prev)}
+                        className="absolute right-0 flex h-full items-center justify-center px-3 text-zinc-400 hover:text-zinc-600 focus:outline-none focus-visible:text-zinc-600 transition-colors"
+                        aria-label={showConfirmNewPassword ? "Hide password" : "Show password"}
+                        title={showConfirmNewPassword ? "Hide password" : "Show password"}
+                      >
+                        {showConfirmNewPassword ? (
+                          <EyeOff className="h-5 w-5" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-5 w-5" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
+                    {confirmNewPassword.length > 0 && newPassword !== confirmNewPassword && (
+                      <p className="text-xs text-rose-600 mt-1 font-medium">Passwords do not match.</p>
+                    )}
+                    {confirmNewPassword.length > 0 && newPassword === confirmNewPassword && (
+                      <p className="text-xs text-emerald-600 mt-1 font-medium">Passwords match.</p>
+                    )}
                   </div>
 
-                  <Button type="submit" variant="outline" disabled={isSavingPassword} className="w-full">
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={isSavingPassword || !newPasswordValidation.isValid || newPassword !== confirmNewPassword}
+                    className="w-full"
+                  >
                     {isSavingPassword ? 'Updating...' : 'Update Password'}
                   </Button>
                 </form>
