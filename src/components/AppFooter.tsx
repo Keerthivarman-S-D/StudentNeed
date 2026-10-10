@@ -18,10 +18,10 @@ export function AppFooter() {
           <div className="space-y-2">
             <p className="text-xs font-semibold text-brand-charcoal uppercase tracking-wider">Quick Links</p>
             <ul className="space-y-1.5 text-xs">
-              <li><Link to="/" className="hover:text-brand-teal-hover transition-colors">Home</Link></li>
-              <li><Link to="/marketplace" className="hover:text-brand-teal-hover transition-colors">Marketplace</Link></li>
-              <li><Link to="/requests" className="hover:text-brand-teal-hover transition-colors">Requests</Link></li>
-              <li><Link to="/create-listing" className="hover:text-brand-teal-hover transition-colors">Post an Item</Link></li>
+              <li><Link to="/" className="hover:text-emerald-800 transition-colors focus-visible:outline-none focus-visible:underline">Home</Link></li>
+              <li><Link to="/marketplace" className="hover:text-emerald-800 transition-colors focus-visible:outline-none focus-visible:underline">Marketplace</Link></li>
+              <li><Link to="/requests" className="hover:text-emerald-800 transition-colors focus-visible:outline-none focus-visible:underline">Requests</Link></li>
+              <li><Link to="/create-listing" className="hover:text-emerald-800 transition-colors focus-visible:outline-none focus-visible:underline">Post an Item</Link></li>
             </ul>
           </div>
 
@@ -29,24 +29,24 @@ export function AppFooter() {
           <div className="space-y-2">
             <p className="text-xs font-semibold text-brand-charcoal uppercase tracking-wider">Support</p>
             <ul className="space-y-1.5 text-xs">
-              <li><a href="mailto:auth@studentneed.me" className="hover:text-brand-teal-hover transition-colors">Contact</a></li>
-              <li><Link to="/launch#campus-first" className="hover:text-brand-teal-hover transition-colors">About</Link></li>
-              <li><a href="mailto:auth@studentneed.me?subject=StudentNeed%20Report" className="hover:text-brand-teal-hover transition-colors">Report an Issue</a></li>
+              <li><a href="mailto:auth@studentneed.me" className="hover:text-emerald-800 transition-colors focus-visible:outline-none focus-visible:underline">Contact</a></li>
+              <li><Link to="/launch#campus-first" className="hover:text-emerald-800 transition-colors focus-visible:outline-none focus-visible:underline">About</Link></li>
+              <li><a href="mailto:auth@studentneed.me?subject=StudentNeed%20Report" className="hover:text-emerald-800 transition-colors focus-visible:outline-none focus-visible:underline">Report an Issue</a></li>
             </ul>
           </div>
 
           {/* Legal */}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-brand-charcoal uppercase tracking-wider">Legal</p>
-            <ul className="space-y-1.5 text-xs text-zinc-400">
+            <ul className="space-y-1.5 text-xs text-zinc-500">
               <li>Privacy Policy</li>
               <li>Terms of Service</li>
-              <li className="text-zinc-500 pt-1">studentneed.me</li>
+              <li className="text-zinc-600 font-medium pt-1">studentneed.me</li>
             </ul>
           </div>
         </div>
 
-        <div className="mt-6 border-t border-brand-border/60 pt-4 flex flex-col sm:flex-row items-center justify-between text-[11px] text-zinc-400 gap-2">
+        <div className="mt-6 border-t border-brand-border/60 pt-4 flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-2">
           <span>© 2026 StudentNeed. All rights reserved.</span>
           <span>MIT Campus • Anna University</span>
         </div>

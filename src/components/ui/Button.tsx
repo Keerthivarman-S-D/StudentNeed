@@ -13,18 +13,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
+          "inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer select-none",
           {
-            'bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs active:scale-[0.98]': variant === 'default',
-            'bg-zinc-100 text-brand-charcoal hover:bg-zinc-200 active:scale-[0.98]': variant === 'secondary',
-            'border border-brand-border bg-white text-brand-charcoal hover:bg-brand-teal-light hover:text-brand-teal-hover hover:border-brand-teal-border shadow-xs active:scale-[0.98]': variant === 'outline',
-            'hover:bg-zinc-100 hover:text-brand-charcoal': variant === 'ghost',
-            'bg-red-600 text-white hover:bg-red-700 active:scale-[0.98]': variant === 'destructive',
-            'bg-brand-charcoal text-white hover:bg-zinc-800 active:scale-[0.98]': variant === 'charcoal',
+            'bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs motion-safe:active:scale-[0.98]': variant === 'default',
+            'bg-zinc-100 text-brand-charcoal hover:bg-zinc-200 motion-safe:active:scale-[0.98]': variant === 'secondary',
+            'border border-brand-border bg-white text-brand-charcoal hover:bg-emerald-50 hover:text-emerald-900 hover:border-emerald-300 shadow-2xs motion-safe:active:scale-[0.98]': variant === 'outline',
+            'hover:bg-zinc-100 text-zinc-700 hover:text-brand-charcoal': variant === 'ghost',
+            'bg-red-600 text-white hover:bg-red-700 shadow-xs motion-safe:active:scale-[0.98]': variant === 'destructive',
+            'bg-brand-charcoal text-white hover:bg-zinc-800 shadow-xs motion-safe:active:scale-[0.98]': variant === 'charcoal',
             'h-10 px-4 py-2': size === 'default',
-            'h-9 rounded-md px-3': size === 'sm',
-            'h-11 rounded-md px-8 text-base font-semibold': size === 'lg',
-            'h-10 w-10': size === 'icon',
+            'h-9 rounded-lg px-3 text-xs': size === 'sm',
+            'h-11 rounded-xl px-6 text-base': size === 'lg',
+            'h-10 w-10 min-h-[40px] min-w-[40px] p-0': size === 'icon',
           },
           className
         )}

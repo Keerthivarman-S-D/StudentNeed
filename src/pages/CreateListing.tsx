@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ImagePlus, AlertCircle, X, Loader2, ArrowLeft, Clock, Calendar, CheckCircle2 } from 'lucide-react';
+import { ImagePlus, AlertCircle, X, Loader2, ArrowLeft, Clock, Calendar, CheckCircle2, ShieldAlert, Sparkles, Tag, ArrowRight } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
@@ -275,31 +275,45 @@ export function CreateListing() {
   if (showSuccess) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-32 text-center animate-in fade-in zoom-in-95 duration-300">
-        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-green-100">
-          <svg className="h-12 w-12 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
+        <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-100 text-emerald-700 shadow-md">
+          <CheckCircle2 className="h-10 w-10 text-emerald-700" />
         </div>
-        <h2 className="text-3xl font-bold text-zinc-900 mb-2">Listing Published!</h2>
-        <p className="text-zinc-600 text-lg">Your item is now live on the campus marketplace.</p>
-        <p className="text-sm text-zinc-400 mt-4">Redirecting to your listing...</p>
+        <h2 className="text-3xl font-bold text-brand-charcoal mb-2">Listing Published!</h2>
+        <p className="text-zinc-600 text-base max-w-md mx-auto">
+          Your item is now live on the MIT Campus student marketplace.
+        </p>
+        <p className="text-xs text-zinc-400 mt-4 flex items-center justify-center gap-1.5 font-medium">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+          <span>Redirecting to your listing...</span>
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* Header */}
       <div className="mb-8">
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="group flex items-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-900 mb-4 transition-colors"
+          className="group inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 hover:text-zinc-900 mb-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded-lg px-1 py-0.5"
         >
-          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-          Back
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1 text-zinc-500" />
+          <span>Back</span>
         </button>
-        <h1 className="text-3xl font-bold text-zinc-900">Post an Item</h1>
-        <p className="text-zinc-600 mt-1">Fill out the details to list your item on the campus marketplace.</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-brand-charcoal tracking-tight">Post an Item</h1>
+            <p className="text-zinc-600 text-sm mt-1">
+              List belongings for fellow students on campus. <span className="font-semibold text-emerald-800">Find → Connect → Meet</span>.
+            </p>
+          </div>
+          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800 border border-emerald-200">
+            <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+            Campus Marketplace
+          </span>
+        </div>
       </div>
 
       {(currentUser?.status === 'suspended' || currentUser?.status === 'banned') && (
@@ -314,53 +328,80 @@ export function CreateListing() {
 
       {error && (
         <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
-          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-red-600" />
           <span>{error}</span>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* Type Selection */}
-        <section className="space-y-4 rounded-2xl border border-brand-border bg-white p-6">
-          <h2 className="text-lg font-semibold text-brand-charcoal">What are you offering?</h2>
+        <section className="rounded-3xl border border-zinc-200/90 bg-white p-6 sm:p-7 shadow-xs space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-brand-charcoal">What are you offering?</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">Select the transaction model for this item</p>
+          </div>
+          
           <div className="grid grid-cols-3 gap-3">
-            {types.map(t => (
-              <label 
-                key={t}
-                className={`flex cursor-pointer items-center justify-center rounded-xl border p-4 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-brand-teal focus-within:ring-offset-2 ${
-                  type === t 
-                    ? 'border-brand-teal bg-brand-teal text-white shadow-xs' 
-                    : 'border-brand-border bg-white text-zinc-600 hover:bg-slate-50'
-                }`}
-              >
-                <input 
-                  type="radio" 
-                  name="type" 
-                  className="sr-only" 
-                  checked={type === t} 
-                  onChange={() => handleTypeChange(t)} 
-                />
-                {t === 'Sale' ? 'Sell' : t}
-              </label>
-            ))}
+            {types.map(t => {
+              const isSelected = type === t;
+              return (
+                <label 
+                  key={t}
+                  className={cn(
+                    "flex flex-col items-center justify-center rounded-2xl border p-4 text-sm font-bold transition-all cursor-pointer select-none text-center focus-within:ring-2 focus-within:ring-brand-teal focus-within:ring-offset-2",
+                    isSelected
+                      ? "border-emerald-600 bg-emerald-600 text-white shadow-xs"
+                      : "border-zinc-200 bg-zinc-50/60 text-zinc-700 hover:bg-zinc-100 hover:border-zinc-300"
+                  )}
+                >
+                  <input 
+                    type="radio" 
+                    name="type" 
+                    className="sr-only" 
+                    checked={isSelected} 
+                    onChange={() => handleTypeChange(t)} 
+                  />
+                  <span className="text-sm font-bold">
+                    {t === 'Sale' ? 'Sell' : t}
+                  </span>
+                  <span className={cn(
+                    "text-[11px] mt-0.5 font-medium",
+                    isSelected ? "text-emerald-100" : "text-zinc-500"
+                  )}>
+                    {t === 'Sale' ? 'Set price (₹)' : t === 'Donate' ? 'Free giveaway' : 'Trade item'}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         </section>
 
         {/* Basic Details */}
-        <section className="space-y-4 rounded-2xl border border-brand-border bg-white p-6">
-          <h2 className="text-lg font-semibold text-brand-charcoal">Item Details</h2>
+        <section className="rounded-3xl border border-zinc-200/90 bg-white p-6 sm:p-7 shadow-xs space-y-5">
+          <div>
+            <h2 className="text-base font-bold text-brand-charcoal">Item Details</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">Provide clear, accurate information to help classmates find your item</p>
+          </div>
           
           <div className="space-y-4">
+            {/* Title */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium text-brand-charcoal">Title</label>
-                <span className="text-xs text-brand-muted">{title.length} / 50</span>
+                <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                  Title <span className="text-red-500">*</span>
+                </label>
+                <span className={cn(
+                  "text-[11px] font-mono",
+                  title.length >= 3 && title.length <= 50 ? "text-zinc-400" : "text-amber-700 font-semibold"
+                )}>
+                  {title.length} / 50
+                </span>
               </div>
               <Input 
                 required 
                 minLength={3}
                 maxLength={50}
-                placeholder="e.g. Casio Scientific Calculator" 
+                placeholder="e.g. Casio fx-991EX Scientific Calculator" 
                 value={title}
                 onChange={e => setTitle(e.target.value)}
               />
@@ -369,11 +410,14 @@ export function CreateListing() {
               )}
             </div>
 
+            {/* Category and Condition */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Category</label>
+                <label className="mb-1.5 block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                  Category <span className="text-red-500">*</span>
+                </label>
                 <select 
-                  className="flex h-10 w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
+                  className="flex h-11 w-full rounded-xl border border-brand-border bg-white px-3.5 py-2 text-sm text-brand-charcoal font-medium focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs"
                   value={category}
                   onChange={e => setCategory(e.target.value as Category)}
                 >
@@ -382,9 +426,11 @@ export function CreateListing() {
               </div>
               
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Condition</label>
+                <label className="mb-1.5 block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                  Condition <span className="text-red-500">*</span>
+                </label>
                 <select 
-                  className="flex h-10 w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
+                  className="flex h-11 w-full rounded-xl border border-brand-border bg-white px-3.5 py-2 text-sm text-brand-charcoal font-medium focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs"
                   value={condition}
                   onChange={e => setCondition(e.target.value as Condition)}
                 >
@@ -393,9 +439,15 @@ export function CreateListing() {
               </div>
             </div>
 
+            {/* Price (Sale only) */}
             {type === 'Sale' && (
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Price (₹)</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                    Price (₹) <span className="text-red-500">*</span>
+                  </label>
+                  <span className="text-[11px] text-zinc-400">Between ₹1 and ₹10,000</span>
+                </div>
                 <Input 
                   required 
                   type="number" 
@@ -406,8 +458,8 @@ export function CreateListing() {
                   onChange={e => setPrice(e.target.value)}
                 />
                 {price !== '' && Number(price) >= 1 && Number(price) <= 10000 && (
-                  <p className="mt-1 text-xs text-green-600 font-medium flex items-center gap-1">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Valid.
+                  <p className="mt-1 text-xs text-emerald-700 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Valid price.
                   </p>
                 )}
                 {price !== '' && Number(price) < 1 && (
@@ -419,9 +471,10 @@ export function CreateListing() {
               </div>
             )}
 
+            {/* Wanted Item (Exchange only) */}
             {type === 'Exchange' && (
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">
+                <label className="mb-1.5 block text-xs font-bold text-zinc-700 uppercase tracking-wider">
                   Wanted in exchange <span className="text-red-500">*</span>
                 </label>
                 <Input 
@@ -430,14 +483,20 @@ export function CreateListing() {
                   value={wantedItem}
                   onChange={e => setWantedItem(e.target.value)}
                 />
-                <p className="mt-1 text-xs text-brand-muted">Specify the item or equipment you wish to trade for.</p>
+                <p className="mt-1 text-xs text-zinc-500">Specify the item or equipment you wish to trade for.</p>
               </div>
             )}
 
+            {/* Description */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium text-brand-charcoal">Description</label>
-                <span className={cn("text-xs", description.length >= 100 ? "text-amber-600 font-semibold" : "text-brand-muted")}>
+                <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                  Description <span className="text-red-500">*</span>
+                </label>
+                <span className={cn(
+                  "text-[11px] font-mono",
+                  description.length >= 10 && description.length <= 100 ? "text-zinc-400" : "text-amber-700 font-semibold"
+                )}>
                   {description.length} / 100
                 </span>
               </div>
@@ -446,7 +505,7 @@ export function CreateListing() {
                 rows={4}
                 maxLength={100}
                 placeholder="Describe the item, condition, defects, or reasons for giving away..."
-                className="w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
+                className="w-full rounded-xl border border-brand-border bg-white px-3.5 py-2.5 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs placeholder:text-zinc-400"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
               />
@@ -454,16 +513,19 @@ export function CreateListing() {
                 {description.length > 0 && description.trim().length < 10 ? (
                   <span className="text-red-600 font-medium">Description must be at least 10 characters.</span>
                 ) : (
-                  <span className="text-brand-muted">Between 10 and 100 characters.</span>
+                  <span className="text-zinc-500">Must be between 10 and 100 characters.</span>
                 )}
               </div>
             </div>
             
+            {/* Pickup Location */}
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-brand-charcoal">Pickup Location on Campus</label>
+              <label className="mb-1.5 block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                Pickup Location on Campus <span className="text-red-500">*</span>
+              </label>
               <select 
                 required 
-                className="flex h-10 w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all"
+                className="flex h-11 w-full rounded-xl border border-brand-border bg-white px-3.5 py-2 text-sm text-brand-charcoal font-medium focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs"
                 value={location}
                 onChange={e => setLocation(e.target.value)}
               >
@@ -477,19 +539,19 @@ export function CreateListing() {
         </section>
 
         {/* Listing Duration & Expiration Section */}
-        <section className="space-y-4 rounded-2xl border border-brand-border bg-white p-6">
-          <div className="flex items-center justify-between">
+        <section className="rounded-3xl border border-zinc-200/90 bg-white p-6 sm:p-7 shadow-xs space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-brand-teal" />
-              <h2 className="text-lg font-semibold text-brand-charcoal">How long should your listing stay active?</h2>
+              <Clock className="h-5 w-5 text-emerald-700" />
+              <h2 className="text-base font-bold text-brand-charcoal">How long should your listing stay active?</h2>
             </div>
-            <span className="text-xs font-medium text-brand-teal-hover bg-brand-teal-light px-2.5 py-1 rounded-full border border-brand-teal-border">
+            <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
               Automatic expiry
             </span>
           </div>
 
-          <p className="text-xs text-brand-muted leading-relaxed">
-            Choose how long you want your item to be available. After this period, the listing will no longer be active.
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            Choose how long you want your item to be available. After this period, the listing will automatically expire.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -502,30 +564,31 @@ export function CreateListing() {
                 key={opt.days}
                 type="button"
                 onClick={() => setExpirationDays(opt.days)}
-                className={`flex flex-col text-left p-3.5 rounded-xl border transition-all ${
+                className={cn(
+                  "flex flex-col text-left p-3.5 rounded-2xl border transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal",
                   expirationDays === opt.days
-                    ? 'border-brand-teal bg-brand-teal text-white shadow-xs ring-2 ring-brand-teal/20'
-                    : 'border-brand-border bg-slate-50/60 hover:bg-slate-100 text-brand-charcoal'
-                }`}
+                    ? "border-emerald-600 bg-emerald-50/70 text-emerald-950 shadow-2xs ring-1 ring-emerald-600"
+                    : "border-zinc-200 bg-zinc-50/50 hover:bg-zinc-100 text-brand-charcoal"
+                )}
               >
                 <div className="flex items-center justify-between w-full mb-1">
-                  <span className="text-sm font-semibold">{opt.label}</span>
+                  <span className="text-sm font-bold text-brand-charcoal">{opt.label}</span>
                   {expirationDays === opt.days && (
-                    <span className="text-[11px] font-medium bg-white/20 px-2 py-0.5 rounded-md text-white">Active</span>
+                    <span className="text-[10px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-full">Active</span>
                   )}
                 </div>
-                <span className={`text-xs ${expirationDays === opt.days ? 'text-zinc-100' : 'text-brand-muted'}`}>
+                <span className="text-xs text-zinc-500">
                   {opt.desc}
                 </span>
               </button>
             ))}
           </div>
 
-          <div className="flex items-center gap-2 rounded-lg bg-slate-50 border border-brand-border px-3.5 py-2.5 text-xs text-brand-muted">
-            <Calendar className="h-4 w-4 text-brand-teal shrink-0" />
+          <div className="flex items-center gap-2 rounded-xl bg-zinc-50 border border-zinc-200 px-3.5 py-2.5 text-xs text-zinc-600">
+            <Calendar className="h-4 w-4 text-emerald-700 shrink-0" />
             <span>
               Your listing will stay active until{' '}
-              <strong className="text-brand-charcoal">
+              <strong className="text-brand-charcoal font-semibold">
                 {new Date(Date.now() + expirationDays * 86400000).toLocaleDateString('en-US', {
                   weekday: 'short',
                   month: 'short',
@@ -539,13 +602,13 @@ export function CreateListing() {
         </section>
 
         {/* Photo Section: Optional photos (up to 3) */}
-        <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6">
+        <section className="rounded-3xl border border-zinc-200/90 bg-white p-6 sm:p-7 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-900">Photos (Optional)</h2>
+              <h2 className="text-base font-bold text-zinc-900">Photos (Optional)</h2>
               <p className="text-xs text-zinc-500">Up to 3 photos (up to 5MB each)</p>
             </div>
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-zinc-600">
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200">
               {uploadedImages.length} / {MAX_IMAGES}
             </span>
           </div>
@@ -555,25 +618,26 @@ export function CreateListing() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {uploadedImages.map((imgUrl, idx) => (
-                  <div key={idx} className="relative aspect-square overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+                  <div key={idx} className="relative aspect-square overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100 group shadow-2xs">
                     <img src={imgUrl} alt={`Upload ${idx + 1}`} className="h-full w-full object-cover" />
                     <button
                       type="button"
                       onClick={() => handleRemoveImage(idx)}
-                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900/80 text-white transition-opacity hover:bg-zinc-900"
+                      className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-zinc-900/80 text-white transition-colors hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                       title="Remove photo"
+                      aria-label={`Remove photo ${idx + 1}`}
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4" />
                     </button>
-                    <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                    <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-xs">
                       #{idx + 1}
                     </span>
                   </div>
                 ))}
               </div>
               {photoAddedFeedback && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-teal-hover bg-brand-teal-light px-2.5 py-1 rounded-full border border-brand-teal-border">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-brand-teal" /> Photos updated
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Photos updated
                 </span>
               )}
             </div>
@@ -581,18 +645,18 @@ export function CreateListing() {
 
           {/* In-Flight Upload Card with Cancel Upload Button */}
           {isUploading && (
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 flex flex-col items-center justify-center text-center">
-              <Loader2 className="h-6 w-6 animate-spin text-zinc-700 mb-2" />
-              <p className="text-sm font-semibold text-zinc-900">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5 flex flex-col items-center justify-center text-center space-y-2">
+              <Loader2 className="h-6 w-6 animate-spin text-emerald-700 mb-1" />
+              <p className="text-sm font-bold text-zinc-900">
                 Uploading photo… {uploadProgress > 0 ? `${uploadProgress}%` : ''}
               </p>
               {uploadingFileName && (
-                <p className="text-xs text-zinc-500 mt-0.5 mb-3 truncate max-w-xs">{uploadingFileName}</p>
+                <p className="text-xs text-zinc-500 truncate max-w-xs">{uploadingFileName}</p>
               )}
               {uploadProgress > 0 && (
-                <div className="w-56 bg-zinc-200 rounded-full h-2 mb-3 overflow-hidden">
+                <div className="w-56 bg-zinc-200 rounded-full h-2 overflow-hidden">
                   <div 
-                    className="bg-zinc-900 h-2 rounded-full transition-all duration-150" 
+                    className="bg-emerald-600 h-2 rounded-full transition-all duration-150" 
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
@@ -602,7 +666,7 @@ export function CreateListing() {
                 variant="outline" 
                 size="sm"
                 onClick={handleCancelUpload}
-                className="text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 h-8 font-medium"
+                className="text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 h-8 font-medium mt-1"
               >
                 Cancel Upload
               </Button>
@@ -611,32 +675,43 @@ export function CreateListing() {
 
           {/* Upload Dropzone (when fewer than 3 photos and not uploading) */}
           {!isUploading && uploadedImages.length < MAX_IMAGES && (
-            <label className="flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 transition-colors hover:border-zinc-400 hover:bg-zinc-100">
+            <label className="flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50/60 transition-all hover:border-emerald-500 hover:bg-emerald-50/20 focus-within:ring-2 focus-within:ring-brand-teal">
               <input 
                 ref={fileInputRef}
                 type="file" 
                 accept="image/jpeg,image/png,image/webp"
                 multiple
                 onChange={handleFileChange}
-                className="hidden" 
-                disabled={isSubmitting || isUploading}
+                className="sr-only" 
+                disabled={isSubmitting || isUploading} 
               />
               <ImagePlus className="h-7 w-7 text-zinc-400 mb-1" />
-              <span className="text-sm font-medium text-zinc-600">Click to upload photo ({uploadedImages.length}/3)</span>
-              <span className="text-xs text-zinc-400 mt-0.5">JPG, JPEG, PNG, or WEBP up to 5MB</span>
+              <span className="text-xs sm:text-sm font-semibold text-zinc-700">Click to upload photo ({uploadedImages.length}/3)</span>
+              <span className="text-[11px] text-zinc-400 mt-0.5">JPG, JPEG, PNG, or WEBP up to 5MB</span>
             </label>
           )}
         </section>
 
-        <div className="flex items-center justify-end gap-4">
-          <Button type="button" variant="ghost" onClick={() => navigate(-1)} disabled={isSubmitting || isUploading}>
+        {/* Action Buttons */}
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <Button 
+            type="button" 
+            variant="ghost" 
+            onClick={() => navigate(-1)} 
+            disabled={isSubmitting || isUploading}
+          >
             Cancel
           </Button>
-          <Button type="submit" size="lg" disabled={isSubmitting || isUploading || currentUser?.status === 'suspended' || currentUser?.status === 'banned'} className="min-w-[170px]">
+          <Button 
+            type="submit" 
+            size="lg" 
+            disabled={isSubmitting || isUploading || currentUser?.status === 'suspended' || currentUser?.status === 'banned'} 
+            className="min-w-[170px] h-11"
+          >
             {isSubmitting ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {statusMessage || 'Publishing...'}
+                <span>{statusMessage || 'Publishing...'}</span>
               </span>
             ) : (
               'Publish Listing'

@@ -39,7 +39,13 @@ import {
   MapPin,
   Building2,
   CheckCircle2,
-  IndianRupee
+  IndianRupee,
+  ShieldCheck,
+  ShieldAlert,
+  Sparkles,
+  Package,
+  Calendar,
+  ArrowRight
 } from 'lucide-react';
 
 export function ChatPage() {
@@ -855,12 +861,42 @@ export function ChatPage() {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const formatDateHeader = (timestamp: any) => {
+    if (!timestamp) return '';
+    const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+    if (isNaN(date.getTime())) return '';
+    const today = new Date();
+    if (date.toDateString() === today.toDateString()) return 'Today';
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  // Quick conversation starters for students
+  const quickStarters = listing
+    ? [
+        'Hi! Is this still available?',
+        'Can we meet at the Library to check it out?',
+        'What condition is the item in?'
+      ]
+    : itemRequest
+    ? [
+        'Hi! I can help you with this request.',
+        'I have what you need! When can we meet?',
+        'Can we meet on campus to discuss?'
+      ]
+    : [
+        'Hi there! Glad to connect on StudentNeed.',
+        'When is a convenient time to meet on campus?'
+      ];
+
   // Loading View
   if (loading) {
     return (
       <div className="flex h-[calc(100vh-8rem)] flex-col items-center justify-center space-y-4">
-        <Loader2 className="h-8 w-8 animate-spin text-zinc-900" />
-        <p className="text-sm font-medium text-zinc-500">Loading conversation...</p>
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+        <p className="text-sm font-medium text-zinc-600">Loading conversation...</p>
       </div>
     );
   }
@@ -869,12 +905,12 @@ export function ChatPage() {
   if (authError) {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-100 text-red-600">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600 border border-red-200">
           <AlertCircle className="h-7 w-7" />
         </div>
         <h2 className="text-xl font-bold text-zinc-900 mb-2">Access Denied</h2>
         <p className="text-sm text-zinc-600 mb-6">{authError}</p>
-        <Button onClick={() => navigate('/marketplace')} className="w-full">
+        <Button onClick={() => navigate('/marketplace')} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium">
           Back to Marketplace
         </Button>
       </div>
@@ -885,12 +921,12 @@ export function ChatPage() {
   if (generalError && !chat) {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-600">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 border border-amber-200">
           <AlertCircle className="h-7 w-7" />
         </div>
-        <h2 className="text-xl font-bold text-zinc-900 mb-2">Something Went Wrong</h2>
+        <h2 className="text-xl font-bold text-zinc-900 mb-2">Unable to Load Conversation</h2>
         <p className="text-sm text-zinc-600 mb-6">{generalError}</p>
-        <Button onClick={() => window.location.reload()} variant="outline" className="w-full">
+        <Button onClick={() => window.location.reload()} variant="outline" className="w-full border-zinc-300">
           Retry
         </Button>
       </div>
@@ -898,15 +934,16 @@ export function ChatPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-3 py-4 sm:px-6 sm:py-6">
-      <div className="flex h-[calc(100vh-9.5rem)] md:h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+    <div className="mx-auto max-w-4xl px-3 py-3 sm:px-6 sm:py-5">
+      <div className="flex h-[calc(100vh-9.5rem)] md:h-[calc(100vh-7.5rem)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+        
         {/* Chat Header */}
-        <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between border-b border-zinc-200/90 bg-white px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate(-1)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
-              aria-label="Back"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20"
+              aria-label="Back to conversations"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -916,66 +953,98 @@ export function ChatPage() {
                 <img
                   src={otherUser.avatarUrl}
                   alt={otherUser.name || 'Student'}
-                  className="h-10 w-10 rounded-full object-cover border border-zinc-200"
+                  className="h-10 w-10 rounded-full object-cover border border-zinc-200 ring-2 ring-emerald-500/20"
                 />
               ) : (
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-sm font-semibold text-white">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-700 text-sm font-semibold text-white ring-2 ring-emerald-500/20 shadow-xs">
                   {(otherUser?.name || 'S').charAt(0).toUpperCase()}
                 </div>
               )}
 
               <div>
-                <h2 className="text-sm font-semibold text-zinc-900 sm:text-base">
-                  {otherUser?.name || 'Student'}
-                </h2>
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-sm font-semibold text-zinc-900 sm:text-base">
+                    {otherUser?.name || 'Student'}
+                  </h2>
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 border border-emerald-200">
+                    <ShieldCheck className="h-3 w-3 text-emerald-700" />
+                    Verified
+                  </span>
+                </div>
                 <p className="text-xs text-zinc-500">
-                  {otherUser?.department ? `${otherUser.department} • ` : ''}Campus Verified
+                  {otherUser?.department ? `${otherUser.department} • ` : ''}Anna University
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Attached Listing Preview Pill */}
+          {/* Attached Listing Preview Pill (Desktop) */}
           {listing && (
             <Link
               to={`/listing/${listing.id}`}
-              className="hidden sm:flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+              className="hidden sm:flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-all hover:border-emerald-300 hover:bg-emerald-50/60 hover:text-emerald-900 shadow-2xs"
               title="View item details"
             >
-              <span className="max-w-[150px] truncate">{listing.title}</span>
-              <ExternalLink className="h-3.5 w-3.5 text-zinc-400" />
+              <Package className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              <span className="max-w-[160px] truncate">{listing.title}</span>
+              {listing.price !== undefined && (
+                <span className="font-bold text-zinc-900">₹{listing.price}</span>
+              )}
+              <ExternalLink className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
             </Link>
           )}
 
-          {/* Attached Request Preview Pill */}
+          {/* Attached Request Preview Pill (Desktop) */}
           {itemRequest && (
             <Link
               to="/requests"
-              className="hidden sm:flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+              className="hidden sm:flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-all hover:border-emerald-300 hover:bg-emerald-50/60 hover:text-emerald-900 shadow-2xs"
               title="View campus requests"
             >
-              <span className="max-w-[150px] truncate">Request: {itemRequest.title}</span>
-              <ExternalLink className="h-3.5 w-3.5 text-zinc-400" />
+              <MessageSquare className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              <span className="max-w-[160px] truncate">Request: {itemRequest.title}</span>
+              <ExternalLink className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
             </Link>
           )}
         </div>
 
-        {/* Attached Listing Mobile Pill */}
+        {/* Attached Listing Mobile Strip */}
         {listing && (
-          <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-50 px-4 py-1.5 sm:hidden text-xs">
-            <span className="text-zinc-500 truncate mr-2">Regarding: <strong className="text-zinc-800">{listing.title}</strong></span>
-            <Link to={`/listing/${listing.id}`} className="text-zinc-900 font-medium underline shrink-0">
+          <div className="flex items-center justify-between border-b border-zinc-200/70 bg-zinc-50/90 px-4 py-2 sm:hidden text-xs">
+            <div className="flex items-center gap-1.5 truncate mr-2">
+              <Package className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              <span className="text-zinc-500 truncate">
+                Item: <strong className="text-zinc-800">{listing.title}</strong>
+              </span>
+              {listing.price !== undefined && (
+                <span className="font-bold text-zinc-900 ml-1">₹{listing.price}</span>
+              )}
+            </div>
+            <Link 
+              to={`/listing/${listing.id}`} 
+              className="text-emerald-700 font-semibold hover:underline shrink-0 flex items-center gap-0.5"
+            >
               View Item
+              <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
         )}
 
-        {/* Attached Request Mobile Pill */}
+        {/* Attached Request Mobile Strip */}
         {itemRequest && (
-          <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-50 px-4 py-1.5 sm:hidden text-xs">
-            <span className="text-zinc-500 truncate mr-2">Regarding Request: <strong className="text-zinc-800">{itemRequest.title}</strong></span>
-            <Link to="/requests" className="text-zinc-900 font-medium underline shrink-0">
-              View Requests
+          <div className="flex items-center justify-between border-b border-zinc-200/70 bg-zinc-50/90 px-4 py-2 sm:hidden text-xs">
+            <div className="flex items-center gap-1.5 truncate mr-2">
+              <MessageSquare className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              <span className="text-zinc-500 truncate">
+                Request: <strong className="text-zinc-800">{itemRequest.title}</strong>
+              </span>
+            </div>
+            <Link 
+              to="/requests" 
+              className="text-emerald-700 font-semibold hover:underline shrink-0 flex items-center gap-0.5"
+            >
+              View Request
+              <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
         )}
@@ -985,17 +1054,19 @@ export function ChatPage() {
           <div className="border-b border-zinc-200 bg-zinc-50/90 px-4 py-3 sm:px-6">
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
               {/* Left Side: Listing Info & Status Badge */}
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-teal-light text-brand-teal-hover border border-brand-teal-border">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
                   <Tag className="h-4 w-4" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-brand-charcoal truncate max-w-[180px] sm:max-w-[240px]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-zinc-900 truncate max-w-[180px] sm:max-w-[240px]">
                       {listing.title}
                     </span>
                     {listing.price !== undefined && (
-                      <span className="text-xs font-bold text-brand-charcoal">₹{listing.price}</span>
+                      <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                        ₹{listing.price}
+                      </span>
                     )}
 
                     {/* Status Badge */}
@@ -1004,38 +1075,38 @@ export function ChatPage() {
                         Cancelled
                       </Badge>
                     ) : reservation?.status === 'pending' ? (
-                      <Badge variant="warning" className="gap-1 font-medium">
-                        <Clock className="h-3 w-3" />
-                        Pending
+                      <Badge variant="warning" className="gap-1 font-medium bg-amber-50 text-amber-800 border-amber-200">
+                        <Clock className="h-3 w-3 text-amber-600" />
+                        Pending Confirmation
                       </Badge>
                     ) : reservation?.status === 'accepted' ? (
-                      <Badge variant="success" className="gap-1 font-medium">
-                        <Check className="h-3 w-3" />
-                        Accepted
+                      <Badge variant="success" className="gap-1 font-medium bg-emerald-50 text-emerald-800 border-emerald-200">
+                        <Check className="h-3 w-3 text-emerald-600" />
+                        Reserved
                       </Badge>
                     ) : reservation?.status === 'rejected' ? (
-                      <Badge variant="secondary" className="gap-1 font-medium text-brand-muted">
+                      <Badge variant="secondary" className="gap-1 font-medium text-zinc-700 bg-zinc-100 border-zinc-200">
                         <X className="h-3 w-3" />
                         Declined
                       </Badge>
                     ) : reservation?.status === 'cancelled' ? (
-                      <Badge variant="secondary" className="gap-1 font-medium text-brand-muted">
+                      <Badge variant="secondary" className="gap-1 font-medium text-zinc-600 bg-zinc-100 border-zinc-200">
                         <X className="h-3 w-3" />
                         Cancelled
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-brand-muted font-normal">
-                        No active request
+                      <Badge variant="outline" className="text-zinc-600 font-normal border-zinc-300">
+                        No active reservation
                       </Badge>
                     )}
                   </div>
 
                   {/* Contextual Description */}
-                  <p className="text-[11px] text-brand-muted mt-0.5">
+                  <p className="text-[11px] text-zinc-600 mt-1">
                     {listing.status === 'cancelled' && 'This listing has been cancelled by the seller.'}
                     {listing.status !== 'cancelled' && reservation?.status === 'pending' && isBuyer && 'Your reservation request is pending seller confirmation.'}
-                    {listing.status !== 'cancelled' && reservation?.status === 'pending' && isSeller && `Incoming reservation request from ${otherUser?.name || 'student'}.`}
-                    {listing.status !== 'cancelled' && reservation?.status === 'accepted' && 'Item is reserved. Arrange pickup and exchange details in chat.'}
+                    {listing.status !== 'cancelled' && reservation?.status === 'pending' && isSeller && `Incoming reservation request from ${otherUser?.name || 'student'}. Accept to coordinate pickup.`}
+                    {listing.status !== 'cancelled' && reservation?.status === 'accepted' && 'Item is reserved. Coordinate campus meetup point below.'}
                     {listing.status !== 'cancelled' && reservation?.status === 'rejected' && 'The reservation request for this listing was declined.'}
                     {listing.status !== 'cancelled' && reservation?.status === 'cancelled' && 'This reservation was cancelled.'}
                     {listing.status !== 'cancelled' && !reservation && isBuyer && 'Interested in this item? Request to reserve it from the seller.'}
@@ -1057,7 +1128,7 @@ export function ChatPage() {
                     size="sm"
                     onClick={handleRequestReservation}
                     disabled={isActionLoading === 'reserving'}
-                    className="gap-1.5 text-xs h-8 px-3 font-medium bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs"
+                    className="gap-1.5 text-xs h-8 px-3 font-medium bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs"
                   >
                     {isActionLoading === 'reserving' ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1081,7 +1152,7 @@ export function ChatPage() {
                     variant="outline"
                     onClick={handleCancelReservation}
                     disabled={isActionLoading !== null}
-                    className="gap-1 text-xs h-8 px-3 font-medium border-red-200 text-red-600 hover:bg-red-50"
+                    className="gap-1 text-xs h-8 px-3 font-medium border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
                   >
                     {isActionLoading === ('cancelling' as any) ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1099,7 +1170,7 @@ export function ChatPage() {
                       size="sm"
                       onClick={() => handleUpdateReservationStatus('accepted')}
                       disabled={isActionLoading !== null}
-                      className="gap-1 text-xs h-8 px-3 font-medium bg-brand-teal hover:bg-brand-teal-hover text-white shadow-xs"
+                      className="gap-1 text-xs h-8 px-3 font-medium bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                     >
                       {isActionLoading === 'accepting' ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1113,7 +1184,7 @@ export function ChatPage() {
                       variant="outline"
                       onClick={() => handleUpdateReservationStatus('rejected')}
                       disabled={isActionLoading !== null}
-                      className="gap-1 text-xs h-8 px-3 font-medium border-brand-border text-brand-charcoal hover:bg-slate-100"
+                      className="gap-1 text-xs h-8 px-3 font-medium border-zinc-300 text-zinc-700 hover:bg-zinc-100"
                     >
                       {isActionLoading === 'rejecting' ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1132,7 +1203,7 @@ export function ChatPage() {
                       size="sm"
                       onClick={handleCompleteExchange}
                       disabled={isActionLoading !== null}
-                      className="gap-1.5 text-xs h-8 px-3 font-semibold bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs"
+                      className="gap-1.5 text-xs h-8 px-3 font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs"
                     >
                       {isActionLoading === ('completing' as any) ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1162,15 +1233,16 @@ export function ChatPage() {
 
             {/* Notification messages for reservation actions */}
             {reservationError && (
-              <div className="mt-2.5 flex items-center justify-between rounded-lg bg-red-50 p-2 text-xs text-red-700 border border-red-200">
-                <div className="flex items-center gap-1.5">
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-600" />
+              <div className="mt-2.5 flex items-center justify-between rounded-xl bg-red-50 p-2.5 text-xs text-red-700 border border-red-200">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
                   <span>{reservationError}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setReservationError(null)}
-                  className="text-zinc-500 hover:text-zinc-700 ml-2"
+                  className="text-zinc-500 hover:text-zinc-700 ml-2 p-0.5 rounded focus:outline-hidden"
+                  aria-label="Dismiss error"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -1178,15 +1250,16 @@ export function ChatPage() {
             )}
 
             {reservationSuccess && (
-              <div className="mt-2.5 flex items-center justify-between rounded-lg bg-emerald-50 p-2 text-xs text-emerald-800 border border-emerald-200">
-                <div className="flex items-center gap-1.5">
-                  <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+              <div className="mt-2.5 flex items-center justify-between rounded-xl bg-emerald-50 p-2.5 text-xs text-emerald-800 border border-emerald-200">
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 shrink-0 text-emerald-600" />
                   <span>{reservationSuccess}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setReservationSuccess(null)}
-                  className="text-emerald-600 hover:text-emerald-800 ml-2"
+                  className="text-emerald-700 hover:text-emerald-900 ml-2 p-0.5 rounded focus:outline-hidden"
+                  aria-label="Dismiss message"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -1199,7 +1272,7 @@ export function ChatPage() {
                 {/* Section Header */}
                 <div className="flex items-center justify-between mb-2.5">
                   <div className="flex items-center gap-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-100 text-emerald-700">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
                       <MapPin className="h-3.5 w-3.5" />
                     </div>
                     <span className="text-xs font-bold text-zinc-900 uppercase tracking-wider">
@@ -1214,19 +1287,19 @@ export function ChatPage() {
                     </Badge>
                   )}
                   {reservation.meetup?.status === 'proposed' && (
-                    <Badge variant="warning" className="gap-1 font-medium text-[11px]">
-                      <Clock className="h-3 w-3" />
+                    <Badge variant="warning" className="gap-1 font-medium text-[11px] bg-amber-50 text-amber-800 border-amber-200">
+                      <Clock className="h-3 w-3 text-amber-600" />
                       Proposal Pending
                     </Badge>
                   )}
                   {reservation.meetup?.status === 'confirmed' && (
-                    <Badge variant="success" className="gap-1 font-medium text-[11px]">
-                      <CheckCircle2 className="h-3 w-3" />
+                    <Badge variant="success" className="gap-1 font-medium text-[11px] bg-emerald-50 text-emerald-800 border-emerald-200">
+                      <CheckCircle2 className="h-3 w-3 text-emerald-600" />
                       Confirmed
                     </Badge>
                   )}
                   {reservation.meetup?.status === 'cancelled' && (
-                    <Badge variant="secondary" className="gap-1 font-medium text-[11px]">
+                    <Badge variant="secondary" className="gap-1 font-medium text-[11px] bg-zinc-100 text-zinc-700 border-zinc-200">
                       <X className="h-3 w-3" />
                       Cancelled
                     </Badge>
@@ -1236,9 +1309,9 @@ export function ChatPage() {
                 {/* Sub-view based on Meetup Status */}
                 {/* State 1: Not Set or Cancelled */}
                 {(!reservation.meetup || reservation.meetup.status === 'not_set' || reservation.meetup.status === 'cancelled') && (
-                  <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-3">
+                  <div className="rounded-xl border border-zinc-200 bg-white p-3.5 space-y-3 shadow-2xs">
                     <div>
-                      <p className="text-xs font-semibold text-zinc-800">
+                      <p className="text-xs font-semibold text-zinc-900">
                         Select a campus exchange landmark
                       </p>
                       <p className="text-[11px] text-zinc-500 mt-0.5">
@@ -1247,7 +1320,7 @@ export function ChatPage() {
                     </div>
 
                     {/* Predefined Campus Locations Selector */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {CAMPUS_MEETUP_LOCATIONS.map((loc) => {
                         const isSelected = selectedMeetupLocation === loc;
                         return (
@@ -1256,13 +1329,13 @@ export function ChatPage() {
                             type="button"
                             onClick={() => setSelectedMeetupLocation(loc)}
                             className={cn(
-                              'flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium border transition-all text-left',
+                              'flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium border transition-all text-left focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20',
                               isSelected
-                                ? 'border-brand-teal bg-brand-teal text-white shadow-xs'
-                                : 'border-brand-border bg-brand-bg text-brand-charcoal hover:bg-slate-100 hover:border-brand-teal/40'
+                                ? 'border-emerald-600 bg-emerald-600 text-white shadow-xs'
+                                : 'border-zinc-200 bg-zinc-50/70 text-zinc-800 hover:bg-zinc-100 hover:border-emerald-300'
                             )}
                           >
-                            <Building2 className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-white' : 'text-brand-muted')} />
+                            <Building2 className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-white' : 'text-zinc-500')} />
                             <span className="truncate">{loc}</span>
                           </button>
                         );
@@ -1270,14 +1343,14 @@ export function ChatPage() {
                     </div>
 
                     <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-brand-muted">
+                      <span className="text-[11px] text-zinc-500">
                         {selectedMeetupLocation ? `Selected: ${selectedMeetupLocation}` : 'Pick a location to propose'}
                       </span>
                       <Button
                         size="sm"
                         disabled={!selectedMeetupLocation || isMeetupLoading !== null}
                         onClick={() => handleProposeMeetup()}
-                        className="text-xs h-8 px-3 gap-1.5 bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs"
+                        className="text-xs h-8 px-3.5 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs"
                       >
                         {isMeetupLoading === 'proposing' ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1342,7 +1415,7 @@ export function ChatPage() {
                             size="sm"
                             onClick={handleConfirmMeetup}
                             disabled={isMeetupLoading !== null}
-                            className="text-xs h-8 px-3 gap-1.5 bg-brand-teal hover:bg-brand-teal-hover text-white shadow-xs"
+                            className="text-xs h-8 px-3 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                           >
                             {isMeetupLoading === 'confirming' ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1374,22 +1447,22 @@ export function ChatPage() {
 
                 {/* State 3: Confirmed */}
                 {reservation.meetup?.status === 'confirmed' && (
-                  <div className="rounded-xl border border-brand-teal-border bg-brand-teal-light p-3.5 space-y-2.5">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 space-y-2.5">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-teal text-white shadow-2xs">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-2xs">
                           <MapPin className="h-5 w-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-brand-charcoal">
+                            <span className="text-xs font-bold text-zinc-900">
                               Confirmed Meetup Point
                             </span>
-                            <Badge variant="success" className="text-[10px] py-0 px-1.5">
+                            <Badge variant="success" className="text-[10px] py-0 px-1.5 bg-emerald-100 text-emerald-800 border-emerald-300">
                               Agreed
                             </Badge>
                           </div>
-                          <p className="text-sm font-extrabold text-brand-teal-hover mt-0.5">
+                          <p className="text-sm font-extrabold text-emerald-900 mt-0.5">
                             {reservation.meetup.location}
                           </p>
                         </div>
@@ -1401,7 +1474,7 @@ export function ChatPage() {
                           variant="outline"
                           onClick={handleCancelMeetup}
                           disabled={isMeetupLoading !== null}
-                          className="text-xs h-7 px-2.5 border-brand-teal-border text-brand-teal-hover hover:bg-white"
+                          className="text-xs h-7 px-2.5 border-emerald-300 text-emerald-800 hover:bg-white"
                         >
                           {isMeetupLoading === 'cancelling' ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -1413,7 +1486,7 @@ export function ChatPage() {
                       </div>
                     </div>
 
-                    <p className="text-[11px] text-brand-charcoal leading-relaxed border-t border-brand-teal-border/60 pt-2">
+                    <p className="text-[11px] text-zinc-700 leading-relaxed border-t border-emerald-200/80 pt-2">
                       Both students agreed to meet at <strong>{reservation.meetup.location}</strong>. Meet during daylight hours and inspect the item before completing the handover.
                     </p>
                   </div>
@@ -1421,15 +1494,16 @@ export function ChatPage() {
 
                 {/* Meetup Error and Success notifications */}
                 {meetupError && (
-                  <div className="mt-2.5 flex items-center justify-between rounded-lg bg-red-50 p-2 text-xs text-red-700 border border-red-200">
-                    <div className="flex items-center gap-1.5">
+                  <div className="mt-2.5 flex items-center justify-between rounded-xl bg-red-50 p-2.5 text-xs text-red-700 border border-red-200">
+                    <div className="flex items-center gap-2">
                       <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-600" />
                       <span>{meetupError}</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => setMeetupError(null)}
-                      className="text-zinc-500 hover:text-zinc-700 ml-2"
+                      className="text-zinc-500 hover:text-zinc-700 ml-2 p-0.5 rounded focus:outline-hidden"
+                      aria-label="Dismiss error"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -1437,15 +1511,16 @@ export function ChatPage() {
                 )}
 
                 {meetupSuccess && (
-                  <div className="mt-2.5 flex items-center justify-between rounded-lg bg-brand-teal-light p-2 text-xs text-brand-teal-hover border border-brand-teal-border">
-                    <div className="flex items-center gap-1.5">
-                      <Check className="h-3.5 w-3.5 shrink-0 text-brand-teal" />
+                  <div className="mt-2.5 flex items-center justify-between rounded-xl bg-emerald-50 p-2.5 text-xs text-emerald-800 border border-emerald-200">
+                    <div className="flex items-center gap-2">
+                      <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
                       <span>{meetupSuccess}</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => setMeetupSuccess(null)}
-                      className="text-brand-teal hover:text-brand-teal-hover ml-2"
+                      className="text-emerald-700 hover:text-emerald-900 ml-2 p-0.5 rounded focus:outline-hidden"
+                      aria-label="Dismiss message"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -1458,19 +1533,19 @@ export function ChatPage() {
 
         {/* Request Context Bar */}
         {itemRequest && (
-          <div className="border-b border-brand-border bg-brand-bg px-4 py-3 sm:px-6">
+          <div className="border-b border-zinc-200 bg-zinc-50/90 px-4 py-3 sm:px-6">
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-teal-light text-brand-teal-hover mt-0.5 border border-brand-teal-border">
-                  <MessageSquare className="h-4 w-4" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 mt-0.5 border border-emerald-200 shadow-2xs">
+                  <MessageSquare className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-brand-charcoal truncate max-w-[180px] sm:max-w-[260px]">
+                    <span className="text-xs font-semibold text-zinc-900 truncate max-w-[180px] sm:max-w-[260px]">
                       {itemRequest.title}
                     </span>
                     {itemRequest.budget && (
-                      <span className="flex items-center text-xs font-bold text-brand-teal-hover bg-brand-teal-light border border-brand-teal-border px-1.5 py-0.5 rounded">
+                      <span className="flex items-center text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
                         <IndianRupee className="h-3 w-3 mr-0.5" />
                         Budget: ₹{itemRequest.budget}
                       </span>
@@ -1483,20 +1558,20 @@ export function ChatPage() {
                     </Badge>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-brand-muted mt-1">
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 mt-1">
                     {itemRequest.location && (
                       <span className="flex items-center gap-1">
-                        <MapPin className="h-3 w-3 text-brand-teal" />
+                        <MapPin className="h-3 w-3 text-emerald-600" />
                         {itemRequest.location}
                       </span>
                     )}
                     {itemRequest.neededBy && (
                       <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3 text-brand-muted" />
+                        <Clock className="h-3 w-3 text-zinc-400" />
                         Needed by: {itemRequest.neededBy}
                       </span>
                     )}
-                    <span className="text-brand-muted">• Campus Request</span>
+                    <span className="text-zinc-400">• Campus Request</span>
                   </div>
 
                   {itemRequest.description && (
@@ -1509,7 +1584,7 @@ export function ChatPage() {
 
               <div className="self-end sm:self-auto shrink-0">
                 <Link to="/requests">
-                  <Button size="sm" variant="outline" className="text-xs h-7 px-2.5 text-brand-charcoal border-brand-border hover:bg-slate-100">
+                  <Button size="sm" variant="outline" className="text-xs h-7 px-2.5 text-zinc-700 border-zinc-300 hover:bg-zinc-100">
                     Back to Requests
                   </Button>
                 </Link>
@@ -1521,7 +1596,7 @@ export function ChatPage() {
         {/* In-Chat Safety Notice Banner */}
         <div className="border-b border-amber-200/80 bg-amber-50/70 px-4 py-2 sm:px-6">
           <div className="flex items-center gap-2 text-[11px] sm:text-xs text-amber-900 leading-snug">
-            <span className="text-sm shrink-0 select-none">⚠️</span>
+            <ShieldAlert className="h-4 w-4 shrink-0 text-amber-700" />
             <p>
               <strong>Safety Notice:</strong> StudentNeed only connects students. We do not guarantee the product or money involved in a transaction. Please meet in person, inspect the item, and complete the deal safely.
             </p>
@@ -1531,41 +1606,75 @@ export function ChatPage() {
         {/* Messages List Area */}
         <div 
           ref={messageListRef}
-          className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-brand-bg/60"
+          className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 bg-zinc-50/40"
         >
           {messages.length === 0 ? (
             /* Empty State */
-            <div className="flex h-full flex-col items-center justify-center text-center p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white border border-brand-border text-brand-teal mb-3 shadow-xs">
-                <MessageSquare className="h-6 w-6" />
+            <div className="flex h-full flex-col items-center justify-center text-center p-6 space-y-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white border border-zinc-200 text-emerald-600 shadow-xs">
+                <MessageSquare className="h-7 w-7" />
               </div>
-              <h3 className="text-base font-semibold text-brand-charcoal mb-1">No messages yet</h3>
-              <p className="text-xs sm:text-sm text-brand-muted max-w-xs">
-                Start the conversation with {otherUser?.name || 'this student'} about campus pickup or item details.
-              </p>
+              <div className="max-w-xs space-y-1">
+                <h3 className="text-base font-semibold text-zinc-900">No messages yet</h3>
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Start the conversation with {otherUser?.name || 'this student'} about campus pickup or item details.
+                </p>
+              </div>
+
+              {/* Quick conversation starters */}
+              <div className="pt-2 flex flex-col items-center gap-1.5 w-full max-w-sm">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Quick Starters</span>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {quickStarters.map((starter, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setInputText(starter)}
+                      className="text-xs px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/60 hover:text-emerald-900 text-zinc-700 transition-colors shadow-2xs"
+                    >
+                      {starter}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : (
             /* Message Bubbles */
-            messages.map((msg) => {
+            messages.map((msg, idx) => {
               const isCurrentUser = msg.senderId === currentUserId;
+              const prevMsg = idx > 0 ? messages[idx - 1] : null;
+              const showDate = !prevMsg || formatDateHeader(msg.createdAt) !== formatDateHeader(prevMsg.createdAt);
+
               return (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}
-                >
+                <React.Fragment key={msg.id}>
+                  {showDate && (
+                    <div className="flex justify-center my-3">
+                      <span className="rounded-full bg-zinc-200/70 px-2.5 py-0.5 text-[10px] font-medium text-zinc-600">
+                        {formatDateHeader(msg.createdAt)}
+                      </span>
+                    </div>
+                  )}
                   <div
-                    className={`rounded-2xl px-4 py-2.5 text-sm max-w-[85%] sm:max-w-[70%] break-words shadow-xs ${
-                      isCurrentUser
-                        ? 'bg-brand-teal text-white rounded-tr-sm'
-                        : 'bg-white text-brand-charcoal border border-brand-border rounded-tl-sm'
-                    }`}
+                    className={cn(
+                      'flex flex-col',
+                      isCurrentUser ? 'items-end' : 'items-start'
+                    )}
                   >
-                    <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                    <div
+                      className={cn(
+                        'rounded-2xl px-4 py-2.5 text-sm max-w-[85%] sm:max-w-[70%] break-words shadow-xs',
+                        isCurrentUser
+                          ? 'bg-emerald-600 text-white rounded-tr-xs'
+                          : 'bg-white text-zinc-900 border border-zinc-200/90 rounded-tl-xs'
+                      )}
+                    >
+                      <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                    </div>
+                    <span className="mt-1 px-1 text-[10px] text-zinc-400">
+                      {formatTime(msg.createdAt)}
+                    </span>
                   </div>
-                  <span className="mt-1 px-1 text-[10px] text-brand-muted">
-                    {formatTime(msg.createdAt)}
-                  </span>
-                </div>
+                </React.Fragment>
               );
             })
           )}
@@ -1574,9 +1683,19 @@ export function ChatPage() {
 
         {/* Send Error Alert */}
         {sendError && (
-          <div className="flex items-center gap-2 border-t border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
-            <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
-            <span>{sendError}</span>
+          <div className="flex items-center justify-between border-t border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+              <span>{sendError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSendError(null)}
+              className="text-zinc-500 hover:text-zinc-700"
+              aria-label="Dismiss error"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
         )}
 
@@ -1585,20 +1704,28 @@ export function ChatPage() {
           onSubmit={handleSendMessage}
           className="border-t border-zinc-200 bg-white p-3 sm:p-4 flex items-center gap-2"
         >
-          <Input
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Type your message..."
-            disabled={isSending}
-            maxLength={2000}
-            className="flex-1 bg-zinc-50 border-zinc-200 focus:bg-white text-sm"
-            autoFocus
-          />
+          <div className="relative flex-1">
+            <Input
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Type your message to coordinate pickup..."
+              disabled={isSending}
+              maxLength={2000}
+              className="w-full bg-zinc-50/80 border-zinc-200 focus:bg-white focus:border-emerald-500 focus:ring-emerald-500/20 text-sm h-11 rounded-xl pr-14"
+              autoFocus
+            />
+            {inputText.length > 1800 && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 font-mono">
+                {inputText.length}/2000
+              </span>
+            )}
+          </div>
           <Button
             type="submit"
             disabled={!inputText.trim() || isSending}
             size="default"
-            className="gap-1.5 shrink-0 px-4 font-medium"
+            aria-label="Send message"
+            className="gap-1.5 shrink-0 px-4 sm:px-5 h-11 rounded-xl font-medium bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors"
           >
             {isSending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

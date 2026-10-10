@@ -19,9 +19,16 @@ import {
   AlertCircle,
   Trash2,
   ShieldAlert,
+  ShieldCheck,
   Edit3,
   Eye,
-  EyeOff
+  EyeOff,
+  CheckCircle2,
+  Sparkles,
+  Camera,
+  Calendar,
+  Layers,
+  ArrowRight
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -29,12 +36,13 @@ import { auth, db } from '../lib/firebase';
 import { updatePassword } from 'firebase/auth';
 import { doc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { uploadImageToCloudinary, validateImageFile } from '../lib/cloudinary';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, cn } from '../lib/utils';
 import { ListingCard } from '../components/ListingCard';
 import { EditListingModal } from '../components/EditListingModal';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
+import { Skeleton } from '../components/ui/Skeleton';
 import { Reservation, Listing } from '../types';
 import { AUTH_ENDPOINTS } from '../config/api';
 import { validatePassword } from '../lib/passwordSecurity';
@@ -95,9 +103,14 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
 
   if (!currentUser) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="flex flex-col items-center justify-center py-24 text-center px-4">
+        <div className="h-16 w-16 rounded-3xl bg-zinc-100 flex items-center justify-center text-zinc-400 mb-4 shadow-2xs">
+          <UserCircle2 className="h-9 w-9 text-zinc-400" />
+        </div>
         <h2 className="text-xl font-bold text-zinc-900 mb-2">Not signed in</h2>
-        <p className="text-zinc-500 mb-6">Sign in to view your profile and manage your items.</p>
+        <p className="text-zinc-500 mb-6 max-w-sm text-sm">
+          Sign in to your verified student account to manage listings, track active reservations, and view saved items.
+        </p>
         <Button onClick={() => navigate('/login')}>Sign in</Button>
       </div>
     );
@@ -353,155 +366,276 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
     };
   }, [currentUser?.id]);
 
+  const activeReservationsCount = 
+    myReservations.filter(r => r.status === 'pending' || r.status === 'accepted').length + 
+    incomingReservations.filter(r => r.status === 'pending' || r.status === 'accepted').length;
+
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Profile Header */}
-      <div className="rounded-3xl border border-zinc-200 bg-white p-6 sm:p-8 mb-8 flex flex-col md:flex-row gap-6 items-center md:items-start justify-between">
-        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 text-center md:text-left">
-          <div className="relative group">
-            <img 
-              src={currentUser.avatarUrl} 
-              alt={currentUser.name} 
-              className="h-24 w-24 rounded-full object-cover border-4 border-white shadow-md bg-zinc-100"
-            />
-            {activeTab === 'settings' && (
-              <label className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
-                <Upload className="h-6 w-6" />
-                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageUpload} disabled={isUploadingImage} />
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* Profile Header Card */}
+      <div className="rounded-3xl border border-zinc-200/90 bg-white p-6 sm:p-8 mb-8 shadow-xs">
+        <div className="flex flex-col md:flex-row gap-6 items-center md:items-start justify-between">
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-6 text-center md:text-left">
+            {/* Avatar with Upload Affordance */}
+            <div className="relative group shrink-0">
+              {currentUser.avatarUrl ? (
+                <img 
+                  src={currentUser.avatarUrl} 
+                  alt={currentUser.name} 
+                  className="h-24 w-24 sm:h-28 sm:w-28 rounded-full object-cover border-4 border-white shadow-md bg-zinc-100 ring-1 ring-zinc-200"
+                />
+              ) : (
+                <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-full bg-brand-charcoal text-white flex items-center justify-center text-3xl font-bold border-4 border-white shadow-md ring-1 ring-zinc-200">
+                  {currentUser.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              
+              <label 
+                className="absolute bottom-0 right-0 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md hover:bg-emerald-700 cursor-pointer transition-all focus-within:ring-2 focus-within:ring-emerald-500 focus-within:ring-offset-2"
+                title="Change profile photo"
+                aria-label="Change profile photo"
+              >
+                {isUploadingImage ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4" />
+                )}
+                <input 
+                  type="file" 
+                  accept="image/jpeg,image/png,image/webp" 
+                  className="sr-only" 
+                  onChange={handleImageUpload} 
+                  disabled={isUploadingImage} 
+                />
               </label>
-            )}
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-zinc-900">{currentUser.name}</h1>
-            <p className="text-zinc-500 mt-1">{currentUser.department} • {currentUser.campus}</p>
-            
-            <div className="flex items-center justify-center md:justify-start gap-4 mt-4">
-              <div className="flex items-center gap-1.5 text-sm font-medium text-zinc-900 bg-zinc-100 px-3 py-1.5 rounded-lg">
-                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                {currentUser.rating} Rating
+            </div>
+
+            {/* Student Info & Stats */}
+            <div className="space-y-3">
+              <div>
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-2.5">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-brand-charcoal tracking-tight">{currentUser.name}</h1>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-800 border border-emerald-200">
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                    Verified Student
+                  </span>
+                </div>
+                <p className="text-sm text-zinc-600 mt-1 font-medium">
+                  {currentUser.department} • <span className="text-zinc-500">{currentUser.campus}</span>
+                </p>
               </div>
-              <div className="flex items-center gap-1.5 text-sm font-medium text-zinc-900 bg-zinc-100 px-3 py-1.5 rounded-lg">
-                <Package className="h-4 w-4 text-zinc-500" />
-                {currentUser.exchangesCompleted} Exchanges
+              
+              {/* Stats badges */}
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-2.5 pt-1">
+                <div className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-zinc-800 bg-zinc-50 border border-zinc-200/80 px-3 py-1.5 rounded-xl shadow-2xs">
+                  <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+                  <span>{currentUser.rating} Rating</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-zinc-800 bg-zinc-50 border border-zinc-200/80 px-3 py-1.5 rounded-xl shadow-2xs">
+                  <Package className="h-4 w-4 text-emerald-700" />
+                  <span>{currentUser.exchangesCompleted} Exchanges</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-zinc-800 bg-zinc-50 border border-zinc-200/80 px-3 py-1.5 rounded-xl shadow-2xs">
+                  <Layers className="h-4 w-4 text-zinc-500" />
+                  <span>{myListings.length} Listings</span>
+                </div>
               </div>
             </div>
           </div>
+          
+          {/* Sign Out CTA */}
+          <Button 
+            variant="outline" 
+            className="gap-2 text-red-700 hover:text-red-800 hover:bg-red-50 hover:border-red-300 border-red-200 shrink-0 font-medium" 
+            onClick={handleLogout}
+            aria-label="Sign out of account"
+          >
+            <LogOut className="h-4 w-4" />
+            <span>Sign Out</span>
+          </Button>
         </div>
-        
-        <Button variant="outline" className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200" onClick={handleLogout}>
-          <LogOut className="h-4 w-4" />
-          Sign Out
-        </Button>
+
+        {imageMessage.text && (
+          <div className={cn(
+            "mt-4 p-3 rounded-xl text-xs font-semibold border flex items-center gap-2",
+            imageMessage.type === 'error' 
+              ? "text-red-800 bg-red-50 border-red-200" 
+              : "text-emerald-900 bg-emerald-50 border-emerald-200"
+          )}>
+            {imageMessage.type === 'error' ? <AlertCircle className="h-4 w-4 shrink-0 text-red-600" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />}
+            <span>{imageMessage.text}</span>
+          </div>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-brand-border mb-6 overflow-x-auto">
-        <nav className="-mb-px flex space-x-8 min-w-max">
+      {/* Modern Tabs Navigation Bar */}
+      <div className="border-b border-brand-border mb-8 overflow-x-auto no-scrollbar" role="tablist" aria-label="Profile Sections">
+        <nav className="-mb-px flex space-x-2 sm:space-x-6 min-w-max">
+          {/* My Listings */}
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'listings'}
             onClick={() => setActiveTab('listings')}
-            className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-colors ${
+            className={cn(
+              "whitespace-nowrap border-b-2 py-3.5 px-3 text-sm font-semibold transition-all flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded-t-lg",
               activeTab === 'listings'
-                ? 'border-brand-teal text-brand-teal-hover font-semibold'
-                : 'border-transparent text-brand-muted hover:border-zinc-300 hover:text-brand-charcoal'
-            }`}
+                ? "border-emerald-700 text-emerald-900 font-bold"
+                : "border-transparent text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+            )}
           >
-            My Listings ({myListings.length})
+            <Package className="h-4 w-4" />
+            <span>My Listings</span>
+            <span className={cn(
+              "ml-0.5 rounded-full px-2 py-0.5 text-xs font-bold",
+              activeTab === 'listings'
+                ? "bg-emerald-100 text-emerald-900"
+                : "bg-zinc-100 text-zinc-600"
+            )}>
+              {myListings.length}
+            </span>
           </button>
+
+          {/* Reserved Items */}
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'reserved'}
             onClick={() => setActiveTab('reserved')}
-            className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-colors flex items-center gap-2 ${
+            className={cn(
+              "whitespace-nowrap border-b-2 py-3.5 px-3 text-sm font-semibold transition-all flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded-t-lg",
               activeTab === 'reserved'
-                ? 'border-brand-teal text-brand-teal-hover font-semibold'
-                : 'border-transparent text-brand-muted hover:border-zinc-300 hover:text-brand-charcoal'
-            }`}
+                ? "border-emerald-700 text-emerald-900 font-bold"
+                : "border-transparent text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+            )}
           >
             <BookmarkCheck className="h-4 w-4" />
-            Reserved Items ({myReservations.filter(r => r.status === 'pending' || r.status === 'accepted').length + incomingReservations.filter(r => r.status === 'pending' || r.status === 'accepted').length})
+            <span>Reserved Items</span>
+            {activeReservationsCount > 0 && (
+              <span className="ml-0.5 rounded-full bg-emerald-600 text-white px-2 py-0.5 text-xs font-bold shadow-2xs">
+                {activeReservationsCount}
+              </span>
+            )}
           </button>
+
+          {/* Saved Items */}
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'saved'}
             onClick={() => setActiveTab('saved')}
-            className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-colors ${
+            className={cn(
+              "whitespace-nowrap border-b-2 py-3.5 px-3 text-sm font-semibold transition-all flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded-t-lg",
               activeTab === 'saved'
-                ? 'border-brand-teal text-brand-teal-hover font-semibold'
-                : 'border-transparent text-brand-muted hover:border-zinc-300 hover:text-brand-charcoal'
-            }`}
+                ? "border-emerald-700 text-emerald-900 font-bold"
+                : "border-transparent text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+            )}
           >
-            Saved Items ({mySavedListings.length})
+            <Bookmark className="h-4 w-4" />
+            <span>Saved Items</span>
+            <span className={cn(
+              "ml-0.5 rounded-full px-2 py-0.5 text-xs font-bold",
+              activeTab === 'saved'
+                ? "bg-emerald-100 text-emerald-900"
+                : "bg-zinc-100 text-zinc-600"
+            )}>
+              {mySavedListings.length}
+            </span>
           </button>
+
+          {/* Account Settings */}
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'settings'}
             onClick={() => setActiveTab('settings')}
-            className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-colors flex items-center gap-2 ${
+            className={cn(
+              "whitespace-nowrap border-b-2 py-3.5 px-3 text-sm font-semibold transition-all flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded-t-lg",
               activeTab === 'settings'
-                ? 'border-brand-teal text-brand-teal-hover font-semibold'
-                : 'border-transparent text-brand-muted hover:border-zinc-300 hover:text-brand-charcoal'
-            }`}
+                ? "border-emerald-700 text-emerald-900 font-bold"
+                : "border-transparent text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+            )}
           >
             <Settings className="h-4 w-4" />
-            Account Settings
+            <span>Account Settings</span>
           </button>
         </nav>
       </div>
 
-      {/* Tab Content */}
-      <div className="min-h-[400px]">
+      {/* Tab Panels */}
+      <div className="min-h-[420px]">
+        {/* TAB 1: RESERVED ITEMS */}
         {activeTab === 'reserved' && (
           <div className="space-y-6">
             {/* Sub-view switcher */}
-            <div className="flex items-center justify-between border-b border-brand-border/60 pb-4">
-              <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-brand-border/40">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200/70 pb-4">
+              <div className="inline-flex rounded-xl bg-zinc-100 p-1 border border-zinc-200/60 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => setReservedSubView('outgoing')}
-                  className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-all ${
+                  className={cn(
+                    "rounded-lg px-4 py-2 text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal",
                     reservedSubView === 'outgoing'
-                      ? 'bg-brand-teal-light text-brand-teal-hover font-semibold border border-brand-teal-border shadow-xs'
-                      : 'text-brand-muted hover:text-brand-charcoal'
-                  }`}
+                      ? "bg-white text-emerald-900 shadow-xs border border-zinc-200"
+                      : "text-zinc-600 hover:text-zinc-900"
+                  )}
                 >
                   Items I Reserved ({myReservations.length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setReservedSubView('incoming')}
-                  className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-all ${
+                  className={cn(
+                    "rounded-lg px-4 py-2 text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal",
                     reservedSubView === 'incoming'
-                      ? 'bg-brand-teal-light text-brand-teal-hover font-semibold border border-brand-teal-border shadow-xs'
-                      : 'text-brand-muted hover:text-brand-charcoal'
-                  }`}
+                      ? "bg-white text-emerald-900 shadow-xs border border-zinc-200"
+                      : "text-zinc-600 hover:text-zinc-900"
+                  )}
                 >
                   Incoming Requests ({incomingReservations.length})
                 </button>
               </div>
 
-              <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-500">
-                <Clock className="h-3.5 w-3.5 text-amber-500" />
+              <div className="flex items-center gap-2 text-xs text-zinc-600 bg-amber-50/80 border border-amber-200/60 rounded-xl px-3 py-1.5">
+                <Clock className="h-3.5 w-3.5 text-amber-700 shrink-0" />
                 <span>Reserved items are held while students coordinate meetup</span>
               </div>
             </div>
 
-            {/* List */}
+            {/* Content List */}
             {(() => {
               const currentList = reservedSubView === 'outgoing' ? myReservations : incomingReservations;
 
               if (isLoadingReservations) {
                 return (
-                  <div className="flex flex-col items-center justify-center py-20 text-zinc-400">
-                    <Loader2 className="h-8 w-8 animate-spin mb-3 text-zinc-600" />
-                    <p className="text-sm font-medium">Loading reservations...</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[1, 2].map((i) => (
+                      <div key={i} className="rounded-2xl border border-zinc-200 bg-white p-4 space-y-4">
+                        <div className="flex gap-4">
+                          <Skeleton className="h-24 w-24 rounded-xl" />
+                          <div className="flex-1 space-y-2">
+                            <Skeleton className="h-5 w-3/4" />
+                            <Skeleton className="h-4 w-1/3" />
+                            <Skeleton className="h-3.5 w-1/2" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-9 w-full rounded-xl" />
+                      </div>
+                    ))}
                   </div>
                 );
               }
 
               if (currentList.length === 0) {
                 return (
-                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 py-20 text-center px-4">
-                    <div className="h-12 w-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3 text-zinc-400">
-                      <BookmarkCheck className="h-6 w-6" />
+                  <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-300 bg-zinc-50/60 py-20 text-center px-4">
+                    <div className="h-14 w-14 rounded-2xl bg-zinc-100 flex items-center justify-center mb-4 text-zinc-400">
+                      <BookmarkCheck className="h-7 w-7 text-zinc-400" />
                     </div>
-                    <h3 className="text-base font-semibold text-zinc-900">
+                    <h3 className="text-base font-bold text-zinc-900">
                       {reservedSubView === 'outgoing' ? 'No items reserved yet' : 'No incoming requests yet'}
                     </h3>
-                    <p className="text-sm text-zinc-500 mt-1 mb-5 max-w-sm">
+                    <p className="text-sm text-zinc-500 mt-1.5 mb-6 max-w-md leading-relaxed">
                       {reservedSubView === 'outgoing'
                         ? 'When you request to hold or trade an item with another student, it will appear here.'
                         : 'When other campus members request to reserve your listings, their requests will appear here.'}
@@ -525,10 +659,10 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                     return (
                       <div
                         key={res.id}
-                        className="flex flex-col rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm hover:border-zinc-300 transition-all gap-4"
+                        className="flex flex-col rounded-2xl border border-zinc-200/90 bg-white p-4 sm:p-5 shadow-xs hover:border-zinc-300 transition-all gap-4"
                       >
                         <div className="flex gap-4">
-                          {/* Image */}
+                          {/* Item Thumbnail */}
                           <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl bg-zinc-100 border border-zinc-200">
                             {item?.images && item.images.length > 0 ? (
                               <img
@@ -544,12 +678,13 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                           </div>
 
                           {/* Info */}
-                          <div className="flex flex-1 flex-col justify-between">
+                          <div className="flex flex-1 flex-col justify-between min-w-0">
                             <div>
                               <div className="flex items-start justify-between gap-2">
-                                <h4 className="font-semibold text-zinc-900 line-clamp-1 text-sm sm:text-base">
+                                <h4 className="font-bold text-zinc-900 truncate text-sm sm:text-base">
                                   {item?.title || 'Campus Item'}
                                 </h4>
+                                
                                 {/* Status badge */}
                                 {res.status === 'accepted' && (
                                   <Badge variant="success" className="gap-1 flex-shrink-0">
@@ -562,32 +697,32 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                                   </Badge>
                                 )}
                                 {res.status === 'rejected' && (
-                                  <Badge variant="outline" className="gap-1 text-zinc-500 flex-shrink-0">
+                                  <Badge variant="secondary" className="gap-1 text-zinc-600 flex-shrink-0">
                                     Declined
                                   </Badge>
                                 )}
                                 {res.status === 'completed' && (
-                                  <Badge variant="default" className="gap-1 flex-shrink-0 bg-blue-600">
+                                  <Badge variant="default" className="gap-1 flex-shrink-0 bg-blue-700 text-white">
                                     Completed
                                   </Badge>
                                 )}
                                 {res.status === 'cancelled' && (
-                                  <Badge variant="outline" className="gap-1 text-zinc-500 flex-shrink-0">
+                                  <Badge variant="destructive" className="gap-1 flex-shrink-0">
                                     Cancelled
                                   </Badge>
                                 )}
                               </div>
 
-                              <p className="mt-1 font-bold text-zinc-900 text-sm">
+                              <p className="mt-1 font-extrabold text-zinc-900 text-base">
                                 {item ? formatCurrency(item.price) : '—'}
                               </p>
                             </div>
 
-                            {/* Counterpart info */}
-                            <div className="mt-2 text-xs text-zinc-500">
+                            {/* Counterpart Student Info */}
+                            <div className="mt-2 text-xs text-zinc-600">
                               <span>
                                 {reservedSubView === 'outgoing' ? 'Seller' : 'Buyer'}:{' '}
-                                <strong className="text-zinc-700 font-medium">
+                                <strong className="text-zinc-900 font-semibold">
                                   {counterpart?.name || (reservedSubView === 'outgoing' ? 'Campus Seller' : 'Student Buyer')}
                                 </strong>
                               </span>
@@ -597,22 +732,22 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
 
                         {/* Meetup status if available */}
                         {res.meetup && (
-                          <div className="flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-2 text-xs border border-zinc-100">
-                            <MapPin className="h-3.5 w-3.5 text-brand-teal flex-shrink-0" />
-                            <span className="font-medium text-zinc-800 line-clamp-1">
+                          <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3.5 py-2.5 text-xs border border-zinc-200/80">
+                            <MapPin className="h-4 w-4 text-emerald-700 flex-shrink-0" />
+                            <span className="font-semibold text-zinc-900 truncate">
                               Meetup: {typeof res.meetup.location === 'object' ? (res.meetup.location as any)?.name : res.meetup.location}
                             </span>
-                            <span className="ml-auto capitalize text-[10px] font-semibold text-brand-teal-hover bg-brand-teal-light px-2 py-0.5 rounded-full border border-brand-teal-border">
+                            <span className="ml-auto capitalize text-[10px] font-bold text-emerald-900 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-300">
                               {res.meetup.status}
                             </span>
                           </div>
                         )}
 
                         {/* Card Actions */}
-                        <div className="flex items-center gap-2 pt-1 border-t border-zinc-100 mt-auto">
+                        <div className="flex items-center gap-2 pt-2 border-t border-zinc-100 mt-auto">
                           <Button
                             size="sm"
-                            className="flex-1 gap-1.5 text-xs h-9"
+                            className="flex-1 gap-1.5 text-xs h-9 bg-brand-teal hover:bg-brand-teal-hover text-white font-semibold"
                             onClick={() => navigate(`/chat/${res.chatId}`)}
                           >
                             <MessageSquare className="h-3.5 w-3.5" />
@@ -637,77 +772,86 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
             })()}
           </div>
         )}
+
+        {/* TAB 2: MY LISTINGS */}
         {activeTab === 'listings' && (
           <div className="space-y-6">
             {myListings.length > 0 ? (
               <>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-brand-border/60 pb-4">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold text-brand-muted uppercase tracking-wider">Status:</span>
+                  {/* Status Filters */}
+                  <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label="Filter listings by status">
+                    <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mr-1">Status:</span>
                     <button
                       type="button"
                       onClick={() => setListingFilter('all')}
-                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                      className={cn(
+                        "text-xs px-3 py-1.5 rounded-xl font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal",
                         listingFilter === 'all'
-                          ? 'bg-brand-teal text-white shadow-xs'
-                          : 'bg-slate-100 text-brand-muted hover:bg-slate-200 hover:text-brand-charcoal'
-                      }`}
+                          ? "bg-brand-charcoal text-white shadow-xs"
+                          : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900"
+                      )}
                     >
                       All ({myListings.length})
                     </button>
                     <button
                       type="button"
                       onClick={() => setListingFilter('active')}
-                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                      className={cn(
+                        "text-xs px-3 py-1.5 rounded-xl font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal",
                         listingFilter === 'active'
-                          ? 'bg-brand-teal text-white shadow-xs'
-                          : 'bg-slate-100 text-brand-muted hover:bg-slate-200 hover:text-brand-charcoal'
-                      }`}
+                          ? "bg-emerald-700 text-white shadow-xs"
+                          : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900"
+                      )}
                     >
                       Active ({myListings.filter(l => (l.status === 'available' || l.status === 'active' || l.status === 'reserved') && !(Boolean(l.expiresAt) && new Date(l.expiresAt!).getTime() <= Date.now())).length})
                     </button>
                     <button
                       type="button"
                       onClick={() => setListingFilter('completed')}
-                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                      className={cn(
+                        "text-xs px-3 py-1.5 rounded-xl font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal",
                         listingFilter === 'completed'
-                          ? 'bg-brand-teal text-white shadow-xs'
-                          : 'bg-slate-100 text-brand-muted hover:bg-slate-200 hover:text-brand-charcoal'
-                      }`}
+                          ? "bg-blue-700 text-white shadow-xs"
+                          : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900"
+                      )}
                     >
                       Completed ({myListings.filter(l => l.status === 'completed').length})
                     </button>
                     <button
                       type="button"
                       onClick={() => setListingFilter('expired')}
-                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                      className={cn(
+                        "text-xs px-3 py-1.5 rounded-xl font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal",
                         listingFilter === 'expired'
-                          ? 'bg-brand-teal text-white shadow-xs'
-                          : 'bg-slate-100 text-brand-muted hover:bg-slate-200 hover:text-brand-charcoal'
-                      }`}
+                          ? "bg-amber-600 text-white shadow-xs"
+                          : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900"
+                      )}
                     >
                       Expired ({myListings.filter(l => l.status !== 'cancelled' && l.status !== 'completed' && (l.status === 'expired' || (Boolean(l.expiresAt) && new Date(l.expiresAt!).getTime() <= Date.now()))).length})
                     </button>
                     <button
                       type="button"
                       onClick={() => setListingFilter('cancelled')}
-                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                      className={cn(
+                        "text-xs px-3 py-1.5 rounded-xl font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal",
                         listingFilter === 'cancelled'
-                          ? 'bg-brand-teal text-white shadow-xs'
-                          : 'bg-slate-100 text-brand-muted hover:bg-slate-200 hover:text-brand-charcoal'
-                      }`}
+                          ? "bg-red-700 text-white shadow-xs"
+                          : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900"
+                      )}
                     >
                       Cancelled ({myListings.filter(l => l.status === 'cancelled').length})
                     </button>
                   </div>
-                  <Button size="sm" onClick={() => navigate('/create-listing')}>
-                    Post an Item
+
+                  <Button size="sm" onClick={() => navigate('/create-listing')} className="shrink-0 gap-1.5">
+                    <span>Post an Item</span>
                   </Button>
                 </div>
 
                 {filteredMyListings.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 py-16 text-center">
-                    <p className="text-sm text-zinc-500">No {listingFilter} listings found.</p>
+                  <div className="rounded-3xl border border-dashed border-zinc-200 bg-zinc-50/60 py-16 text-center">
+                    <p className="text-sm font-medium text-zinc-500">No {listingFilter} listings found.</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -718,20 +862,23 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                       const isReserved = listing.status === 'reserved';
 
                       return (
-                        <div key={listing.id} className="flex flex-col">
+                        <div key={listing.id} className="flex flex-col group">
                           <ListingCard listing={listing} />
-                          <div className="mt-2 flex items-center justify-between px-1">
-                            <span className={`text-xs font-semibold ${
+                          
+                          {/* Owner Action & Status Footer */}
+                          <div className="mt-2.5 flex items-center justify-between px-1.5 py-1 rounded-xl bg-zinc-50/80 border border-zinc-200/60 text-xs">
+                            <span className={cn(
+                              "font-bold text-[11px]",
                               isCancelled
-                                ? 'text-red-600'
+                                ? "text-red-700"
                                 : isCompleted
-                                ? 'text-blue-600'
+                                ? "text-blue-700"
                                 : isExpired
-                                ? 'text-amber-600'
+                                ? "text-amber-800"
                                 : isReserved
-                                ? 'text-purple-600'
-                                : 'text-brand-teal-hover'
-                            }`}>
+                                ? "text-purple-700"
+                                : "text-emerald-800"
+                            )}>
                               {isCancelled
                                 ? '• Cancelled'
                                 : isCompleted
@@ -742,16 +889,18 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                                 ? '• Reserved'
                                 : '• Active'}
                             </span>
+
                             {isCompleted ? (
-                              <span className="text-[11px] text-blue-700 font-medium">Exchange completed</span>
+                              <span className="text-[11px] text-blue-800 font-semibold">Exchange completed</span>
                             ) : isCancelled ? (
-                              <span className="text-[11px] text-zinc-400">Preserved in history</span>
+                              <span className="text-[11px] text-zinc-500 font-medium">Preserved in history</span>
                             ) : (
                               <div className="flex items-center gap-3">
                                 <button
                                   type="button"
                                   onClick={() => setListingToEdit(listing)}
-                                  className="text-xs text-zinc-700 hover:text-zinc-900 hover:underline font-medium flex items-center gap-1"
+                                  className="text-xs text-zinc-800 hover:text-emerald-800 font-bold flex items-center gap-1 focus-visible:outline-none focus-visible:underline transition-colors"
+                                  aria-label={`Edit ${listing.title}`}
                                 >
                                   <Edit3 className="h-3 w-3" />
                                   Edit
@@ -759,7 +908,8 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                                 <button
                                   type="button"
                                   onClick={() => setListingToCancel(listing)}
-                                  className="text-xs text-red-600 hover:text-red-700 hover:underline font-medium"
+                                  className="text-xs text-red-700 hover:text-red-800 font-bold focus-visible:outline-none focus-visible:underline transition-colors"
+                                  aria-label={`Cancel post for ${listing.title}`}
                                 >
                                   Cancel Post
                                 </button>
@@ -773,11 +923,13 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                 )}
               </>
             ) : (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 py-24 text-center">
-                <Package className="h-12 w-12 text-zinc-300 mb-4" />
-                <h3 className="text-lg font-semibold text-zinc-900">No listings yet</h3>
-                <p className="text-sm text-zinc-500 mt-1 mb-6 max-w-sm">
-                  You haven't posted any items yet. Start by offering something you don't need.
+              <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-300 bg-zinc-50/60 py-24 text-center px-4">
+                <div className="h-14 w-14 rounded-2xl bg-zinc-100 flex items-center justify-center mb-4 text-zinc-400">
+                  <Package className="h-7 w-7 text-zinc-400" />
+                </div>
+                <h3 className="text-lg font-bold text-zinc-900">No listings yet</h3>
+                <p className="text-sm text-zinc-500 mt-1 mb-6 max-w-sm leading-relaxed">
+                  You haven&apos;t posted any items yet. Start by offering something you don&apos;t need to other students.
                 </p>
                 <Button onClick={() => navigate('/create-listing')}>Post an Item</Button>
               </div>
@@ -785,22 +937,33 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
 
             {/* Cancel Listing Confirmation Modal */}
             {listingToCancel && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-                <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-zinc-200 space-y-4">
+              <div 
+                className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="cancel-listing-title"
+              >
+                <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl border border-zinc-200 space-y-4">
                   <div className="flex items-center gap-3 text-red-600">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
-                      <AlertCircle className="h-5 w-5" />
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-100 shrink-0">
+                      <AlertCircle className="h-6 w-6 text-red-600" />
                     </div>
-                    <h3 className="text-lg font-bold text-zinc-900">Cancel Listing?</h3>
+                    <div>
+                      <h3 id="cancel-listing-title" className="text-lg font-bold text-zinc-900">Cancel Listing?</h3>
+                      <p className="text-xs text-zinc-500">Item will be withdrawn from marketplace</p>
+                    </div>
                   </div>
+                  
                   <p className="text-sm text-zinc-600 leading-relaxed">
-                    Are you sure you want to cancel &ldquo;{listingToCancel.title}&rdquo;? It will be removed from the public marketplace feed and kept in your history as cancelled.
+                    Are you sure you want to cancel &ldquo;<strong className="text-zinc-900">{listingToCancel.title}</strong>&rdquo;? It will be removed from the public marketplace feed and kept in your history as cancelled.
                   </p>
+                  
                   {listingCancelError && (
-                    <div className="rounded-xl bg-red-50 p-3 text-xs text-red-700 border border-red-200">
+                    <div className="rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-700 border border-red-200">
                       {listingCancelError}
                     </div>
                   )}
+
                   <div className="flex items-center justify-end gap-3 pt-2">
                     <Button 
                       variant="ghost" 
@@ -814,7 +977,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                     </Button>
                     <Button 
                       variant="destructive" 
-                      className="bg-red-600 hover:bg-red-700 text-white font-medium" 
+                      className="bg-red-600 hover:bg-red-700 text-white font-semibold" 
                       disabled={isCancellingListing}
                       onClick={handleConfirmCancelListing}
                     >
@@ -844,6 +1007,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
           </div>
         )}
 
+        {/* TAB 3: SAVED ITEMS */}
         {activeTab === 'saved' && (
           <div>
             {mySavedListings.length > 0 ? (
@@ -853,11 +1017,13 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 py-24 text-center">
-                <Bookmark className="h-12 w-12 text-zinc-300 mb-4" />
-                <h3 className="text-lg font-semibold text-zinc-900">No saved items</h3>
-                <p className="text-sm text-zinc-500 mt-1 mb-6 max-w-sm">
-                  Items you save while exploring the marketplace will appear here.
+              <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-300 bg-zinc-50/60 py-24 text-center px-4">
+                <div className="h-14 w-14 rounded-2xl bg-zinc-100 flex items-center justify-center mb-4 text-zinc-400">
+                  <Bookmark className="h-7 w-7 text-zinc-400" />
+                </div>
+                <h3 className="text-lg font-bold text-zinc-900">No saved items</h3>
+                <p className="text-sm text-zinc-500 mt-1 mb-6 max-w-sm leading-relaxed">
+                  Items you save while exploring the marketplace will appear here for quick access.
                 </p>
                 <Button onClick={() => navigate('/marketplace')} variant="outline">Explore Marketplace</Button>
               </div>
@@ -865,40 +1031,51 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
           </div>
         )}
 
+        {/* TAB 4: ACCOUNT SETTINGS */}
         {activeTab === 'settings' && (
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 max-w-4xl">
-            {/* Left Column */}
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 max-w-5xl">
+            {/* Left Column: Personal Info & Avatar */}
             <div className="space-y-8">
               {/* Personal Information */}
-              <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-zinc-900 mb-6">Personal Information</h3>
+              <div className="rounded-3xl border border-zinc-200/90 bg-white p-6 sm:p-7 shadow-xs space-y-6">
+                <div>
+                  <h3 className="text-lg font-bold text-brand-charcoal">Personal Information</h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">Manage your student profile details</p>
+                </div>
                 
                 {profileMessage.text && (
-                  <div className={`p-3 mb-4 text-sm rounded-lg border ${profileMessage.type === 'error' ? 'text-red-600 bg-red-50 border-red-100' : 'text-green-600 bg-green-50 border-green-100'}`}>
-                    {profileMessage.text}
+                  <div className={cn(
+                    "p-3 rounded-xl text-xs font-semibold border flex items-center gap-2",
+                    profileMessage.type === 'error'
+                      ? "text-red-700 bg-red-50 border-red-200"
+                      : "text-emerald-900 bg-emerald-50 border-emerald-200"
+                  )}>
+                    {profileMessage.type === 'error' ? <AlertCircle className="h-4 w-4 shrink-0 text-red-600" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />}
+                    <span>{profileMessage.text}</span>
                   </div>
                 )}
 
                 <form onSubmit={handleUpdateProfile} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-zinc-700 mb-1">Email Address</label>
-                    <Input value={currentUser.email} disabled className="bg-zinc-50 text-zinc-500" />
-                    <p className="mt-1 text-xs text-zinc-500">College email cannot be changed.</p>
+                    <label className="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wider">College Email</label>
+                    <Input value={currentUser.email} disabled className="bg-zinc-50 text-zinc-500 cursor-not-allowed" />
+                    <p className="mt-1.5 text-xs text-zinc-500">Official college email cannot be changed.</p>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-zinc-700 mb-1">Full Name</label>
+                    <label className="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wider">Full Name</label>
                     <Input 
                       required 
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Your full name"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-zinc-700 mb-1">Department</label>
+                    <label className="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wider">Department</label>
                     <select 
-                      className="flex h-10 w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      className="flex h-11 w-full rounded-xl border border-brand-border bg-white px-3.5 py-2 text-sm text-brand-charcoal font-medium focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs"
                       value={editDept}
                       onChange={(e) => setEditDept(e.target.value)}
                     >
@@ -911,61 +1088,90 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                     </select>
                   </div>
 
-                  <Button type="submit" disabled={isSavingProfile} className="w-full">
-                    {isSavingProfile ? 'Saving...' : 'Save Profile Changes'}
+                  <Button type="submit" disabled={isSavingProfile} className="w-full h-11">
+                    {isSavingProfile ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Saving Changes...
+                      </span>
+                    ) : (
+                      'Save Profile Changes'
+                    )}
                   </Button>
                 </form>
               </div>
-            </div>
 
-            {/* Right Column */}
-            <div className="space-y-8">
               {/* Profile Image Settings */}
-              <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-zinc-900 mb-6">Profile Image</h3>
+              <div className="rounded-3xl border border-zinc-200/90 bg-white p-6 sm:p-7 shadow-xs space-y-6">
+                <div>
+                  <h3 className="text-lg font-bold text-brand-charcoal">Profile Image</h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">Upload a clear photo to help classmates identify you</p>
+                </div>
                 
-                {imageMessage.text && (
-                  <div className={`p-3 mb-4 text-sm rounded-lg border ${imageMessage.type === 'error' ? 'text-red-600 bg-red-50 border-red-100' : 'text-green-600 bg-green-50 border-green-100'}`}>
-                    {imageMessage.text}
-                  </div>
-                )}
+                <div className="flex items-center gap-5">
+                  {currentUser.avatarUrl ? (
+                    <img 
+                      src={currentUser.avatarUrl} 
+                      alt="Current Avatar" 
+                      className="h-20 w-20 rounded-2xl object-cover border border-zinc-200 bg-zinc-50 shadow-2xs shrink-0"
+                    />
+                  ) : (
+                    <div className="h-20 w-20 rounded-2xl bg-zinc-100 flex items-center justify-center text-zinc-400 border border-zinc-200 shrink-0 font-bold text-2xl">
+                      {currentUser.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
 
-                <div className="flex items-center gap-6">
-                  <img 
-                    src={currentUser.avatarUrl} 
-                    alt="Current Avatar" 
-                    className="h-20 w-20 rounded-full object-cover border border-zinc-200 bg-zinc-50"
-                  />
-                  <div className="flex-1">
-                    <label className="flex items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 cursor-pointer transition-colors">
+                  <div className="flex-1 space-y-2">
+                    <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-xs font-bold text-zinc-800 hover:bg-zinc-50 hover:border-zinc-400 cursor-pointer transition-all shadow-2xs focus-within:ring-2 focus-within:ring-brand-teal">
                       {isUploadingImage ? (
-                        'Uploading...'
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Uploading photo...</span>
+                        </>
                       ) : (
                         <>
-                          <Upload className="h-4 w-4" />
-                          Upload new image
+                          <Upload className="h-4 w-4 text-emerald-700" />
+                          <span>Upload new image</span>
                         </>
                       )}
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageUpload} disabled={isUploadingImage} />
+                      <input 
+                        type="file" 
+                        accept="image/jpeg,image/png,image/webp" 
+                        className="sr-only" 
+                        onChange={handleImageUpload} 
+                        disabled={isUploadingImage} 
+                      />
                     </label>
-                    <p className="mt-2 text-xs text-zinc-500">JPG, JPEG, PNG, or WEBP. Max 5MB.</p>
+                    <p className="text-xs text-zinc-500">JPG, JPEG, PNG, or WEBP. Maximum 5MB.</p>
                   </div>
                 </div>
               </div>
+            </div>
 
+            {/* Right Column: Security & Danger Zone */}
+            <div className="space-y-8">
               {/* Password Settings */}
-              <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-zinc-900 mb-6">Security</h3>
+              <div className="rounded-3xl border border-zinc-200/90 bg-white p-6 sm:p-7 shadow-xs space-y-6">
+                <div>
+                  <h3 className="text-lg font-bold text-brand-charcoal">Security & Password</h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">Update your password to keep your student account safe</p>
+                </div>
                 
                 {passwordMessage.text && (
-                  <div className={`p-3 mb-4 text-sm rounded-lg border ${passwordMessage.type === 'error' ? 'text-red-600 bg-red-50 border-red-100' : 'text-green-600 bg-green-50 border-green-100'}`}>
-                    {passwordMessage.text}
+                  <div className={cn(
+                    "p-3 rounded-xl text-xs font-semibold border flex items-center gap-2",
+                    passwordMessage.type === 'error'
+                      ? "text-red-700 bg-red-50 border-red-200"
+                      : "text-emerald-900 bg-emerald-50 border-emerald-200"
+                  )}>
+                    {passwordMessage.type === 'error' ? <AlertCircle className="h-4 w-4 shrink-0 text-red-600" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />}
+                    <span>{passwordMessage.text}</span>
                   </div>
                 )}
 
                 <form onSubmit={handleUpdatePassword} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-zinc-700 mb-1">New Password</label>
+                    <label className="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wider">New Password</label>
                     <div className="relative flex items-center">
                       <Input 
                         type={showNewPassword ? "text" : "password"} 
@@ -994,7 +1200,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-zinc-700 mb-1">Confirm New Password</label>
+                    <label className="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wider">Confirm New Password</label>
                     <div className="relative flex items-center">
                       <Input 
                         type={showConfirmNewPassword ? "text" : "password"} 
@@ -1019,10 +1225,10 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                       </button>
                     </div>
                     {confirmNewPassword.length > 0 && newPassword !== confirmNewPassword && (
-                      <p className="text-xs text-rose-600 mt-1 font-medium">Passwords do not match.</p>
+                      <p className="text-xs text-rose-600 mt-1.5 font-medium">Passwords do not match.</p>
                     )}
                     {confirmNewPassword.length > 0 && newPassword === confirmNewPassword && (
-                      <p className="text-xs text-emerald-600 mt-1 font-medium">Passwords match.</p>
+                      <p className="text-xs text-emerald-700 mt-1.5 font-semibold">Passwords match.</p>
                     )}
                   </div>
 
@@ -1030,22 +1236,29 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                     type="submit"
                     variant="outline"
                     disabled={isSavingPassword || !newPasswordValidation.isValid || newPassword !== confirmNewPassword}
-                    className="w-full"
+                    className="w-full h-11 font-semibold"
                   >
-                    {isSavingPassword ? 'Updating...' : 'Update Password'}
+                    {isSavingPassword ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Updating Password...
+                      </span>
+                    ) : (
+                      'Update Password'
+                    )}
                   </Button>
                 </form>
               </div>
 
               {/* Danger Zone: Account Deletion */}
-              <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6 shadow-sm">
+              <div className="rounded-3xl border border-red-200 bg-red-50/50 p-6 sm:p-7 shadow-xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-red-900 flex items-center gap-2">
-                      <ShieldAlert className="h-5 w-5 text-red-600" />
+                  <div className="space-y-1">
+                    <h3 className="text-base font-bold text-red-900 flex items-center gap-2">
+                      <ShieldAlert className="h-5 w-5 text-red-600 shrink-0" />
                       Danger Zone
                     </h3>
-                    <p className="mt-1 text-sm text-red-700">
+                    <p className="text-xs text-red-700 leading-relaxed max-w-sm">
                       Permanently delete your student account, all published marketplace listings, and remove uploaded photos.
                     </p>
                   </div>
@@ -1053,9 +1266,9 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                     type="button"
                     variant="destructive"
                     onClick={() => setShowDeleteAccountModal(true)}
-                    className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                    className="bg-red-600 hover:bg-red-700 text-white shrink-0 font-semibold text-xs h-10 px-4"
                   >
-                    <Trash2 className="h-4 w-4 mr-2" />
+                    <Trash2 className="h-4 w-4 mr-1.5" />
                     Delete Account
                   </Button>
                 </div>
@@ -1067,32 +1280,37 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
 
       {/* Delete Account Confirmation Modal */}
       {showDeleteAccountModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="flex items-center gap-3 text-red-600 mb-4">
-              <div className="p-3 bg-red-100 rounded-xl">
-                <AlertCircle className="h-6 w-6" />
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-200" 
+          role="dialog" 
+          aria-modal="true" 
+          aria-labelledby="delete-account-title"
+        >
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 sm:p-7 shadow-xl border border-zinc-200 space-y-4">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="p-3 bg-red-100 rounded-2xl shrink-0">
+                <AlertCircle className="h-6 w-6 text-red-600" />
               </div>
               <div>
                 <h3 id="delete-account-title" className="text-lg font-bold text-zinc-900">Delete Account?</h3>
-                <p className="text-xs text-zinc-500">This action cannot be undone.</p>
+                <p className="text-xs text-zinc-500">This action cannot be undone</p>
               </div>
             </div>
 
-            <p className="text-sm text-zinc-600 mb-4 leading-relaxed">
+            <p className="text-sm text-zinc-600 leading-relaxed">
               Deleting your account will permanently purge your student profile, all active and expired listings, remove uploaded photos, and cancel any pending reservations.
             </p>
 
             {deleteAccountError && (
-              <div className="mb-4 rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-700 border border-red-200">
+              <div className="rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-700 border border-red-200">
                 {deleteAccountError}
               </div>
             )}
 
             <form onSubmit={handleDeleteAccount} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  Type your institutional email <span className="font-mono text-red-600 select-all">{currentUser?.email}</span> to confirm:
+                <label className="block text-xs font-bold text-zinc-700 mb-1.5">
+                  Type your institutional email <span className="font-mono text-red-600 select-all font-semibold">{currentUser?.email}</span> to confirm:
                 </label>
                 <Input
                   type="email"
@@ -1120,7 +1338,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                   type="submit"
                   variant="destructive"
                   disabled={isDeletingAccount || deleteConfirmEmail.trim().toLowerCase() !== currentUser?.email?.toLowerCase()}
-                  className="bg-red-600 hover:bg-red-700 text-white"
+                  className="bg-red-600 hover:bg-red-700 text-white font-semibold"
                 >
                   {isDeletingAccount ? (
                     <>
