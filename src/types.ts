@@ -31,6 +31,8 @@ export type User = {
   suspendedAt?: string;
   bannedAt?: string;
   lastActivityAt?: string;
+  yearOfStudy?: string;
+  bio?: string;
 };
 
 export type ListingType = 'Sale' | 'Borrow' | 'Donate' | 'Exchange';

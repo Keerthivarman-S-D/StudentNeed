@@ -14,6 +14,7 @@ import { Launch } from './pages/Launch';
 import { Home } from './pages/Home';
 import { Marketplace } from './pages/Marketplace';
 import { Login } from './pages/Login';
+import { Register } from './pages/Register';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { Onboarding } from './pages/Onboarding';
 
@@ -52,10 +53,13 @@ function AppContent() {
   const isLaunchExplicit = location.pathname === '/launch';
   const isRootLaunch = location.pathname === '/' && !firebaseUser;
   const isLaunchActive = isLaunchExplicit || isRootLaunch;
+  const isAuthPage = ['/login', '/register', '/verify-email'].includes(location.pathname);
+  const isWarmBgPage = isAuthPage || location.pathname === '/marketplace' || location.pathname.startsWith('/listing/') || location.pathname === '/requests' || location.pathname === '/create-request' || location.pathname === '/create-listing' || location.pathname.startsWith('/chat') || location.pathname === '/profile' || location.pathname === '/reserved';
+  const hideAppNavbar = isLaunchActive || isAuthPage;
 
   return (
-    <div className={`flex min-h-screen flex-col bg-brand-bg ${isLaunchActive ? '' : 'pb-16 md:pb-0'}`}>
-      {!isLaunchActive && <Navbar />}
+    <div className={`flex min-h-screen flex-col ${isWarmBgPage ? 'bg-[#f7f6f2]' : 'bg-brand-bg'} ${hideAppNavbar ? '' : 'pb-16 md:pb-0'}`}>
+      {!hideAppNavbar && <Navbar />}
       <main className="flex-1">
         <Suspense fallback={<PageLoadingFallback />}>
           <Routes>
@@ -80,6 +84,7 @@ function AppContent() {
               }
             />
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route
               path="/onboarding"
@@ -106,6 +111,14 @@ function AppContent() {
               }
             />
             <Route path="/requests" element={<Requests />} />
+            <Route
+              path="/chat"
+              element={
+                <ProtectedRoute>
+                  <ChatPage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/chat/:chatId"
               element={

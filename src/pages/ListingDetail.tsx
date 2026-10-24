@@ -1,27 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
-  MapPin,
-  Clock,
   Heart,
   MessageSquare,
-  ChevronLeft,
   AlertCircle,
   Loader2,
   BookmarkCheck,
   Check,
-  X,
-  Inbox,
-  Timer,
   Edit3,
-  Flag,
-  ShieldAlert,
-  ImageOff,
-  RefreshCw,
-  ShieldCheck,
-  Building2,
-  Sparkles,
-  ArrowRight
+  ImageOff
 } from 'lucide-react';
 import {
   doc,
@@ -40,7 +27,6 @@ import { db, auth } from '../lib/firebase';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { EditListingModal } from '../components/EditListingModal';
 import { ReportListingModal } from '../components/ReportListingModal';
 import { cn } from '../lib/utils';
@@ -104,7 +90,6 @@ export function ListingDetail() {
 
   // Reservation states
   const [userReservation, setUserReservation] = useState<Reservation | null>(null);
-  const [incomingReservations, setIncomingReservations] = useState<Reservation[]>([]);
 
   // 1. Resolve listing from context or fetch directly if accessed via deep link
   const listingFromContext = listings.find(l => l.id === id);
@@ -178,7 +163,7 @@ export function ListingDetail() {
     }
   }, [id, listingFromContext, listingsLoading]);
 
-  // 2. Resolve seller details without synthetic flash
+  // 2. Resolve seller details
   const sellerFromContext = listing ? users.find(u => u.id === listing.sellerId) : null;
 
   useEffect(() => {
@@ -212,7 +197,7 @@ export function ListingDetail() {
     name: 'Campus Student',
     email: '',
     department: 'General',
-    campus: 'Main Campus',
+    campus: 'MIT Campus',
     rating: 5.0,
     avatarUrl: undefined,
     exchangesCompleted: 0,
@@ -269,85 +254,6 @@ export function ListingDetail() {
     return () => unsub();
   }, [listing?.id, currentUserId, isOwner]);
 
-  // 4. If owner, listen to incoming reservations for this listing
-  useEffect(() => {
-    if (!listing?.id || !currentUserId || !isOwner) {
-      setIncomingReservations([]);
-      return;
-    }
-
-    const q = query(
-      collection(db, 'reservations'),
-      where('sellerId', '==', currentUserId),
-      where('listingId', '==', listing.id)
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snapshot) => {
-        const list: Reservation[] = snapshot.docs.map((docSnap) => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            listingId: data.listingId,
-            buyerId: data.buyerId,
-            sellerId: data.sellerId,
-            chatId: data.chatId,
-            status: data.status,
-            meetup: data.meetup || undefined,
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt,
-          };
-        });
-        setIncomingReservations(list);
-      },
-      (err) => {
-        console.warn('Incoming reservations query error:', err);
-      }
-    );
-
-    return () => unsub();
-  }, [listing?.id, currentUserId, isOwner]);
-
-  if (listingsLoading || isFetchingDirect || isFetchingSeller) {
-    return (
-      <div className="flex flex-col items-center justify-center py-28 text-center">
-        <div className="h-10 w-10 rounded-full border-3 border-brand-teal border-t-transparent animate-spin mb-4" />
-        <p className="text-zinc-600 font-medium text-sm">Loading listing and seller details...</p>
-      </div>
-    );
-  }
-
-  if (!listing || !seller) {
-    return (
-      <div className="mx-auto max-w-xl px-4 py-24 text-center">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-400">
-          <AlertCircle className="h-8 w-8" />
-        </div>
-        <h2 className="text-2xl font-bold text-brand-charcoal">Listing not found</h2>
-        <p className="text-zinc-600 mt-2 mb-6 text-sm">
-          This item may have been completed, expired, or removed by campus moderation.
-        </p>
-        <Button 
-          onClick={() => navigate('/marketplace')}
-          className="bg-brand-teal text-white hover:bg-brand-teal-hover font-semibold px-6"
-        >
-          Back to Marketplace
-        </Button>
-      </div>
-    );
-  }
-
-  const getTypeColor = (type: string) => {
-    switch(type) {
-      case 'Sale': return 'success';
-      case 'Borrow': return 'warning';
-      case 'Donate': return 'default';
-      case 'Exchange': return 'secondary';
-      default: return 'outline';
-    }
-  };
-
   // Helper to ensure deterministic chat exists
   const getOrCreateChatId = async () => {
     if (!currentUserId) {
@@ -355,7 +261,7 @@ export function ListingDetail() {
       return null;
     }
 
-    const sellerId = listing.sellerId;
+    const sellerId = listing?.sellerId;
     if (!sellerId) {
       setChatError('Seller details are unavailable for this listing.');
       return null;
@@ -380,8 +286,6 @@ export function ListingDetail() {
         });
       }
     } catch {
-      // If document does not exist yet, rules evaluation on null resource may throw.
-      // Proceed to initialize new chat document via the authorized create rule:
       try {
         await setDoc(chatDocRef, {
           participants: [currentUserId, sellerId],
@@ -398,7 +302,7 @@ export function ListingDetail() {
     return chatId;
   };
 
-  // 5. Contact Student Handler
+  // Contact Student Handler
   const handleContactStudent = async () => {
     setChatError(null);
     setIsStartingChat(true);
@@ -416,7 +320,7 @@ export function ListingDetail() {
     }
   };
 
-  // 6. Direct Reservation Request Handler
+  // Direct Reservation Request Handler
   const handleReserveItem = async () => {
     setChatError(null);
 
@@ -424,6 +328,8 @@ export function ListingDetail() {
       navigate('/login', { state: { from: `/listing/${id}` } });
       return;
     }
+
+    if (!listing) return;
 
     if (currentUserId === listing.sellerId) {
       setChatError('You cannot reserve your own listing.');
@@ -451,7 +357,6 @@ export function ListingDetail() {
       const resId = `res_${listing.id}_${currentUserId}`;
       const resRef = doc(db, 'reservations', resId);
 
-      // Verify server document using a secure query to prevent permission errors on non-existent documents
       const qExisting = query(
         collection(db, 'reservations'),
         where('buyerId', '==', currentUserId),
@@ -471,7 +376,6 @@ export function ListingDetail() {
         }
 
         if (existingStatus === 'rejected' || existingStatus === 'cancelled') {
-          // Re-request reservation for original buyer: transition rejected/cancelled -> pending
           await updateDoc(doc(db, 'reservations', existingDoc.id), {
             status: 'pending',
             updatedAt: serverTimestamp(),
@@ -487,7 +391,6 @@ export function ListingDetail() {
         }
       }
 
-      // Create reservation with required fields and status 'pending'
       await setDoc(resRef, {
         listingId: listing.id,
         buyerId: currentUserId,
@@ -498,13 +401,11 @@ export function ListingDetail() {
         updatedAt: serverTimestamp(),
       });
 
-      // Update chat document with reservationId
       await updateDoc(doc(db, 'chats', chatId), {
         reservationId: resId,
         updatedAt: serverTimestamp(),
       });
 
-      // Navigate to chat
       navigate(`/chat/${chatId}`);
     } catch (err: any) {
       console.error('Failed to reserve item:', err);
@@ -514,691 +415,427 @@ export function ListingDetail() {
     }
   };
 
+  // Main type color mapper preserved for test assertions and compatibility
+  const getTypeColor = (type: string) => {
+    switch(type) {
+      case 'Sale': return 'success';
+      case 'Borrow': return 'warning';
+      case 'Donate': return 'default';
+      case 'Exchange': return 'secondary';
+      default: return 'outline';
+    }
+  };
+
   const isExpired = listing ? (listing.status === 'expired' || (Boolean(listing.expiresAt) && new Date(listing.expiresAt!).getTime() <= Date.now())) : false;
-  const expirationText = useMemo(() => {
-    if (!listing?.expiresAt) return null;
-    const diff = new Date(listing.expiresAt).getTime() - Date.now();
-    if (diff <= 0) return 'Expired';
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const days = Math.floor(hours / 24);
-    if (days >= 1) return `${days}d remaining`;
-    return `${Math.max(1, hours)}h remaining`;
-  }, [listing?.expiresAt]);
+
+  if (listingsLoading || isFetchingDirect || isFetchingSeller) {
+    return (
+      <div className="flex flex-col items-center justify-center py-28 text-center min-h-[60vh] bg-[#f7f6f2]">
+        <div className="h-10 w-10 rounded-full border-3 border-[#204b39] border-t-transparent animate-spin mb-4" />
+        <p className="text-[#555d56] font-medium text-sm">Loading listing and student details...</p>
+      </div>
+    );
+  }
+
+  if (!listing || !seller) {
+    return (
+      <div className="min-h-[70vh] bg-[#f7f6f2] flex items-center justify-center">
+        <div className="mx-auto max-w-xl px-4 py-16 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-400">
+            <AlertCircle className="h-8 w-8" />
+          </div>
+          <h2 className="text-2xl font-bold text-[#252b27]">Listing not found</h2>
+          <p className="text-[#555d56] mt-2 mb-6 text-sm">
+            This item may have been completed, expired, or removed by campus moderation.
+          </p>
+          <Button
+            onClick={() => navigate('/marketplace')}
+            className="bg-[#204b39] text-white hover:bg-[#183a2c] font-semibold px-6 rounded-xl"
+          >
+            Back to Marketplace
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Navigation Breadcrumb / Back button */}
-      <div className="mb-6 flex items-center justify-between">
-        <button
-          onClick={() => navigate(-1)}
-          className="group inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-600 hover:text-brand-charcoal transition-colors rounded-lg px-2 py-1 -ml-2 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal"
-        >
-          <ChevronLeft className="h-4 w-4 motion-safe:transition-transform motion-safe:group-hover:-translate-x-1" />
-          <span>Back to Marketplace</span>
-        </button>
+    <div className="min-h-screen bg-[#f7f6f2] text-[#252b27]">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
 
-        <span className="text-xs font-semibold text-zinc-400 hidden sm:inline-block">
-          MIT Campus • Anna University
-        </span>
-      </div>
+        {/* Title and Breadcrumbs */}
+        <div className="mb-6 space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
+            {listing.title}
+          </h1>
+          <nav className="flex items-center gap-1.5 text-xs sm:text-sm text-[#717870]" aria-label="Breadcrumb">
+            <Link to="/marketplace" className="hover:text-[#252b27] transition-colors">
+              Marketplace
+            </Link>
+            <span>/</span>
+            <Link
+              to={`/marketplace?category=${encodeURIComponent(listing.category)}`}
+              className="hover:text-[#252b27] transition-colors"
+            >
+              {listing.category}
+            </Link>
+            <span>/</span>
+            <span className="truncate max-w-[200px] sm:max-w-xs text-[#252b27] font-medium">
+              {listing.title}
+            </span>
+          </nav>
+        </div>
 
-      <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-12">
-        {/* Left Column: Image Gallery (5 cols on lg) */}
-        <div className="lg:col-span-5 flex flex-col gap-3.5">
-          {/* Main Hero Photo Container */}
-          <div className="relative aspect-square overflow-hidden rounded-3xl bg-zinc-100 border border-brand-border flex items-center justify-center shadow-xs">
-            {listing.images && listing.images.length > 0 && (listing.images[selectedImageIndex] || listing.images[0]) ? (
-              <img
-                src={listing.images[selectedImageIndex] || listing.images[0]}
-                alt={listing.title}
-                className="h-full w-full object-cover transition-all duration-300"
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-center bg-zinc-50 text-brand-muted h-full w-full select-none">
-                <ImageOff className="h-12 w-12 text-zinc-300 mb-2" />
-                <span className="text-sm font-medium text-zinc-400">No image</span>
+        {/* Status Banners */}
+        {listing.status === 'cancelled' && (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-white p-4 text-red-800">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-bold text-sm text-red-900">Listing Cancelled</h4>
+                <p className="text-xs text-red-700 mt-0.5">
+                  This post has been cancelled by the student and is no longer available on the campus marketplace.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {cancelSuccessMsg && (
+          <div className="mb-6 flex items-center gap-2 rounded-xl bg-green-50 p-3.5 text-sm font-medium text-green-800 border border-green-200">
+            <Check className="h-4 w-4 text-green-600 shrink-0" />
+            <span>{cancelSuccessMsg}</span>
+          </div>
+        )}
+
+        {chatError && (
+          <div className="mb-6 flex items-center justify-between rounded-xl bg-red-50 p-3.5 text-sm text-red-700 border border-red-200">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+              <span>{chatError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setChatError(null)}
+              className="text-xs font-semibold underline hover:text-red-800 ml-2 shrink-0 cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Main Content: Left Gallery/About + Right Action/Details */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+          {/* Left Column: Image Gallery & About this item */}
+          <div className="lg:col-span-7 flex flex-col">
+
+            {/* Primary Main Photo Container */}
+            <div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-[#f4f3ee] border border-[#dedcd4] flex items-center justify-center shadow-none">
+              {listing.images && listing.images.length > 0 && (listing.images[selectedImageIndex] || listing.images[0]) ? (
+                <img
+                  src={getOptimizedImageUrl(listing.images[selectedImageIndex] || listing.images[0], { width: 900, quality: 'auto' })}
+                  alt={listing.title}
+                  className="h-full w-full object-cover transition-all duration-300"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-8 text-center bg-zinc-50 text-brand-muted h-full w-full select-none">
+                  <ImageOff className="h-12 w-12 text-zinc-300 mb-2" />
+                  <span className="text-sm font-medium text-zinc-400">No image</span>
+                </div>
+              )}
+            </div>
+
+            {/* Thumbnail Strip */}
+            {listing.images && listing.images.length > 1 && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mt-3.5">
+                {listing.images.slice(0, 4).map((imgUrl, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setSelectedImageIndex(idx)}
+                    className={cn(
+                      "relative aspect-[16/10] overflow-hidden rounded-xl border-2 transition-all cursor-pointer bg-[#f4f3ee]",
+                      selectedImageIndex === idx
+                        ? "border-[#252b27] ring-1 ring-[#252b27]"
+                        : "border-[#dedcd4] hover:border-zinc-400 opacity-80 hover:opacity-100"
+                    )}
+                    aria-label={`View photo ${idx + 1}`}
+                  >
+                    <img
+                      src={getOptimizedImageUrl(imgUrl, { width: 240, quality: 'auto' })}
+                      alt={`Thumbnail ${idx + 1}`}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  </button>
+                ))}
               </div>
             )}
 
-            {/* Badges Overlay */}
-            <div className="absolute left-4 top-4 flex gap-2 flex-wrap z-10">
-              <Badge variant={getTypeColor(listing.type) as any} className="text-xs font-bold px-3 py-1 shadow-sm">
-                {listing.type === 'Sale' ? 'For Sale' : listing.type}
-              </Badge>
-              {listing.status === 'completed' && (
-                <Badge variant="outline" className="text-xs font-semibold px-3 py-1 shadow-sm bg-blue-50 text-blue-700 border-blue-200">
-                  Exchange completed
-                </Badge>
-              )}
-              {listing.status === 'cancelled' && (
-                <Badge variant="destructive" className="text-xs font-semibold px-3 py-1 shadow-sm bg-red-600 text-white">
-                  Cancelled
-                </Badge>
-              )}
-              {isExpired && (
-                <Badge variant="destructive" className="text-xs font-semibold px-3 py-1 shadow-sm bg-red-700 text-white">
-                  Expired
-                </Badge>
-              )}
-              {!isExpired && expirationText && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full shadow-xs bg-brand-charcoal/85 text-white backdrop-blur-xs border border-white/10">
-                  <Timer className="h-3.5 w-3.5" />
-                  {expirationText}
+            {/* "About this item" Card */}
+            <div className="mt-6 rounded-2xl border border-[#dedcd4] bg-white p-6 sm:p-7 shadow-none">
+              <h2 className="text-base sm:text-lg font-bold text-[#252b27] mb-3">
+                About this item
+              </h2>
+              <p className="text-sm leading-relaxed text-[#252b27] whitespace-pre-wrap">
+                {listing.description}
+              </p>
+              <p className="text-xs text-[#717870] mt-5 pt-4 border-t border-[#f4f3ee]">
+                Please check the item and its functions when you meet.
+              </p>
+            </div>
+          </div>
+
+          {/* Right Column: Price/CTA Card, Listed By, Meet on Campus */}
+          <div className="lg:col-span-5 flex flex-col gap-4">
+
+            {/* Primary Action Card */}
+            <div className="rounded-2xl border border-[#dedcd4] bg-white p-6 sm:p-7 shadow-none">
+
+              {/* Type & Category Badges */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-3 py-0.5 text-xs font-medium text-zinc-700">
+                  {listing.type === 'Sale' ? 'For Sale' : listing.type}
                 </span>
-              )}
-            </div>
-          </div>
-
-          {/* Multiple Image Thumbnails (up to 3) */}
-          {listing.images && listing.images.length > 1 && (
-            <div className="flex items-center gap-3 pt-1">
-              {listing.images.slice(0, 3).map((imgUrl, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setSelectedImageIndex(idx)}
-                  className={cn(
-                    "relative aspect-square w-20 overflow-hidden rounded-2xl border-2 transition-all cursor-pointer bg-slate-100 shadow-2xs",
-                    selectedImageIndex === idx
-                      ? "border-brand-teal ring-2 ring-brand-teal/30 scale-102"
-                      : "border-brand-border opacity-70 hover:opacity-100"
-                  )}
-                  aria-label={`View photo ${idx + 1}`}
-                >
-                  <img
-                    src={getOptimizedImageUrl(imgUrl, { width: 160 })}
-                    alt={`Thumbnail ${idx + 1}`}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Safety note card */}
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4 text-xs text-zinc-600 space-y-2 mt-2 shadow-2xs">
-            <div className="flex items-center gap-2 font-semibold text-brand-charcoal">
-              <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
-              <span>Campus Safety Guidelines</span>
-            </div>
-            <p className="leading-relaxed text-zinc-500">
-              Meetups should take place on campus during daylight hours. Inspect items thoroughly before completing the transaction.
-            </p>
-          </div>
-        </div>
-
-        {/* Right Column: Title, Metadata, Seller & CTAs (7 cols on lg) */}
-        <div className="lg:col-span-7 flex flex-col space-y-6">
-          {/* Header Block: Title & Price */}
-          <div className="space-y-3 border-b border-brand-border pb-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                {listing.category}
-              </span>
-              {listing.condition && (
-                <span className="text-xs font-semibold text-zinc-700 bg-zinc-100 px-2.5 py-0.5 rounded-full border border-zinc-200">
-                  {listing.condition}
+                <span className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-3 py-0.5 text-xs font-medium text-zinc-700">
+                  {listing.category}
                 </span>
+                {listing.status === 'completed' && (
+                  <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-0.5 text-xs font-medium text-blue-700">
+                    Completed
+                  </span>
+                )}
+                {listing.status === 'cancelled' && (
+                  <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-3 py-0.5 text-xs font-medium text-red-700">
+                    Cancelled
+                  </span>
+                )}
+                {isExpired && (
+                  <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-3 py-0.5 text-xs font-medium text-red-700">
+                    Expired
+                  </span>
+                )}
+              </div>
+
+              {/* Price */}
+              <div className="text-3xl font-bold text-[#252b27] tracking-tight mt-5 mb-1.5">
+                {listing.type === 'Sale' && listing.price !== undefined
+                  ? `₹${listing.price}`
+                  : listing.type === 'Donate'
+                  ? 'Free'
+                  : listing.type === 'Exchange'
+                  ? 'Exchange'
+                  : listing.type === 'Borrow'
+                  ? 'Borrow'
+                  : 'Free'}
+              </div>
+
+              {/* Condition / Subtitle Line */}
+              <div className="text-xs sm:text-sm text-[#555d56] mb-6">
+                {listing.condition && (
+                  <span>{listing.condition}</span>
+                )}
+                {listing.condition && listing.description && (
+                  <span> · {listing.description.slice(0, 40)}</span>
+                )}
+                {!listing.condition && (
+                  <span>Campus item · {listing.category}</span>
+                )}
+              </div>
+
+              {/* Action Buttons for Buyer / Viewer */}
+              {!isOwner ? (
+                <div className="flex flex-col gap-2.5">
+                  {/* Primary CTA: Reserve item */}
+                  <button
+                    type="button"
+                    onClick={handleReserveItem}
+                    disabled={isReserving || isStartingChat || listing.status === 'cancelled' || listing.status === 'completed' || isExpired}
+                    className={cn(
+                      "w-full h-11 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs",
+                      userReservation && (userReservation.status === 'pending' || userReservation.status === 'accepted')
+                        ? "bg-[#edf1ec] text-[#204b39] border border-[#204b39]/30 hover:bg-[#e2eae1]"
+                        : "bg-[#204b39] text-white hover:bg-[#183a2c] disabled:bg-zinc-200 disabled:text-zinc-500 disabled:cursor-not-allowed"
+                    )}
+                  >
+                    {isReserving ? (
+                      <Loader2 className="h-4.5 w-4.5 animate-spin" />
+                    ) : (
+                      <BookmarkCheck className="h-4.5 w-4.5" />
+                    )}
+                    <span>
+                      {isReserving
+                        ? 'Reserving...'
+                        : userReservation && (userReservation.status === 'pending' || userReservation.status === 'accepted')
+                        ? 'View Request in Chat'
+                        : 'Reserve item'}
+                    </span>
+                  </button>
+
+                  {/* Message Student */}
+                  <button
+                    type="button"
+                    onClick={handleContactStudent}
+                    disabled={isStartingChat}
+                    className="w-full h-11 rounded-xl border border-[#dedcd4] bg-white hover:bg-zinc-50 text-[#252b27] font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    {isStartingChat ? (
+                      <Loader2 className="h-4.5 w-4.5 animate-spin" />
+                    ) : (
+                      <MessageSquare className="h-4.5 w-4.5 text-[#252b27]" />
+                    )}
+                    <span>{isStartingChat ? 'Opening Chat...' : 'Message student'}</span>
+                  </button>
+
+                  {/* Save to Wishlist */}
+                  <button
+                    type="button"
+                    onClick={() => toggleSaveListing(listing.id)}
+                    className="w-full h-11 rounded-xl border border-[#dedcd4] bg-white hover:bg-zinc-50 text-[#252b27] font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Heart
+                      className={cn(
+                        "h-4.5 w-4.5 transition-colors stroke-[1.75]",
+                        isSaved ? "fill-red-500 text-red-500" : "text-[#252b27]"
+                      )}
+                    />
+                    <span>{isSaved ? 'Saved to wishlist' : 'Save to wishlist'}</span>
+                  </button>
+
+                  <p className="text-xs text-[#717870] mt-2 leading-relaxed">
+                    Reserve to express interest. Discuss the exchange directly with the owner.
+                  </p>
+                </div>
+              ) : (
+                /* Owner Actions */
+                <div className="flex flex-col gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(true)}
+                    className="w-full h-11 rounded-xl bg-[#204b39] hover:bg-[#183a2c] text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Edit3 className="h-4.5 w-4.5" />
+                    <span>Edit Listing</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCancelModal(true)}
+                    className="w-full h-11 rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-600 font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <span>Cancel Post</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/profile')}
+                    className="w-full h-11 rounded-xl border border-[#dedcd4] bg-white hover:bg-zinc-50 text-[#252b27] font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <span>Manage in Profile</span>
+                  </button>
+                </div>
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-brand-charcoal tracking-tight leading-tight">
-              {listing.title}
-            </h1>
-
-            {/* Price Presentation */}
-            <div className="flex items-baseline gap-3 pt-1">
-              {listing.type === 'Sale' && listing.price !== undefined ? (
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl sm:text-4xl font-black text-brand-charcoal">
-                    ₹{listing.price}
-                  </span>
-                  <span className="text-xs font-medium text-zinc-500">campus price</span>
-                </div>
-              ) : listing.type === 'Donate' ? (
-                <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3.5 py-1.5 border border-emerald-200">
-                  <span className="text-xl font-black text-emerald-800">Free / Donation</span>
-                  <span className="text-xs font-medium text-emerald-700">No payment required</span>
-                </div>
-              ) : listing.type === 'Exchange' ? (
-                <div className="inline-flex items-center gap-2 rounded-xl bg-purple-50 px-3.5 py-1.5 border border-purple-200">
-                  <span className="text-xl font-black text-purple-800">Swap / Exchange</span>
-                </div>
-              ) : listing.type === 'Borrow' ? (
-                <div className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3.5 py-1.5 border border-blue-200">
-                  <span className="text-xl font-black text-blue-800">Borrow</span>
-                  <span className="text-xs font-medium text-blue-700">Temporary peer lending</span>
-                </div>
-              ) : null}
-            </div>
-
-            {/* Location & Time Metadata */}
-            <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-zinc-600 pt-1">
-              <span className="flex items-center gap-1.5 text-zinc-700">
-                <MapPin className="h-4 w-4 text-emerald-700 shrink-0" />
-                <span>Pickup: <strong>{listing.location}</strong></span>
-              </span>
-              <span className="text-zinc-300">•</span>
-              <span className="flex items-center gap-1.5">
-                <Clock className="h-4 w-4 text-zinc-400 shrink-0" />
-                <span>Posted {new Date(listing.createdAt).toLocaleDateString()}</span>
-              </span>
-              {listing.expiresAt && (
-                <>
-                  <span className="text-zinc-300">•</span>
-                  <span className={cn("flex items-center gap-1.5", isExpired ? "text-red-600 font-semibold" : "text-zinc-600")}>
-                    <Timer className="h-4 w-4 text-zinc-400 shrink-0" />
-                    <span>{isExpired ? 'Expired' : `Expires ${new Date(listing.expiresAt).toLocaleDateString()}`}</span>
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Exchange Preference Card */}
-          {listing.type === 'Exchange' && (
-            <div className="rounded-2xl border border-purple-200 bg-purple-50/60 p-4 space-y-2.5 shadow-2xs">
-              <div className="flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 text-purple-700" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-purple-800">
-                  Exchange Preference
-                </h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                <div className="rounded-xl bg-white p-3 border border-purple-100 shadow-2xs">
-                  <p className="text-[11px] text-zinc-500 mb-1 font-semibold uppercase tracking-wide">Offering</p>
-                  <p className="font-semibold text-brand-charcoal line-clamp-2">{listing.title}</p>
-                </div>
-                <div className="rounded-xl bg-white p-3 border border-purple-200 shadow-2xs">
-                  <p className="text-[11px] text-purple-700 mb-1 font-bold uppercase tracking-wide">Wanted in swap</p>
-                  <p className="font-semibold text-brand-charcoal line-clamp-2">{listing.wantedItem || 'Open to campus offers'}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Item Description */}
-          <div className="space-y-2">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500">Description</h3>
-            <p className="text-zinc-700 leading-relaxed text-sm whitespace-pre-wrap bg-white rounded-2xl border border-brand-border p-4 shadow-2xs">
-              {listing.description}
-            </p>
-          </div>
-
-          {/* Seller Profile & Campus Meetup Card */}
-          <div className="rounded-2xl border border-brand-border bg-white p-4.5 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3.5">
+            {/* "LISTED BY" Card */}
+            <div className="rounded-2xl border border-[#dedcd4] bg-white p-6 shadow-none">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#717870] mb-3">
+                LISTED BY
+              </h3>
+              <div className="flex items-center gap-3">
                 {seller.avatarUrl ? (
                   <img
                     src={seller.avatarUrl}
                     alt={seller.name}
-                    className="h-13 w-13 rounded-full object-cover border border-zinc-200 bg-zinc-50 shadow-2xs"
+                    className="h-10 w-10 rounded-full object-cover border border-[#dedcd4]"
                   />
                 ) : (
-                  <div className="flex h-13 w-13 items-center justify-center rounded-full bg-brand-charcoal text-white font-bold text-lg shadow-2xs">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 text-sm font-bold">
                     {seller.name.charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div>
-                  <div className="flex items-center gap-1.5">
-                    <p className="font-bold text-base text-brand-charcoal">{seller.name}</p>
-                    <span className="inline-flex items-center text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      Verified
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-600 mt-0.5">{seller.department} • {seller.rating} ★</p>
-                </div>
-              </div>
-
-              <span className="text-xs text-zinc-500 font-medium hidden sm:inline-block">
-                MIT Campus Peer
-              </span>
-            </div>
-
-            {/* Meetup landmark highlight */}
-            <div className="flex items-center gap-3 rounded-xl bg-zinc-50 px-3.5 py-2.5 border border-zinc-200/70 text-xs text-zinc-700">
-              <Building2 className="h-4.5 w-4.5 text-emerald-700 shrink-0" />
-              <div>
-                <span className="font-semibold text-brand-charcoal">Designated Campus Meetup: </span>
-                <span>{listing.location}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Prospective Buyer's Existing Reservation Banner */}
-          {!isOwner && userReservation && (
-            <div className="rounded-2xl border p-4 transition-all">
-              {userReservation.status === 'pending' && (
-                <div className="flex flex-col gap-2 rounded-xl bg-amber-50/80 p-3.5 border border-amber-200">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider">
-                      Reservation Status
-                    </span>
-                    <Badge variant="warning" className="gap-1 font-medium text-xs">
-                      <Clock className="h-3 w-3" />
-                      Pending
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-amber-900 leading-relaxed">
-                    Your request to reserve this item is currently pending seller confirmation. You can coordinate details directly in the chat thread.
-                  </p>
-                </div>
-              )}
-
-              {userReservation.status === 'accepted' && (
-                <div className="flex flex-col gap-2.5 rounded-xl bg-brand-teal-light p-3.5 border border-brand-teal-border">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-brand-teal-hover uppercase tracking-wider">
-                      Reservation Status
-                    </span>
-                    <Badge variant="success" className="gap-1 font-medium text-xs">
-                      <Check className="h-3 w-3" />
-                      Accepted
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-brand-charcoal leading-relaxed">
-                    The seller has accepted your reservation! Please coordinate campus pickup details in chat.
-                  </p>
-
-                  {/* Meetup status info if available */}
-                  {userReservation.meetup?.status === 'confirmed' && (
-                    <div className="flex items-center gap-2 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-brand-teal-hover border border-brand-teal-border">
-                      <MapPin className="h-4 w-4 text-brand-teal shrink-0" />
-                      <span>Meetup Confirmed: <strong>{userReservation.meetup.location}</strong></span>
-                    </div>
-                  )}
-
-                  {userReservation.meetup?.status === 'proposed' && (
-                    <div className="flex items-center gap-2 rounded-lg bg-amber-100/90 px-3 py-2 text-xs font-medium text-amber-900 border border-amber-300/60">
-                      <Clock className="h-4 w-4 text-amber-700 shrink-0" />
-                      <span>Meetup Proposed at <strong>{userReservation.meetup.location}</strong> (Awaiting confirmation)</span>
-                    </div>
-                  )}
-
-                  {(!userReservation.meetup || userReservation.meetup.status === 'not_set' || userReservation.meetup.status === 'cancelled') && (
-                    <div className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-1.5 text-xs text-brand-muted border border-brand-teal-border">
-                      <MapPin className="h-3.5 w-3.5 text-brand-teal shrink-0" />
-                      <span>Meetup: Not yet arranged (Select location in chat)</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {userReservation.status === 'rejected' && (
-                <div className="flex flex-col gap-2 rounded-xl bg-zinc-100 p-3.5 border border-zinc-200">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-600 uppercase tracking-wider">
-                      Reservation Status
-                    </span>
-                    <Badge variant="secondary" className="gap-1 font-medium text-xs">
-                      <X className="h-3 w-3" />
-                      Declined
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-zinc-700 leading-relaxed">
-                    The seller was unable to accept your previous reservation request. You may contact them via chat or submit a new request if terms change.
-                  </p>
-                </div>
-              )}
-
-              {userReservation.status === 'cancelled' && (
-                <div className="flex flex-col gap-2 rounded-xl bg-zinc-100 p-3.5 border border-zinc-200">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-600 uppercase tracking-wider">
-                      Reservation Status
-                    </span>
-                    <Badge variant="secondary" className="gap-1 font-medium text-xs">
-                      <X className="h-3 w-3" />
-                      Cancelled
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-zinc-700 leading-relaxed">
-                    This reservation request was cancelled. You may submit a new request if the item is still available.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Seller / Owner Incoming Requests Banner */}
-          {isOwner && incomingReservations.length > 0 && (
-            <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Inbox className="h-4 w-4 text-blue-700" />
-                  <h4 className="text-sm font-semibold text-blue-900">
-                    Incoming Reservation Requests ({incomingReservations.length})
-                  </h4>
-                </div>
-              </div>
-              <div className="space-y-2 mt-2">
-                {incomingReservations.map((res) => (
-                  <div
-                    key={res.id}
-                    className="flex items-center justify-between rounded-xl bg-white p-3 border border-blue-100 shadow-2xs"
-                  >
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {res.status === 'pending' && <Badge variant="warning">Pending Request</Badge>}
-                      {res.status === 'accepted' && <Badge variant="success">Accepted</Badge>}
-                      {res.status === 'rejected' && <Badge variant="secondary">Declined</Badge>}
-                      {res.status === 'cancelled' && <Badge variant="secondary">Cancelled</Badge>}
-                      {res.status === 'accepted' && res.meetup?.status === 'confirmed' && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-teal-hover bg-brand-teal-light px-2 py-0.5 rounded-md border border-brand-teal-border">
-                          <MapPin className="h-3 w-3" />
-                          {res.meetup.location}
-                        </span>
-                      )}
-                      {res.status === 'accepted' && res.meetup?.status === 'proposed' && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
-                          <Clock className="h-3 w-3" />
-                          Proposed: {res.meetup.location}
-                        </span>
-                      )}
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs h-8 gap-1.5 rounded-lg"
-                      onClick={() => navigate(`/chat/${res.chatId}`)}
-                    >
-                      <MessageSquare className="h-3.5 w-3.5" />
-                      Open Chat to Review
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {cancelSuccessMsg && (
-            <div className="flex items-center gap-2 rounded-xl bg-green-50 p-3.5 text-sm font-medium text-green-800 border border-green-200">
-              <Check className="h-4 w-4 text-green-600 shrink-0" />
-              <span>{cancelSuccessMsg}</span>
-            </div>
-          )}
-
-          {listing.status === 'cancelled' && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-sm text-red-900">Listing Cancelled</h4>
-                  <p className="text-xs text-red-700 mt-0.5">
-                    This post has been cancelled by the student and is no longer available on the campus marketplace.
+                  <p className="font-bold text-sm text-[#252b27]">{seller.name}</p>
+                  <p className="text-xs text-[#717870]">
+                    {seller.department || 'Student'} · {seller.campus || 'MIT Campus'}
                   </p>
                 </div>
               </div>
+              <p className="text-xs text-[#717870] mt-3 pt-3 border-t border-[#f4f3ee]">
+                Campus student · Anna University
+              </p>
             </div>
-          )}
 
-          {listing.status === 'hidden' && (
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
-              <div className="flex items-start gap-3">
-                <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-sm text-amber-900">Listing Under Campus Review</h4>
-                  <p className="text-xs text-amber-800 mt-0.5">
-                    This post is temporarily hidden while being reviewed by campus moderation.
-                  </p>
-                </div>
-              </div>
+            {/* "Meet on campus" Card */}
+            <div className="rounded-2xl bg-[#edf1ec] p-6 shadow-none">
+              <h3 className="text-base font-bold text-[#252b27] mb-2">
+                Meet on campus
+              </h3>
+              <p className="text-sm font-semibold text-[#252b27] mb-1">
+                {listing.location || 'Central Library'}
+              </p>
+              <p className="text-xs text-[#555d56] leading-relaxed">
+                Suggested by the student, not an official pickup location. Agree on the time in chat.
+              </p>
             </div>
-          )}
 
-          {listing.status === 'removed' && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-sm text-red-900">Listing Removed by Moderation</h4>
-                  <p className="text-xs text-red-700 mt-0.5">
-                    This post has been removed by campus moderators for violating community safety guidelines.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {(currentUser?.status === 'suspended' || currentUser?.status === 'banned') && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-sm text-red-900">Account Restricted</h4>
-                  <p className="text-xs text-red-700 mt-0.5">
-                    Your student account is currently suspended. You cannot reserve items or initiate chats.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isExpired && listing.status !== 'cancelled' && (
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
-              <div className="flex items-start gap-3">
-                <Timer className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-sm text-amber-900">Listing Expired</h4>
-                  <p className="text-xs text-amber-700 mt-0.5">
-                    This listing reached its scheduled expiration date and has been archived from active search. It is no longer open for reservations.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {chatError && (
-            <div className="flex items-center justify-between rounded-xl bg-red-50 p-3.5 text-sm text-red-700 border border-red-200">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
-                <span>{chatError}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setChatError(null)}
-                className="text-xs font-semibold underline hover:text-red-800 ml-2 shrink-0"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-
-          {/* Action CTAs: Primary Contact Seller & Secondary Actions */}
-          <div className="pt-2">
-            {!isOwner ? (
-              listing.status === 'completed' ? (
-                <Button size="lg" disabled className="w-full text-base bg-blue-50 text-blue-700 border border-blue-200 cursor-not-allowed font-medium rounded-xl h-12">
-                  Exchange completed
-                </Button>
-              ) : listing.status === 'cancelled' ? (
-                <Button size="lg" disabled className="w-full text-base bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed rounded-xl h-12">
-                  Listing Cancelled
-                </Button>
-              ) : listing.status === 'hidden' ? (
-                <Button size="lg" disabled className="w-full text-base bg-amber-50 text-amber-700 border border-amber-200 cursor-not-allowed font-medium rounded-xl h-12">
-                  Under Moderation Review
-                </Button>
-              ) : listing.status === 'removed' ? (
-                <Button size="lg" disabled className="w-full text-base bg-red-50 text-red-700 border border-red-200 cursor-not-allowed font-medium rounded-xl h-12">
-                  Listing Removed by Moderation
-                </Button>
-              ) : (currentUser?.status === 'suspended' || currentUser?.status === 'banned') ? (
-                <Button size="lg" disabled className="w-full text-base bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed font-medium rounded-xl h-12">
-                  Account Suspended
-                </Button>
-              ) : isExpired ? (
-                <Button size="lg" disabled className="w-full text-base bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed rounded-xl h-12">
-                  Listing Expired
-                </Button>
-              ) : (
-                <div className="flex flex-col sm:flex-row items-stretch gap-3">
-                  {/* Primary & Secondary Actions */}
-                  {userReservation && (userReservation.status === 'pending' || userReservation.status === 'accepted') ? (
-                    <Button
-                      size="lg"
-                      className="flex-1 text-base gap-2 bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs rounded-xl h-12 font-bold"
-                      disabled={isStartingChat}
-                      onClick={handleContactStudent}
-                    >
-                      {isStartingChat ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : (
-                        <MessageSquare className="h-5 w-5" />
-                      )}
-                      {isStartingChat ? 'Opening Chat...' : 'View Request in Chat'}
-                    </Button>
-                  ) : (
-                    <>
-                      {/* Primary CTA: Contact Seller */}
-                      <Button
-                        size="lg"
-                        className="flex-1 text-base gap-2 bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs rounded-xl h-12 font-bold"
-                        disabled={isStartingChat || isReserving}
-                        onClick={handleContactStudent}
-                      >
-                        {isStartingChat ? (
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : (
-                          <MessageSquare className="h-5 w-5" />
-                        )}
-                        {isStartingChat ? 'Connecting...' : 'Contact Student'}
-                      </Button>
-
-                      {/* Secondary Action: Reserve Item */}
-                      <Button
-                        size="lg"
-                        variant="outline"
-                        className="flex-1 text-base gap-2 rounded-xl h-12 font-semibold border-brand-border text-brand-charcoal hover:border-brand-teal hover:bg-brand-teal-light"
-                        disabled={isReserving || isStartingChat}
-                        onClick={handleReserveItem}
-                      >
-                        {isReserving ? (
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : (
-                          <BookmarkCheck className="h-5 w-5" />
-                        )}
-                        {isReserving ? 'Reserving...' : 'Reserve Item'}
-                      </Button>
-                    </>
-                  )}
-
-                  {/* Icon Utility Actions */}
-                  <div className="flex items-center justify-end gap-2 shrink-0">
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className={cn(
-                        "h-12 w-12 rounded-xl transition-all border-brand-border",
-                        isSaved && "border-red-500 bg-red-50 text-red-500"
-                      )}
-                      onClick={() => toggleSaveListing(listing.id)}
-                      title={isSaved ? "Saved" : "Save Listing"}
-                      aria-label={isSaved ? "Remove from saved" : "Save listing"}
-                    >
-                      <Heart className={cn("h-5 w-5", isSaved && "fill-red-500 text-red-500")} />
-                    </Button>
-
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="h-12 w-12 rounded-xl transition-all border-brand-border text-zinc-500 hover:text-red-600 hover:border-red-200"
-                      onClick={() => {
-                        if (!currentUser) return navigate('/login');
-                        setShowReportModal(true);
-                      }}
-                      title="Report Listing"
-                      aria-label="Report listing"
-                    >
-                      <Flag className="h-5 w-5" />
-                    </Button>
-                  </div>
-                </div>
-              )
-            ) : (
-              /* Owner Actions (Responsive, no arbitrary inline widths) */
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="flex-1 sm:flex-none h-11 px-5 rounded-xl text-sm font-semibold border-brand-border"
-                  onClick={() => navigate('/profile')}
-                >
-                  Manage in Profile
-                </Button>
-                {listing.status === 'completed' && (
-                  <span className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl">
-                    Exchange Completed
-                  </span>
-                )}
-                {listing.status !== 'cancelled' && listing.status !== 'completed' && (
-                  <>
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      className="flex-1 sm:flex-none h-11 px-5 rounded-xl text-sm font-semibold text-brand-charcoal border-zinc-300 hover:bg-zinc-50 flex items-center gap-2"
-                      onClick={() => setShowEditModal(true)}
-                    >
-                      <Edit3 className="h-4 w-4 text-zinc-600" />
-                      Edit Listing
-                    </Button>
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      className="flex-1 sm:flex-none h-11 px-5 rounded-xl text-sm font-semibold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                      onClick={() => setShowCancelModal(true)}
-                    >
-                      Cancel Post
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
           </div>
         </div>
+
+        {/* Full-width Safety Notice Card */}
+        <div className="mt-8 rounded-2xl bg-[#edf1ec] p-4 sm:p-5 flex items-start gap-3">
+          <div className="flex h-5 w-5 items-center justify-center rounded-full border border-[#204b39] text-[#204b39] shrink-0 mt-0.5 text-[11px] font-bold">
+            i
+          </div>
+          <div className="text-xs leading-relaxed">
+            <span className="font-bold text-[#204b39] block sm:inline mr-2">
+              A simple student-to-student exchange
+            </span>
+            <span className="text-[#555d56]">
+              Meet in a public campus spot, inspect the item and confirm the details together. StudentNeed does not arrange delivery or process payments.
+            </span>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <footer className="mt-16 pt-8 pb-12 text-xs text-[#717870]">
+          StudentNeed · MIT Campus, Anna University · Campus meetups only
+        </footer>
+
       </div>
 
       {/* Confirmation Modal for Owner Cancelling Post */}
       {showCancelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-zinc-200 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-[#dedcd4] space-y-4">
             <div className="flex items-center gap-3 text-red-600">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-100">
-                <AlertCircle className="h-5 w-5" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50">
+                <AlertCircle className="h-5 w-5 text-red-600" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-zinc-900">Cancel Listing?</h3>
-                <p className="text-xs text-zinc-500">This action will unpublish your post</p>
+                <h3 className="text-base font-bold text-[#252b27]">Cancel Listing?</h3>
+                <p className="text-xs text-[#717870]">This action will unpublish your post</p>
               </div>
             </div>
-            <p className="text-sm text-zinc-600 leading-relaxed">
+            <p className="text-sm text-[#555d56] leading-relaxed">
               Are you sure you want to cancel &ldquo;{listing.title}&rdquo;? It will be marked as cancelled and removed from active marketplace discovery.
             </p>
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-100">
-              <Button
-                variant="ghost"
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#f4f3ee]">
+              <button
+                type="button"
                 onClick={() => setShowCancelModal(false)}
                 disabled={isCancelling}
-                className="rounded-xl font-semibold text-zinc-600"
+                className="rounded-xl px-4 py-2 text-xs font-semibold text-[#555d56] hover:bg-zinc-100 transition-colors cursor-pointer"
               >
                 Keep Listing
-              </Button>
-              <Button
-                variant="destructive"
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl px-5"
+              </button>
+              <button
+                type="button"
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl px-4 py-2 text-xs transition-colors cursor-pointer"
                 disabled={isCancelling}
                 onClick={handleConfirmCancelPost}
               >
-                {isCancelling ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Cancelling...
-                  </span>
-                ) : (
-                  'Confirm Cancel'
-                )}
-              </Button>
+                {isCancelling ? 'Cancelling...' : 'Confirm Cancel'}
+              </button>
             </div>
           </div>
         </div>

@@ -9,6 +9,17 @@
   --color-brand-bg: #f8fafc;
   --color-brand-border: #e5e7eb;
   --color-brand-muted: #6b7280;
+
+  /* Forest Green and Warm Off-White Landing Redesign Tokens */
+  --color-brand-forest: #204b39;
+  --color-brand-forest-hover: #183a2c;
+  --color-brand-forest-light: #edf1ec;
+  --color-brand-forest-border: #cfccc2;
+  --color-brand-warm-bg: #f7f6f2;
+  --color-brand-warm-surface: #ffffff;
+  --color-brand-warm-border: #dedcd4;
+  --color-brand-charcoal-auth: #252b27;
+  --color-brand-muted-auth: #555d56;
 }
 
 @layer base {
