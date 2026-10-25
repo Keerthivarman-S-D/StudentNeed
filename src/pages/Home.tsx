@@ -88,76 +88,75 @@ export function Home() {
   ];
 
   return (
-    <div className="flex flex-col min-h-screen bg-brand-bg">
+    <div className="flex flex-col min-h-screen bg-[#f7f6f2] text-[#252b27]">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-brand-charcoal px-4 pt-16 pb-20 sm:px-6 lg:px-8 text-white">
-        <div 
-          aria-hidden="true" 
-          className="absolute inset-0 opacity-15 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-teal-400 via-zinc-900 to-black pointer-events-none" 
+      <section className="relative overflow-hidden bg-[#173e2d] px-4 pt-14 pb-16 sm:px-6 lg:px-8 text-white shadow-xs">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-300 via-zinc-900 to-black pointer-events-none"
         />
-        
-        <div className="relative mx-auto max-w-4xl text-center space-y-8">
+
+        <div className="relative mx-auto max-w-4xl text-center space-y-7">
           {/* Trust pill */}
-          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-800/80 px-3.5 py-1 text-xs font-medium text-zinc-200 backdrop-blur-xs">
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-800/80 bg-[#113023]/80 px-3.5 py-1 text-xs font-medium text-emerald-200 backdrop-blur-xs">
             <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
             <span>MIT Campus Verified Network • @student.annauniv.edu</span>
           </div>
 
           {/* Value proposition heading */}
-          <div className="space-y-4">
-            <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl text-balance leading-tight">
+          <div className="space-y-3">
+            <h1 className="text-3xl font-extrabold tracking-tight sm:text-5xl md:text-6xl text-balance leading-tight">
               Everything students need.<br />
-              <span className="text-emerald-400">From students who have it.</span>
+              <span className="text-emerald-300">From students who have it.</span>
             </h1>
-            <p className="mx-auto max-w-2xl text-base text-zinc-300 sm:text-lg leading-relaxed">
-              Buy, donate, borrow or exchange college essentials securely within the MIT campus. 
+            <p className="mx-auto max-w-2xl text-sm text-zinc-200 sm:text-base leading-relaxed">
+              Buy, donate, borrow or exchange college essentials securely within the MIT campus.
               Zero courier fees, zero waiting—just quick on-campus meetups.
             </p>
           </div>
 
           {/* Prominent Hero Search Bar */}
-          <form 
+          <form
             onSubmit={handleHeroSearch}
             className="mx-auto max-w-2xl"
           >
-            <div className="relative flex items-center rounded-2xl bg-white p-1.5 shadow-xl shadow-black/20 border border-zinc-200 transition-all focus-within:ring-3 focus-within:ring-emerald-500/40">
+            <div className="relative flex items-center rounded-2xl bg-white p-1.5 shadow-md border border-[#dedcd4] transition-all focus-within:ring-2 focus-within:ring-[#204b39]">
               <Search className="ml-3 h-5 w-5 text-zinc-400 shrink-0" />
-              <input 
+              <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search textbooks, calculators, lab coats, components..."
-                className="w-full bg-transparent px-3 py-2.5 text-sm sm:text-base text-zinc-900 placeholder:text-zinc-400 outline-none"
+                className="w-full bg-transparent px-3 py-2.5 text-sm sm:text-base text-[#252b27] placeholder:text-zinc-400 outline-none"
                 aria-label="Search campus marketplace items"
               />
-              <Button 
+              <button
                 type="submit"
-                className="shrink-0 bg-brand-teal text-white hover:bg-brand-teal-hover font-semibold px-5 h-11 rounded-xl shadow-xs"
+                className="shrink-0 bg-[#204b39] text-white hover:bg-[#183a2c] font-semibold px-5 h-11 rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 Find Item
-              </Button>
+              </button>
             </div>
           </form>
 
           {/* Primary Quick Links */}
-          <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
             <Link to="/marketplace">
-              <Button 
-                size="lg" 
-                variant="outline" 
-                className="border-zinc-700 bg-zinc-900/60 text-white hover:bg-zinc-800 hover:text-white hover:border-zinc-500 font-semibold"
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold px-5 py-2.5 text-sm transition-colors cursor-pointer"
               >
                 Browse All Marketplace Items
-              </Button>
+              </button>
             </Link>
             <Link to="/create-listing">
-              <Button 
-                size="lg" 
-                className="bg-brand-teal text-white hover:bg-brand-teal-hover font-semibold gap-2 shadow-xs"
+              <button
+                type="button"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-[#173e2d] hover:bg-zinc-100 font-semibold px-5 py-2.5 text-sm shadow-xs transition-colors cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
                 Post an Item
-              </Button>
+              </button>
             </Link>
           </div>
         </div>
@@ -167,21 +166,21 @@ export function Home() {
       <section className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">
           <div>
-            <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 mb-2">
-              <Sparkles className="h-3 w-3 text-emerald-700" />
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#204b39] bg-[#edf1ec] px-3 py-1 rounded-full border border-[#dedcd4] mb-2">
+              <Sparkles className="h-3 w-3 text-[#204b39]" />
               Campus Essentials
             </div>
-            <h2 className="text-2xl font-bold tracking-tight text-brand-charcoal sm:text-3xl">
+            <h2 className="text-2xl font-bold tracking-tight text-[#252b27] sm:text-3xl">
               Popular Categories
             </h2>
-            <p className="text-sm text-zinc-600 mt-1">
+            <p className="text-sm text-[#555d56] mt-1">
               Find course materials, lab gear, and hostel items shared by fellow students.
             </p>
           </div>
 
           <Link 
             to="/marketplace" 
-            className="group flex items-center gap-1.5 text-sm font-semibold text-emerald-800 hover:text-emerald-900 transition-colors shrink-0"
+            className="group flex items-center gap-1.5 text-sm font-semibold text-[#204b39] hover:underline transition-colors shrink-0"
           >
             <span>View All Categories</span>
             <ArrowRight className="h-4 w-4 motion-safe:transition-transform motion-safe:group-hover:translate-x-1" />
@@ -193,15 +192,15 @@ export function Home() {
             <Link
               key={category.name}
               to={`/marketplace?category=${encodeURIComponent(category.name)}`}
-              className="group flex flex-col items-center justify-center text-center p-5 rounded-2xl border border-brand-border bg-white shadow-2xs transition-all duration-200 hover:border-emerald-600/40 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2"
+              className="group flex flex-col items-center justify-center text-center p-5 rounded-2xl border border-[#dedcd4] bg-white shadow-2xs transition-all duration-200 hover:border-[#204b39]/40 hover:shadow-sm hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39]"
             >
               <div className={`mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border ${category.color} motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:scale-105 shadow-2xs`}>
                 <category.icon className="h-6 w-6" />
               </div>
-              <h3 className="text-sm font-semibold text-brand-charcoal group-hover:text-emerald-800 transition-colors">
+              <h3 className="text-sm font-semibold text-[#252b27] group-hover:text-[#204b39] transition-colors">
                 {category.name}
               </h3>
-              <p className="mt-1 text-[11px] text-zinc-500 line-clamp-1 hidden sm:block">
+              <p className="mt-1 text-[11px] text-[#717870] line-clamp-1 hidden sm:block">
                 {category.description}
               </p>
             </Link>
@@ -210,21 +209,21 @@ export function Home() {
       </section>
 
       {/* Fresh Finds (Recent Listings) */}
-      <section className="bg-white py-16 border-y border-brand-border">
+      <section className="bg-white py-16 border-y border-[#dedcd4]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-brand-charcoal sm:text-3xl">
+              <h2 className="text-2xl font-bold tracking-tight text-[#252b27] sm:text-3xl">
                 Fresh Finds
               </h2>
-              <p className="text-sm text-zinc-600 mt-1">
+              <p className="text-sm text-[#555d56] mt-1">
                 Recently added items available for sale, donation, or swap on campus.
               </p>
             </div>
             
             <Link 
               to="/marketplace" 
-              className="group flex items-center gap-1.5 text-sm font-semibold text-emerald-800 hover:text-emerald-900 transition-colors"
+              className="group flex items-center gap-1.5 text-sm font-semibold text-[#204b39] hover:underline transition-colors"
             >
               <span>Explore Marketplace</span>
               <ArrowRight className="h-4 w-4 motion-safe:transition-transform motion-safe:group-hover:translate-x-1" />
@@ -261,16 +260,16 @@ export function Home() {
 
           {/* Empty State */}
           {!listingsLoading && !listingsError && recentListings.length === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/70 p-12 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 mb-3">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#dedcd4] bg-[#faf9f5] p-12 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-zinc-400 mb-3 border border-[#dedcd4]">
                 <Search className="h-6 w-6" />
               </div>
-              <h3 className="text-base font-semibold text-zinc-900">No active listings yet today</h3>
-              <p className="text-sm text-zinc-600 mt-1 max-w-sm">
+              <h3 className="text-base font-semibold text-[#252b27]">No active listings yet today</h3>
+              <p className="text-sm text-[#555d56] mt-1 max-w-sm">
                 Be the first student to post an item for sale, donation, or exchange!
               </p>
               <Link to="/create-listing" className="mt-5">
-                <Button className="bg-brand-teal text-white hover:bg-brand-teal-hover font-semibold">
+                <Button className="bg-[#204b39] text-white hover:bg-[#183a2c] font-semibold">
                   Post the First Item
                 </Button>
               </Link>
@@ -291,47 +290,47 @@ export function Home() {
       {/* How StudentNeed Works: Find → Connect → Meet */}
       <section className="mx-auto w-full max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
         <div className="text-center max-w-2xl mx-auto mb-14">
-          <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 mb-3">
+          <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#204b39] bg-[#edf1ec] px-3 py-1 rounded-full border border-[#dedcd4] mb-3">
             Campus-First Workflow
           </div>
-          <h2 className="text-3xl font-extrabold tracking-tight text-brand-charcoal sm:text-4xl">
+          <h2 className="text-3xl font-extrabold tracking-tight text-[#252b27] sm:text-4xl">
             How StudentNeed Works
           </h2>
-          <p className="mt-3 text-base text-zinc-600">
+          <p className="mt-3 text-base text-[#555d56]">
             A safe, transparent 3-step loop designed specifically for campus exchanges.
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3 relative">
           {/* Step 1 */}
-          <div className="relative flex flex-col items-center text-center p-8 rounded-3xl border border-brand-border bg-white shadow-2xs hover:border-emerald-600/30 transition-all">
-            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-charcoal text-white text-xl font-bold shadow-md shadow-black/10">
+          <div className="relative flex flex-col items-center text-center p-8 rounded-2xl border border-[#dedcd4] bg-white shadow-2xs hover:border-[#204b39]/30 transition-all">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#252b27] text-white text-xl font-bold shadow-xs">
               1
             </div>
-            <h3 className="text-xl font-bold text-brand-charcoal mb-2">Find</h3>
-            <p className="text-sm text-zinc-600 leading-relaxed">
+            <h3 className="text-xl font-bold text-[#252b27] mb-2">Find</h3>
+            <p className="text-sm text-[#555d56] leading-relaxed">
               Search for textbooks, equipment, and lab gear or browse categories to discover what peers are offering.
             </p>
           </div>
 
           {/* Step 2 */}
-          <div className="relative flex flex-col items-center text-center p-8 rounded-3xl border border-brand-border bg-white shadow-2xs hover:border-emerald-600/30 transition-all">
-            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-teal text-white text-xl font-bold shadow-md shadow-brand-teal/20">
+          <div className="relative flex flex-col items-center text-center p-8 rounded-2xl border border-[#dedcd4] bg-white shadow-2xs hover:border-[#204b39]/30 transition-all">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#204b39] text-white text-xl font-bold shadow-xs">
               2
             </div>
-            <h3 className="text-xl font-bold text-brand-charcoal mb-2">Connect</h3>
-            <p className="text-sm text-zinc-600 leading-relaxed">
+            <h3 className="text-xl font-bold text-[#252b27] mb-2">Connect</h3>
+            <p className="text-sm text-[#555d56] leading-relaxed">
               Message the student directly through secure in-app chat. Agree on terms, reserve the item, or arrange a swap.
             </p>
           </div>
 
           {/* Step 3 */}
-          <div className="relative flex flex-col items-center text-center p-8 rounded-3xl border border-brand-border bg-white shadow-2xs hover:border-emerald-600/30 transition-all">
-            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-700 text-white text-xl font-bold shadow-md shadow-emerald-700/20">
+          <div className="relative flex flex-col items-center text-center p-8 rounded-2xl border border-[#dedcd4] bg-white shadow-2xs hover:border-[#204b39]/30 transition-all">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#173e2d] text-white text-xl font-bold shadow-xs">
               3
             </div>
-            <h3 className="text-xl font-bold text-brand-charcoal mb-2">Meet</h3>
-            <p className="text-sm text-zinc-600 leading-relaxed">
+            <h3 className="text-xl font-bold text-[#252b27] mb-2">Meet</h3>
+            <p className="text-sm text-[#555d56] leading-relaxed">
               Meet up on campus at designated spots like the Central Library, Food Court, or department blocks to inspect and exchange.
             </p>
           </div>
@@ -339,35 +338,35 @@ export function Home() {
       </section>
 
       {/* Why StudentNeed / Campus Trust Points */}
-      <section className="bg-zinc-50 border-t border-brand-border py-20">
+      <section className="bg-[#faf9f5] border-t border-[#dedcd4] py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-            <div className="flex flex-col gap-3.5 rounded-3xl bg-white p-8 border border-brand-border shadow-2xs hover:border-emerald-600/30 transition-colors">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <div className="flex flex-col gap-3.5 rounded-2xl bg-white p-8 border border-[#dedcd4] shadow-2xs hover:border-[#204b39]/30 transition-colors">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#edf1ec] text-[#204b39] border border-[#dedcd4]">
                 <ShieldCheck className="h-6 w-6" />
               </div>
-              <h3 className="text-lg font-bold text-brand-charcoal">Campus-Only Trust</h3>
-              <p className="text-zinc-600 text-sm leading-relaxed">
+              <h3 className="text-lg font-bold text-[#252b27]">Campus-Only Trust</h3>
+              <p className="text-[#555d56] text-sm leading-relaxed">
                 Exclusively accessible to verified MIT students with Anna University email authentication. No anonymous outsiders.
               </p>
             </div>
 
-            <div className="flex flex-col gap-3.5 rounded-3xl bg-white p-8 border border-brand-border shadow-2xs hover:border-emerald-600/30 transition-colors">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-teal-800 border border-teal-200">
+            <div className="flex flex-col gap-3.5 rounded-2xl bg-white p-8 border border-[#dedcd4] shadow-2xs hover:border-[#204b39]/30 transition-colors">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#edf1ec] text-[#204b39] border border-[#dedcd4]">
                 <MapPin className="h-6 w-6" />
               </div>
-              <h3 className="text-lg font-bold text-brand-charcoal">Safe Meetup Spots</h3>
-              <p className="text-zinc-600 text-sm leading-relaxed">
+              <h3 className="text-lg font-bold text-[#252b27]">Safe Meetup Spots</h3>
+              <p className="text-[#555d56] text-sm leading-relaxed">
                 Coordinate meetups at approved campus landmarks: Central Library, Food Court, CSE Block, ECE Block, or Main Gate.
               </p>
             </div>
 
-            <div className="flex flex-col gap-3.5 rounded-3xl bg-white p-8 border border-brand-border shadow-2xs hover:border-emerald-600/30 transition-colors">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-50 text-purple-800 border border-purple-200">
+            <div className="flex flex-col gap-3.5 rounded-2xl bg-white p-8 border border-[#dedcd4] shadow-2xs hover:border-[#204b39]/30 transition-colors">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#edf1ec] text-[#204b39] border border-[#dedcd4]">
                 <Handshake className="h-6 w-6" />
               </div>
-              <h3 className="text-lg font-bold text-brand-charcoal">Sustainable Campus</h3>
-              <p className="text-zinc-600 text-sm leading-relaxed">
+              <h3 className="text-lg font-bold text-[#252b27]">Sustainable Campus</h3>
+              <p className="text-[#555d56] text-sm leading-relaxed">
                 Save money on costly academic texts and reduce campus waste by circulating essentials between senior and junior batches.
               </p>
             </div>

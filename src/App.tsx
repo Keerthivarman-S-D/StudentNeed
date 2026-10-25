@@ -54,7 +54,7 @@ function AppContent() {
   const isRootLaunch = location.pathname === '/' && !firebaseUser;
   const isLaunchActive = isLaunchExplicit || isRootLaunch;
   const isAuthPage = ['/login', '/register', '/verify-email'].includes(location.pathname);
-  const isWarmBgPage = isAuthPage || location.pathname === '/marketplace' || location.pathname.startsWith('/listing/') || location.pathname === '/requests' || location.pathname === '/create-request' || location.pathname === '/create-listing' || location.pathname.startsWith('/chat') || location.pathname === '/profile' || location.pathname === '/reserved';
+  const isWarmBgPage = isAuthPage || location.pathname === '/' || location.pathname === '/launch' || location.pathname === '/marketplace' || location.pathname.startsWith('/listing/') || location.pathname === '/requests' || location.pathname === '/create-request' || location.pathname === '/create-listing' || location.pathname.startsWith('/chat') || location.pathname === '/profile' || location.pathname === '/reserved' || location.pathname === '/onboarding' || location.pathname === '/admin';
   const hideAppNavbar = isLaunchActive || isAuthPage;
 
   return (
