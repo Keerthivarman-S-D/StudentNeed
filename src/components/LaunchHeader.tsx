@@ -41,22 +41,6 @@ export function LaunchHeader({ variant }: { variant?: 'landing' | 'auth' } = {})
           >
             How It Works
           </button>
-          {!isAuth && (
-            <>
-              <button
-                onClick={() => scrollToSection('featured-items')}
-                className="hover:text-[#252b27] transition-colors cursor-pointer focus:outline-none"
-              >
-                Explore
-              </button>
-              <button
-                onClick={() => scrollToSection('campus-meetup')}
-                className="hover:text-[#252b27] transition-colors cursor-pointer focus:outline-none"
-              >
-                Meetup
-              </button>
-            </>
-          )}
           <button
             onClick={() => scrollToSection('about')}
             className="hover:text-[#252b27] transition-colors cursor-pointer focus:outline-none"
@@ -117,22 +101,6 @@ export function LaunchHeader({ variant }: { variant?: 'landing' | 'auth' } = {})
             >
               How It Works
             </button>
-            {!isAuth && (
-              <>
-                <button
-                  onClick={() => scrollToSection('featured-items')}
-                  className="text-left py-2 text-sm font-medium text-[#252b27] hover:text-[#204b39] border-b border-[#eae8e1]/60"
-                >
-                  Explore
-                </button>
-                <button
-                  onClick={() => scrollToSection('campus-meetup')}
-                  className="text-left py-2 text-sm font-medium text-[#252b27] hover:text-[#204b39] border-b border-[#eae8e1]/60"
-                >
-                  Meetup
-                </button>
-              </>
-            )}
             <button
               onClick={() => scrollToSection('about')}
               className="text-left py-2 text-sm font-medium text-[#252b27] hover:text-[#204b39] border-b border-[#eae8e1]/60"

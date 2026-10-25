@@ -1,37 +1,49 @@
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  ArrowRight, 
-  Search, 
-  MessageSquare, 
-  Handshake, 
-  BookOpen, 
-  Laptop, 
-  Beaker, 
-  Backpack, 
-  Tag, 
-  Clock, 
-  HeartHandshake, 
-  Repeat, 
-  HelpCircle, 
-  MapPin, 
-  Building2, 
-  Library, 
-  UtensilsCrossed, 
-  DoorOpen, 
-  Mail, 
-  Globe, 
-  Users, 
-  CheckCircle2, 
-  ShieldCheck,
+import {
+  ArrowRight,
+  Search,
+  MessageSquare,
+  Handshake,
+  MapPin,
+  Tag,
+  Clock,
+  HeartHandshake,
+  Repeat,
+  HelpCircle,
+  CheckCircle2,
+  Building2,
+  Users,
+  Heart,
   Sparkles,
-  Zap,
-  PackageCheck
+  Mail,
+  Globe
 } from 'lucide-react';
 import { LaunchHeader } from '../components/LaunchHeader';
 import { LaunchFooter } from '../components/LaunchFooter';
-import { StudentNeedIcon } from '../components/StudentNeedLogo';
+import { useAppContext } from '../context/AppContext';
+import { ListingCard } from '../components/ListingCard';
+
+interface SampleItem {
+  id: string;
+  title: string;
+  category: string;
+  condition: string;
+  campusInfo: string;
+  type: 'For Sale' | 'Donate' | 'Exchange';
+  price: string;
+  image: string;
+}
 
 export function Launch() {
+  const { listings, listingsLoading } = useAppContext();
+  
+  // Local state for sample cards wishlist
+  const [sampleWishlist, setSampleWishlist] = useState<Record<string, boolean>>({});
+  
+  // Active campus spot for the meetup section
+  const [selectedSpot, setSelectedSpot] = useState<string>('MIT Library');
+
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
     if (element) {
@@ -39,396 +51,329 @@ export function Launch() {
     }
   };
 
+  const toggleSampleWishlist = (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSampleWishlist(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  // Valid, active live listings fallback if available
+  const liveListings = listings
+    .filter(l => 
+      (l.status === 'active' || l.status === 'available') &&
+      Boolean(l.expiresAt) &&
+      new Date(l.expiresAt).getTime() > Date.now()
+    )
+    .slice(0, 4);
+
+  // Exact 4 featured items matching the reference screenshot
+  const sampleItems: SampleItem[] = [
+    {
+      id: 'sample-calc',
+      title: 'Casio Scientific Calculator',
+      category: 'Electronics',
+      condition: 'Like New',
+      campusInfo: 'Hostel 3 • Library Foyer',
+      type: 'For Sale',
+      price: '₹450',
+      image: '/images/landing/casio-calculator.jpg',
+    },
+    {
+      id: 'sample-math',
+      title: 'Engineering Mathematics',
+      category: 'Textbooks',
+      condition: 'Good',
+      campusInfo: 'Mechanical Dept',
+      type: 'For Sale',
+      price: '₹300',
+      image: '/images/landing/engineering-math.jpg',
+    },
+    {
+      id: 'sample-coat',
+      title: 'Lab Coat (Size M)',
+      category: 'Lab Essentials',
+      condition: 'Good',
+      campusInfo: 'Chemistry Lab',
+      type: 'Donate',
+      price: 'Free',
+      image: '/images/landing/lab-coat.jpg',
+    },
+    {
+      id: 'sample-arduino',
+      title: 'Arduino Kit',
+      category: 'Electronics',
+      condition: 'Like New',
+      campusInfo: 'ECE Department',
+      type: 'Exchange',
+      price: 'Exchange',
+      image: '/images/landing/arduino-kit.jpg',
+    },
+  ];
+
+  // 5 Flexible exchange options matching the reference screenshot
   const studentActions = [
     {
       title: 'Sell',
       icon: Tag,
-      color: 'bg-brand-teal-light text-brand-teal-hover border-brand-teal-border',
-      description: 'List textbooks, lab coats, calculators, or gadgets you no longer need at student-friendly prices.',
+      description: 'Sell items you no longer need at fair student prices.',
     },
     {
       title: 'Borrow',
       icon: Clock,
-      color: 'bg-blue-50 text-blue-700 border-blue-200',
-      description: 'Connect with peers when you need an item or reference book temporarily for coursework.',
+      description: 'Borrow items for short-term lab, exam, or course needs.',
     },
     {
       title: 'Donate',
       icon: HeartHandshake,
-      color: 'bg-amber-50 text-amber-700 border-amber-200',
-      description: 'Pass useful academic materials, completed notes, and supplies forward to juniors for free.',
+      description: 'Pass forward notes, books, or supplies to junior students.',
     },
     {
       title: 'Exchange',
       icon: Repeat,
-      color: 'bg-purple-50 text-purple-700 border-purple-200',
-      description: 'Swap an item directly for something you need this semester with another student.',
+      description: 'Swap course materials or equipment directly with peers.',
     },
     {
       title: 'Request',
       icon: HelpCircle,
-      color: 'bg-rose-50 text-rose-700 border-rose-200',
-      description: "Can't find something? Let other students know what you're looking for with an open request.",
+      description: "Post what you're looking for and let campus peers find it.",
     },
   ];
 
-  const categories = [
-    {
-      title: 'Textbooks',
-      icon: BookOpen,
-      color: 'bg-blue-50 text-blue-700',
-      border: 'hover:border-blue-300',
-      description: 'Coursebooks, syllabus guides, semester notes, and reference materials.',
-      tags: ['Engineering Mathematics', 'DSP', 'Data Structures', 'Semester Notes'],
-    },
-    {
-      title: 'Electronics',
-      icon: Laptop,
-      color: 'bg-purple-50 text-purple-700',
-      border: 'hover:border-purple-300',
-      description: 'Essential gadgets, development boards, components, and study accessories.',
-      tags: ['Scientific Calculators', 'Arduino', 'Raspberry Pi', 'Adapters', 'Cables'],
-    },
-    {
-      title: 'Lab Essentials',
-      icon: Beaker,
-      color: 'bg-brand-teal-light text-brand-teal-hover',
-      border: 'hover:border-brand-teal/50',
-      description: 'Mandatory workshop gear, lab attire, and drawing instruments.',
-      tags: ['Lab Coats', 'Drafting Instruments', 'Engineering Drawing Boards', 'Lab Equipment'],
-    },
-    {
-      title: 'Hostel Essentials',
-      icon: Backpack,
-      color: 'bg-orange-50 text-orange-700',
-      border: 'hover:border-orange-300',
-      description: 'Everyday living supplies, room organizers, and student accommodation items.',
-      tags: ['Study Lamps', 'Extension Cords', 'Storage Boxes', 'Room Gear'],
-    },
+  // 6 Familiar campus spots matching the reference screenshot
+  const campusSpots = [
+    { name: 'Main Gate', tip: 'Prominent landmark, well-staffed and easily accessible for day scholars and hostellers.' },
+    { name: 'MIT Library', tip: 'Air-conditioned entrance foyer with quiet surroundings, convenient between lectures.' },
+    { name: 'Hostel Zone', tip: 'Common quadrangle between hostel blocks, ideal for evening handoffs.' },
+    { name: 'Food Court', tip: 'Spacious outdoor seating area with high foot traffic during lunch hours.' },
+    { name: 'SBI ATM', tip: 'Central campus landmark near administrative offices with good lighting.' },
+    { name: 'Sports Ground', tip: 'Open pavilion area, convenient after sports practice or lab sessions.' },
   ];
 
-  const meetupLocations = [
-    { name: 'Central Library', icon: Library, hint: 'Quiet, central reference spot between lecture blocks' },
-    { name: 'CSE Block', icon: Building2, hint: 'Ground floor atrium & department plaza' },
-    { name: 'ECE Block', icon: Building2, hint: 'Electronics laboratory quad & corridors' },
-    { name: 'Food Court', icon: UtensilsCrossed, hint: 'Open seating area during campus lunch breaks' },
-    { name: 'Hostel', icon: Backpack, hint: 'Convenient hostel gates for resident students' },
-    { name: 'Main Gate', icon: DoorOpen, hint: 'Accessible rendezvous before heading off-campus' },
-  ];
-
-  const trustPrinciples = [
+  // 4 Community values matching the reference screenshot
+  const communityValues = [
     {
       title: 'Campus-focused',
-      description: 'Designed around the MIT / Anna University student community and campus life.',
       icon: Building2,
+      description: 'Exclusively for students with verified college emails.',
     },
     {
       title: 'Student-to-student',
-      description: 'Direct peer interactions without commercial intermediaries or retail markups.',
       icon: Users,
+      description: 'Direct exchanges between peers without commercial sellers.',
     },
     {
       title: 'Local meetups',
-      description: 'Students can inspect and exchange items locally on familiar campus grounds.',
       icon: MapPin,
+      description: 'Zero shipping fees. Quick handoffs between classes.',
     },
     {
       title: 'Simple exchange',
-      description: 'Students can coordinate directly through the platform before meeting.',
-      icon: Handshake,
+      icon: Repeat,
+      description: 'Sell, donate, borrow or swap what you need with ease.',
     },
   ];
 
+  const activeSpotDetail = campusSpots.find(s => s.name === selectedSpot) || campusSpots[1];
+
   return (
-    <div className="min-h-screen bg-brand-bg text-brand-charcoal flex flex-col selection:bg-brand-teal selection:text-white">
-      {/* 1. Launch Header */}
+    <div className="min-h-screen bg-[#f7f6f2] text-[#252b27] flex flex-col font-sans selection:bg-[#204b39] selection:text-white">
+      {/* 1. Header */}
       <LaunchHeader />
 
       <main className="flex-1">
         {/* 2. Hero Section */}
-        <section className="relative overflow-hidden bg-white border-b border-brand-border pt-12 pb-20 sm:pt-16 sm:pb-28 lg:pt-24 lg:pb-32">
-          {/* Subtle ambient gradient mesh */}
-          <div className="absolute inset-0 pointer-events-none opacity-40">
-            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[720px] h-[360px] bg-gradient-to-tr from-zinc-200/40 via-brand-teal-light/40 to-blue-100/40 blur-3xl rounded-full" />
-          </div>
-
-          <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <section className="relative overflow-hidden bg-[#f7f6f2] pt-12 pb-16 sm:pt-16 sm:pb-20 lg:pt-20 lg:pb-24 border-b border-[#dedcd4]">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-              {/* Left Column: Hero Content */}
-              <div className="lg:col-span-7 space-y-6 sm:space-y-8 text-center lg:text-left">
-                {/* Campus Status Badge */}
-                <div className="inline-flex items-center gap-2.5 rounded-full border border-brand-border bg-brand-bg px-3.5 py-1.5 text-xs font-medium text-brand-charcoal shadow-xs backdrop-blur-xs">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-teal opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-teal" />
-                  </span>
-                  <span className="font-semibold text-brand-charcoal">MIT Campus • Anna University</span>
-                  <span className="text-brand-muted/40">|</span>
-                  <span className="text-brand-muted">Student Marketplace</span>
+              
+              {/* Left Column: Headline and CTA */}
+              <div className="lg:col-span-7 space-y-6 sm:space-y-7 text-left">
+                {/* Badge */}
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#dedcd4] bg-[#edf1ec] px-3.5 py-1 text-xs font-semibold text-[#204b39]">
+                  <span className="h-2 w-2 rounded-full bg-[#204b39]" />
+                  Anna University • MIT Campus
                 </div>
 
-                {/* Main Headline */}
-                <h1 className="text-4xl font-extrabold tracking-tight text-brand-charcoal sm:text-5xl lg:text-6xl text-balance leading-[1.1]">
-                  What you need might already be on campus.
+                {/* Headline */}
+                <h1 className="text-4xl sm:text-5xl lg:text-[54px] font-extrabold tracking-tight text-[#252b27] leading-[1.12]">
+                  What you need might<br className="hidden sm:inline" /> already be on campus.
                 </h1>
 
                 {/* Subtitle */}
-                <p className="text-lg text-brand-muted sm:text-xl max-w-2xl mx-auto lg:mx-0 leading-relaxed font-normal">
-                  StudentNeed connects students who need something with students who already have it — within the campus.
+                <p className="text-base sm:text-lg text-[#555d56] max-w-xl leading-relaxed">
+                  StudentNeed connects students who need something with students who already have it. Buy, donate, borrow or exchange securely on campus.
                 </p>
 
-                {/* Find -> Connect -> Meet Badge */}
-                <div className="inline-flex items-center justify-center gap-2 sm:gap-3 rounded-xl border border-brand-border bg-slate-50 px-4 py-2 text-xs sm:text-sm font-semibold text-brand-charcoal">
-                  <span className="flex items-center gap-1.5">
-                    <Search className="h-3.5 w-3.5 text-brand-teal" /> Find
-                  </span>
-                  <span className="text-brand-muted/40">→</span>
-                  <span className="flex items-center gap-1.5">
-                    <MessageSquare className="h-3.5 w-3.5 text-brand-teal" /> Connect
-                  </span>
-                  <span className="text-brand-muted/40">→</span>
-                  <span className="flex items-center gap-1.5">
-                    <Handshake className="h-3.5 w-3.5 text-brand-teal" /> Meet
-                  </span>
+                {/* Compact process indicator */}
+                <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#252b27]">
+                  <span>Find</span>
+                  <span className="text-[#204b39]">→</span>
+                  <span>Connect</span>
+                  <span className="text-[#204b39]">→</span>
+                  <span>Meet</span>
                 </div>
 
-                {/* CTAs */}
-                <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5 pt-2">
+                {/* Action Buttons */}
+                <div className="flex flex-wrap items-center gap-3.5 pt-1">
                   <Link
-                    to="/login"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full bg-brand-teal px-7 py-3.5 text-base font-semibold text-white shadow-md shadow-brand-teal/20 hover:bg-brand-teal-hover transition-all hover:gap-3 active:scale-95"
+                    to="/register"
+                    className="inline-flex items-center justify-center rounded-full bg-[#204b39] px-7 py-3 text-sm font-semibold text-white shadow-xs hover:bg-[#183a2c] transition-all active:scale-95 cursor-pointer"
                   >
                     Get Started
-                    <ArrowRight className="h-4 w-4" />
                   </Link>
                   <button
+                    type="button"
                     onClick={() => scrollToSection('how-it-works')}
-                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-full border border-brand-border bg-white px-7 py-3.5 text-base font-semibold text-brand-charcoal shadow-xs hover:bg-brand-teal-light hover:border-brand-teal-border hover:text-brand-teal-hover transition-colors cursor-pointer"
+                    className="inline-flex items-center justify-center rounded-full border border-[#dedcd4] bg-white px-7 py-3 text-sm font-semibold text-[#252b27] shadow-2xs hover:bg-zinc-50 hover:border-zinc-300 transition-all cursor-pointer"
                   >
                     How It Works
                   </button>
                 </div>
 
-                {/* Campus note */}
-                <p className="text-xs text-brand-muted pt-1">
-                  Exclusively for verified students at Anna University / MIT Campus
+                {/* Footnote */}
+                <p className="text-xs text-[#717870] pt-0.5">
+                  Campus-verified students only • Safe meetups on campus
                 </p>
               </div>
 
-              {/* Right Column: Hero Visual (Lightweight CSS/SVG) */}
+              {/* Right Column: Campus handoff photograph and floating calculator listing card */}
               <div className="lg:col-span-5 relative flex justify-center">
-                <div className="relative w-full max-w-md">
-                  {/* Decorative backdrop glow */}
-                  <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-zinc-200 to-zinc-300 opacity-50 blur-xl" />
+                <div className="relative w-full max-w-md mx-auto lg:max-w-none">
+                  {/* Hero photograph container */}
+                  <div className="overflow-hidden rounded-3xl border border-[#dedcd4] bg-zinc-100 shadow-md aspect-[4/3] relative">
+                    <img
+                      src="/images/landing/hero-handoff.jpg"
+                      alt="Students exchanging study materials on campus"
+                      className="h-full w-full object-cover"
+                      loading="eager"
+                    />
+                  </div>
 
-                  {/* Main Exchange Showcase Card */}
-                  <div className="relative rounded-2xl border border-brand-border bg-white p-6 shadow-xl space-y-5">
-                    {/* Card Header */}
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-2.5 w-2.5 rounded-full bg-brand-teal" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-brand-muted">
-                          Student-to-student exchange
-                        </span>
-                      </div>
-                      <span className="inline-flex items-center rounded-full bg-brand-teal-light px-2.5 py-0.5 text-[11px] font-semibold text-brand-teal-hover border border-brand-teal-border">
-                        Ready to meet
+                  {/* Calculator Listing Card overlapping photo at bottom */}
+                  <div className="mt-4 sm:-mt-12 sm:relative sm:z-10 rounded-2xl border border-[#dedcd4] bg-white p-5 shadow-lg space-y-3 transition-transform hover:-translate-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#edf1ec] border border-[#dedcd4] px-2.5 py-0.5 text-[11px] font-semibold text-[#204b39]">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#204b39]" />
+                        Available nearby on campus
                       </span>
+                      <button
+                        type="button"
+                        onClick={(e) => toggleSampleWishlist('hero-calc', e)}
+                        className="rounded-full p-1.5 text-zinc-400 hover:text-red-500 hover:bg-zinc-50 transition-colors cursor-pointer"
+                        aria-label="Wishlist calculator"
+                      >
+                        <Heart
+                          className={`h-4 w-4 ${sampleWishlist['hero-calc'] ? 'fill-red-500 text-red-500' : 'text-zinc-400'}`}
+                        />
+                      </button>
                     </div>
 
-                    {/* Meetup location banner */}
-                    <div className="flex items-center gap-2.5 rounded-xl bg-brand-bg p-3 border border-brand-border text-xs">
-                      <MapPin className="h-4 w-4 text-brand-teal shrink-0" />
-                      <div>
-                        <p className="font-semibold text-brand-charcoal">📍 Meetup at Central Library</p>
-                        <p className="text-brand-muted text-[11px]">Today • Between class hours</p>
-                      </div>
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-[#252b27] leading-snug">
+                        Casio Scientific Calculator
+                      </h2>
+                      <p className="text-xs text-[#717870]">fx-991EX • Electronics</p>
                     </div>
 
-                    {/* Item Details */}
-                    <div className="flex items-start justify-between gap-3 p-3 rounded-xl border border-brand-border bg-white shadow-xs">
-                      <div className="space-y-1">
-                        <span className="inline-block text-[10px] font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded">
-                          Electronics
-                        </span>
-                        <h4 className="text-sm font-bold text-brand-charcoal">
-                          Casio Scientific Calculator
-                        </h4>
-                        <p className="font-mono text-xs text-brand-muted">fx-991ES Plus</p>
+                    <div className="flex items-center justify-between pt-2 border-t border-[#dedcd4]/60 text-xs">
+                      <div className="flex items-center gap-1.5 text-[#555d56]">
+                        <MapPin className="h-3.5 w-3.5 text-[#204b39] shrink-0" />
+                        <span>Library Foyer / Main Gate</span>
                       </div>
                       <div className="text-right">
-                        <span className="text-xs text-brand-muted block">Offer</span>
-                        <span className="text-base font-extrabold text-brand-charcoal">₹450</span>
+                        <span className="font-bold text-base text-[#252b27]">₹450</span>
                       </div>
                     </div>
-
-                    {/* Peer Connection Graphic */}
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div className="rounded-lg border border-brand-border bg-brand-bg p-2.5 text-center">
-                        <span className="text-[10px] uppercase font-semibold text-brand-muted block">Offering</span>
-                        <span className="text-xs font-bold text-brand-charcoal">Student A • CSE</span>
-                      </div>
-                      <div className="rounded-lg border border-brand-border bg-brand-bg p-2.5 text-center">
-                        <span className="text-[10px] uppercase font-semibold text-brand-muted block">Receiving</span>
-                        <span className="text-xs font-bold text-brand-charcoal">Student B • ECE</span>
-                      </div>
-                    </div>
-
-                    {/* Demo preview disclaimer banner */}
-                    <div className="text-center pt-1">
-                      <span className="text-[10px] font-medium text-brand-muted">
-                        Illustrative preview • Demonstrates actual campus handoff flow
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Floating mini demo card 1 (Textbook) */}
-                  <div className="absolute -top-4 -left-4 sm:-left-6 rounded-xl border border-brand-border bg-white/95 backdrop-blur-xs p-3 shadow-lg flex items-center gap-2.5 animate-bounce-slow max-w-[200px]">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600 shrink-0">
-                      <BookOpen className="h-4 w-4" />
-                    </div>
-                    <div className="overflow-hidden">
-                      <p className="text-xs font-bold text-brand-charcoal truncate">Engineering Textbook</p>
-                      <p className="text-[10px] text-brand-muted">₹300 • Handshake</p>
-                    </div>
-                  </div>
-
-                  {/* Floating mini demo card 2 (Lab Coat) */}
-                  <div className="absolute -bottom-4 -right-4 sm:-right-6 rounded-xl border border-brand-border bg-white/95 backdrop-blur-xs p-3 shadow-lg flex items-center gap-2.5 max-w-[200px]">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-teal-light text-brand-teal shrink-0">
-                      <Beaker className="h-4 w-4" />
-                    </div>
-                    <div className="overflow-hidden">
-                      <p className="text-xs font-bold text-brand-charcoal truncate">Lab Coat (Size M)</p>
-                      <p className="text-[10px] text-brand-teal-hover font-semibold">Free • Donate</p>
-                    </div>
-                  </div>
-
-                  {/* Floating mini demo card 3 (Arduino Kit) */}
-                  <div className="hidden sm:flex absolute -bottom-6 -left-4 rounded-xl border border-brand-border bg-white/95 backdrop-blur-xs p-2.5 shadow-md items-center gap-2 text-xs">
-                    <span className="h-2 w-2 rounded-full bg-purple-500" />
-                    <span className="font-semibold text-brand-charcoal text-[11px]">Arduino Kit • Exchange</span>
                   </div>
                 </div>
               </div>
+
             </div>
           </div>
         </section>
 
-        {/* 3. How It Works Section */}
-        <section id="how-it-works" className="py-20 sm:py-24 lg:py-28 bg-brand-bg">
+        {/* 3. How StudentNeed Works */}
+        <section id="how-it-works" className="py-16 sm:py-20 bg-white border-b border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="text-center max-w-2xl mx-auto space-y-4 mb-16">
-              <span className="text-xs font-bold uppercase tracking-wider text-brand-teal-hover bg-brand-teal-light border border-brand-teal-border rounded-full px-3 py-1">
-                Simple 3-Step Process
+            <div className="text-left space-y-2 mb-12">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+                Simple Three-Step Process
               </span>
-              <h2 className="text-3xl font-extrabold tracking-tight text-brand-charcoal sm:text-4xl">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
                 How StudentNeed works
               </h2>
-              <p className="text-base sm:text-lg text-brand-muted">
-                Built specifically for simple, in-person student exchanges on campus.
+              <p className="text-sm sm:text-base text-[#555d56]">
+                Exchange items in 3 simple steps without shipping or waiting.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
-              {/* Step 01 - Find */}
-              <div className="group rounded-2xl border border-brand-border bg-white p-8 shadow-xs transition-all hover:border-brand-teal/40 hover:shadow-md relative">
-                <div className="flex items-center justify-between mb-6">
-                  <span className="font-mono text-2xl font-black text-zinc-300 group-hover:text-brand-teal transition-colors">
-                    01
-                  </span>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-brand-charcoal group-hover:bg-brand-teal group-hover:text-white transition-all">
-                    <Search className="h-6 w-6" />
-                  </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Card 1: Find */}
+              <div className="rounded-2xl border border-[#dedcd4] bg-white p-7 space-y-4 hover:border-[#204b39]/40 transition-colors shadow-2xs">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#edf1ec] text-[#204b39]">
+                  <Search className="h-5 w-5" />
                 </div>
-                <h3 className="text-xl font-bold text-brand-charcoal mb-2">Find</h3>
-                <p className="text-sm text-brand-muted leading-relaxed">
-                  Search or browse listings to find something you need — textbooks, calculators, lab coats, or electronics.
+                <h3 className="text-lg font-bold text-[#252b27]">Find</h3>
+                <p className="text-xs sm:text-sm text-[#555d56] leading-relaxed">
+                  Search campus listings for textbooks, calculators, lab coats, and essentials.
                 </p>
-                <div className="mt-6 pt-4 border-t border-brand-border/60 text-xs font-semibold text-brand-muted flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-brand-teal" /> Filter by campus & category
-                </div>
               </div>
 
-              {/* Step 02 - Connect */}
-              <div className="group rounded-2xl border border-brand-border bg-white p-8 shadow-xs transition-all hover:border-brand-teal/40 hover:shadow-md relative">
-                <div className="flex items-center justify-between mb-6">
-                  <span className="font-mono text-2xl font-black text-zinc-300 group-hover:text-brand-teal transition-colors">
-                    02
-                  </span>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-brand-charcoal group-hover:bg-brand-teal group-hover:text-white transition-all">
-                    <MessageSquare className="h-6 w-6" />
-                  </div>
+              {/* Card 2: Connect */}
+              <div className="rounded-2xl border border-[#dedcd4] bg-white p-7 space-y-4 hover:border-[#204b39]/40 transition-colors shadow-2xs">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#edf1ec] text-[#204b39]">
+                  <MessageSquare className="h-5 w-5" />
                 </div>
-                <h3 className="text-xl font-bold text-brand-charcoal mb-2">Connect</h3>
-                <p className="text-sm text-brand-muted leading-relaxed">
-                  Contact another student and discuss the item directly through real-time peer chat to verify condition and terms.
+                <h3 className="text-lg font-bold text-[#252b27]">Connect</h3>
+                <p className="text-xs sm:text-sm text-[#555d56] leading-relaxed">
+                  Chat directly with the student offering the item. Agree on exchange terms.
                 </p>
-                <div className="mt-6 pt-4 border-t border-brand-border/60 text-xs font-semibold text-brand-muted flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-brand-teal" /> Direct in-app messaging
-                </div>
               </div>
 
-              {/* Step 03 - Meet */}
-              <div className="group rounded-2xl border border-brand-border bg-white p-8 shadow-xs transition-all hover:border-brand-teal/40 hover:shadow-md relative">
-                <div className="flex items-center justify-between mb-6">
-                  <span className="font-mono text-2xl font-black text-zinc-300 group-hover:text-brand-teal transition-colors">
-                    03
-                  </span>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-brand-charcoal group-hover:bg-brand-teal group-hover:text-white transition-all">
-                    <Handshake className="h-6 w-6" />
-                  </div>
+              {/* Card 3: Meet */}
+              <div className="rounded-2xl border border-[#dedcd4] bg-white p-7 space-y-4 hover:border-[#204b39]/40 transition-colors shadow-2xs">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#edf1ec] text-[#204b39]">
+                  <Handshake className="h-5 w-5" />
                 </div>
-                <h3 className="text-xl font-bold text-brand-charcoal mb-2">Meet</h3>
-                <p className="text-sm text-brand-muted leading-relaxed">
-                  Arrange a convenient campus meetup and exchange the item safely at the library, canteen, or department block.
+                <h3 className="text-lg font-bold text-[#252b27]">Meet</h3>
+                <p className="text-xs sm:text-sm text-[#555d56] leading-relaxed">
+                  Arrange a convenient campus meetup at familiar spots for safe handoffs.
                 </p>
-                <div className="mt-6 pt-4 border-t border-brand-border/60 text-xs font-semibold text-brand-muted flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-brand-teal" /> Inspect in person before trade
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom visual indicator */}
-            <div className="mt-12 text-center">
-              <div className="inline-flex items-center gap-2 text-xs font-semibold text-brand-teal-hover bg-brand-teal-light rounded-full px-4 py-2 border border-brand-teal-border shadow-xs">
-                <span>Find</span>
-                <span>→</span>
-                <span>Connect</span>
-                <span>→</span>
-                <span>Meet on Campus</span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* 4. What Students Can Do */}
-        <section className="py-20 sm:py-24 bg-white border-y border-zinc-200/80">
+        {/* 4. What Students Can Do (Flexible Campus Exchanges) */}
+        <section id="campus-exchange" className="py-16 sm:py-20 bg-[#f7f6f2] border-b border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="text-center max-w-2xl mx-auto space-y-4 mb-16">
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 bg-zinc-100 rounded-full px-3 py-1">
-                Flexible Campus Exchange
+            <div className="text-left space-y-2 mb-10">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+                Flexible Campus Exchanges
               </span>
-              <h2 className="text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
                 What students can do
               </h2>
-              <p className="text-base sm:text-lg text-zinc-600">
-                Students can list items they no longer need or request items they are looking for.
+              <p className="text-sm sm:text-base text-[#555d56]">
+                Choose the exchange type that works best for you.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {studentActions.map((action) => (
                 <div
                   key={action.title}
-                  className="rounded-2xl border border-zinc-200/80 bg-zinc-50/50 p-6 flex flex-col justify-between transition-all hover:bg-white hover:border-zinc-300 hover:shadow-sm"
+                  className="rounded-2xl border border-[#dedcd4] bg-white p-5 flex flex-col justify-between shadow-2xs hover:border-[#204b39]/40 transition-all space-y-3"
                 >
-                  <div className="space-y-4">
-                    <div className={`inline-flex p-3 rounded-xl border ${action.color}`}>
-                      <action.icon className="h-5 w-5" />
+                  <div className="space-y-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#edf1ec] text-[#204b39]">
+                      <action.icon className="h-4.5 w-4.5" />
                     </div>
-                    <h3 className="text-lg font-bold text-zinc-900">{action.title}</h3>
-                    <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed">
+                    <h3 className="text-base font-bold text-[#252b27]">{action.title}</h3>
+                    <p className="text-xs text-[#555d56] leading-relaxed">
                       {action.description}
                     </p>
                   </div>
@@ -436,276 +381,312 @@ export function Launch() {
               ))}
             </div>
 
-            <p className="text-center text-xs text-zinc-500 mt-8">
-              All interactions occur directly between peer students on the MIT Anna University campus.
+            <p className="text-xs text-[#717870] mt-6 text-left">
+              * Borrow listings are currently informational and handled through student agreement.
             </p>
           </div>
         </section>
 
-        {/* 5. What Can You Find? (Category Showcase) */}
-        <section className="py-20 sm:py-24 bg-zinc-50">
+        {/* 5. What Can You Find? (Featured Campus Items) */}
+        <section id="featured-items" className="py-16 sm:py-20 bg-white border-b border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="text-center max-w-2xl mx-auto space-y-4 mb-16">
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 bg-zinc-200/60 rounded-full px-3 py-1">
-                Campus Essentials
+            <div className="text-left space-y-2 mb-10">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+                Campus Marketplace
               </span>
-              <h2 className="text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
                 What can you find?
               </h2>
-              <p className="text-base sm:text-lg text-zinc-600">
-                Discover semester essentials, electronics, and supplies available from fellow students.
+              <p className="text-sm sm:text-base text-[#555d56]">
+                Textbooks, lab gear, calculators, electronics, and study essentials.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {categories.map((cat) => (
-                <div
-                  key={cat.title}
-                  className={`rounded-2xl border border-zinc-200 bg-white p-6 shadow-xs transition-all hover:shadow-md ${cat.border} flex flex-col justify-between`}
-                >
-                  <div className="space-y-4">
-                    <div className={`inline-flex p-3 rounded-xl ${cat.color}`}>
-                      <cat.icon className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-zinc-900">{cat.title}</h3>
-                      <p className="text-xs text-zinc-500 mt-1">{cat.description}</p>
+            {/* If live listings exist, render safely; otherwise render the exact 4 reference items */}
+            {listingsLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="animate-pulse rounded-2xl border border-[#dedcd4] bg-[#faf9f5] h-72" />
+                ))}
+              </div>
+            ) : liveListings.length >= 4 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {liveListings.map((listing) => (
+                  <ListingCard key={listing.id} listing={listing} />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {sampleItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="group flex flex-col overflow-hidden rounded-2xl border border-[#dedcd4] bg-white shadow-2xs hover:shadow-md hover:border-[#204b39]/40 transition-all"
+                  >
+                    {/* Item Image */}
+                    <div className="relative aspect-4/3 overflow-hidden bg-zinc-100">
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        loading="lazy"
+                      />
+
+                      {/* Top Left Badge */}
+                      <span className="absolute left-3 top-3 inline-block rounded-md bg-[#edf1ec] border border-[#dedcd4] px-2 py-0.5 text-[10px] font-bold text-[#204b39] shadow-2xs">
+                        {item.type}
+                      </span>
+
+                      {/* Top Right Wishlist Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => toggleSampleWishlist(item.id, e)}
+                        className="absolute right-3 top-3 rounded-full bg-white/90 p-1.5 text-zinc-400 backdrop-blur-xs transition-colors hover:text-red-500 hover:bg-white cursor-pointer shadow-xs"
+                        aria-label={`Wishlist ${item.title}`}
+                      >
+                        <Heart
+                          className={`h-4 w-4 ${sampleWishlist[item.id] ? 'fill-red-500 text-red-500' : 'text-zinc-400'}`}
+                        />
+                      </button>
                     </div>
 
-                    <div className="pt-2">
-                      <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-2">
-                        Common Items:
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {cat.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="text-[11px] font-medium bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded-md"
-                          >
-                            {tag}
-                          </span>
-                        ))}
+                    {/* Item Details */}
+                    <div className="flex flex-1 flex-col p-4 justify-between space-y-3">
+                      <div>
+                        <h3 className="line-clamp-2 text-sm font-bold text-[#252b27] group-hover:text-[#204b39] transition-colors leading-snug">
+                          {item.title}
+                        </h3>
+                        <p className="text-xs text-[#717870] mt-1">
+                          {item.category} • {item.condition}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between border-t border-[#dedcd4]/60 pt-2.5">
+                        <span className="text-sm font-bold text-[#252b27]">
+                          {item.price}
+                        </span>
+                        <span className="text-xs text-[#717870]">
+                          {item.campusInfo}
+                        </span>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+
+            {/* Bottom link to marketplace */}
+            <div className="mt-8 text-center sm:text-left">
+              <Link
+                to="/marketplace"
+                className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#204b39] hover:text-[#183a2c] hover:underline"
+              >
+                <span>Browse more listings or post what you need once you've joined with your student email.</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
             </div>
           </div>
         </section>
 
-        {/* 6. Campus-First Section */}
-        <section id="campus-first" className="py-20 sm:py-28 bg-white border-y border-brand-border">
+        {/* 6. Built for Campus, Not Shipping (Campus Meetup Section) */}
+        <section id="campus-meetup" className="py-16 sm:py-20 bg-[#f7f6f2] border-b border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-              {/* Left Column: Campus First explanation */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+              
+              {/* Left Column: Campus benefits */}
               <div className="lg:col-span-6 space-y-6">
-                <span className="text-xs font-bold uppercase tracking-wider text-brand-teal-hover bg-brand-teal-light border border-brand-teal-border rounded-full px-3 py-1">
-                  Local Student Exchange
-                </span>
-                <h2 className="text-3xl font-extrabold tracking-tight text-brand-charcoal sm:text-4xl">
-                  Built for campus, not shipping.
-                </h2>
-                <p className="text-base sm:text-lg text-brand-muted leading-relaxed">
-                  Traditional e-commerce involves high delivery charges, packaging delays, and uncertainty. StudentNeed is engineered around local student-to-student exchange on campus.
-                </p>
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+                    Campus Meetups
+                  </span>
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
+                    Built for campus, not shipping.
+                  </h2>
+                  <p className="text-sm sm:text-base text-[#555d56] leading-relaxed">
+                    All exchanges happen in person at familiar campus locations. No courier charges, no delivery delays, no strangers.
+                  </p>
+                </div>
 
-                {/* 3 feature cards */}
-                <div className="space-y-4 pt-2">
-                  <div className="flex gap-4 rounded-xl border border-brand-border bg-brand-bg p-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-teal-light text-brand-teal-hover border border-brand-teal-border font-bold text-sm">
-                      01
-                    </div>
+                <div className="space-y-3.5 pt-2">
+                  <div className="flex items-start gap-3 rounded-xl border border-[#dedcd4] bg-white p-3.5 shadow-2xs">
+                    <CheckCircle2 className="h-5 w-5 text-[#204b39] shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="text-base font-bold text-brand-charcoal">No complicated delivery</h4>
-                      <p className="text-xs sm:text-sm text-brand-muted mt-0.5">
-                        No shipping charges, packaging hassles, or tracking numbers to worry about.
+                      <h3 className="text-sm font-bold text-[#252b27]">Meet at designated, well-lit campus spots</h3>
+                      <p className="text-xs text-[#717870] mt-0.5">
+                        Libraries, canteens, and department foyers provide safe environments.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex gap-4 rounded-xl border border-brand-border bg-brand-bg p-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-teal-light text-brand-teal-hover border border-brand-teal-border font-bold text-sm">
-                      02
-                    </div>
+                  <div className="flex items-start gap-3 rounded-xl border border-[#dedcd4] bg-white p-3.5 shadow-2xs">
+                    <CheckCircle2 className="h-5 w-5 text-[#204b39] shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="text-base font-bold text-brand-charcoal">No waiting for shipping</h4>
-                      <p className="text-xs sm:text-sm text-brand-muted mt-0.5">
-                        Students can coordinate exchanges between classes or at their hostel in minutes.
+                      <h3 className="text-sm font-bold text-[#252b27]">Inspect items before completing exchange</h3>
+                      <p className="text-xs text-[#717870] mt-0.5">
+                        Verify condition, working state, and completeness on the spot.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex gap-4 rounded-xl border border-brand-border bg-brand-bg p-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-teal-light text-brand-teal-hover border border-brand-teal-border font-bold text-sm">
-                      03
-                    </div>
+                  <div className="flex items-start gap-3 rounded-xl border border-[#dedcd4] bg-white p-3.5 shadow-2xs">
+                    <CheckCircle2 className="h-5 w-5 text-[#204b39] shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="text-base font-bold text-brand-charcoal">Meet on campus</h4>
-                      <p className="text-xs sm:text-sm text-brand-muted mt-0.5">
-                        Students can arrange convenient meetup locations at familiar, safe campus spots.
+                      <h3 className="text-sm font-bold text-[#252b27]">Zero platform commission or hidden fees</h3>
+                      <p className="text-xs text-[#717870] mt-0.5">
+                        100% student-to-student. You keep the full value of your items.
                       </p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Right Column: Campus Meetup Visual */}
+              {/* Right Column: Campus spot selector card */}
               <div className="lg:col-span-6">
-                <div className="rounded-2xl border border-brand-border bg-brand-bg p-6 sm:p-8 shadow-xs space-y-6">
-                  <div className="flex items-center justify-between border-b border-brand-border pb-4">
-                    <div>
-                      <h3 className="font-bold text-brand-charcoal text-base sm:text-lg">
-                        Campus Meetup Locations
-                      </h3>
-                      <p className="text-xs text-brand-muted">Popular student handoff reference spots</p>
-                    </div>
-                    <span className="rounded-md bg-slate-200/70 px-2.5 py-1 text-[11px] font-semibold text-brand-charcoal">
-                      MIT Campus
-                    </span>
-                  </div>
-
-                  {/* Grid of locations */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {meetupLocations.map((loc) => (
-                      <div
-                        key={loc.name}
-                        className="rounded-xl border border-brand-border bg-white p-3.5 flex flex-col items-start gap-2 hover:border-brand-teal/40 transition-colors"
-                      >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-brand-charcoal">
-                          <loc.icon className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-brand-charcoal leading-tight">{loc.name}</p>
-                          <p className="text-[10px] text-brand-muted mt-0.5 line-clamp-2 leading-snug">
-                            {loc.hint}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Explicit Disclaimer */}
-                  <div className="rounded-xl bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-800 flex items-start gap-2.5">
-                    <span className="shrink-0 mt-0.5 text-sm">ℹ️</span>
-                    <p className="leading-relaxed">
-                      <strong>Note:</strong> Example student-chosen reference spots for convenient handoffs. These are suggested meetup landmarks, not official StudentNeed pickup locations.
+                <div className="rounded-2xl border border-[#dedcd4] bg-white p-6 sm:p-7 shadow-xs space-y-5">
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-[#252b27]">
+                      Choose a familiar campus spot
+                    </h3>
+                    <p className="text-xs text-[#717870] mt-0.5">
+                      Select an example campus meetup location:
                     </p>
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
 
-        {/* 7. Request Section */}
-        <section className="py-20 sm:py-24 bg-brand-bg">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="rounded-3xl border border-brand-border bg-gradient-to-br from-white via-slate-50 to-slate-100 p-8 sm:p-12 lg:p-16 shadow-xs">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-                {/* Left: Request Pitch */}
-                <div className="lg:col-span-7 space-y-6">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rose-800 bg-rose-100/70 rounded-full px-3 py-1">
-                    Student Requests
-                  </span>
-                  <h2 className="text-3xl font-extrabold tracking-tight text-brand-charcoal sm:text-4xl">
-                    Can't find what you need?
-                  </h2>
-                  <p className="text-base sm:text-lg text-brand-muted leading-relaxed">
-                    Post a request and let other students know what you're looking for. When someone on campus has the item, they can connect with you directly.
+                  {/* Spot selector chips */}
+                  <div className="flex flex-wrap gap-2">
+                    {campusSpots.map((spot) => {
+                      const isSelected = selectedSpot === spot.name;
+                      return (
+                        <button
+                          key={spot.name}
+                          type="button"
+                          onClick={() => setSelectedSpot(spot.name)}
+                          className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#204b39] text-white shadow-xs'
+                              : 'bg-[#faf9f5] text-[#252b27] border border-[#dedcd4] hover:bg-[#edf1ec]'
+                          }`}
+                        >
+                          <span>{spot.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Selected Spot Details */}
+                  <div className="rounded-xl bg-[#edf1ec] border border-[#dedcd4] p-3.5 text-xs space-y-1">
+                    <p className="font-semibold text-[#204b39] flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Selected meetup spot: {activeSpotDetail.name}
+                    </p>
+                    <p className="text-[#555d56]">
+                      {activeSpotDetail.tip}
+                    </p>
+                  </div>
+
+                  <p className="text-xs text-[#717870]">
+                    Students agree on convenient meetup spots within Anna University MIT campus grounds for quick, safe handoffs.
                   </p>
-
-                  <div className="pt-2">
-                    <Link
-                      to="/login"
-                      className="inline-flex items-center gap-2 rounded-full bg-brand-teal px-7 py-3.5 text-base font-semibold text-white shadow-md shadow-brand-teal/20 hover:bg-brand-teal-hover transition-colors"
-                    >
-                      Get Started
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                  </div>
-                </div>
-
-                {/* Right: Illustrative Request Card Preview */}
-                <div className="lg:col-span-5">
-                  <div className="rounded-2xl border border-brand-border bg-white p-6 shadow-md space-y-4">
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-100">
-                        Open Request
-                      </span>
-                      <span className="text-xs text-brand-muted">UI Demo Preview</span>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div>
-                        <span className="text-[10px] font-semibold text-brand-muted uppercase">Looking for</span>
-                        <h4 className="text-lg font-bold text-brand-charcoal">Scientific Calculator</h4>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 pt-1">
-                        <div className="rounded-lg bg-brand-bg p-2.5 border border-brand-border">
-                          <span className="text-[10px] uppercase font-semibold text-brand-muted block">Category</span>
-                          <span className="text-xs font-bold text-brand-charcoal">Electronics</span>
-                        </div>
-                        <div className="rounded-lg bg-brand-bg p-2.5 border border-brand-border">
-                          <span className="text-[10px] uppercase font-semibold text-brand-muted block">Budget</span>
-                          <span className="text-xs font-bold text-brand-charcoal">₹500</span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-lg bg-brand-bg p-2.5 border border-brand-border">
-                          <span className="text-[10px] uppercase font-semibold text-brand-muted block">Location</span>
-                          <span className="text-xs font-bold text-brand-charcoal">MIT Campus</span>
-                        </div>
-                        <div className="rounded-lg bg-brand-bg p-2.5 border border-brand-border">
-                          <span className="text-[10px] uppercase font-semibold text-brand-muted block">Requester</span>
-                          <span className="text-xs font-bold text-brand-charcoal">Student A • 2nd Year</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-2">
-                      <Link
-                        to="/login"
-                        className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-brand-charcoal py-2.5 text-xs font-semibold text-white hover:bg-brand-teal transition-colors"
-                      >
-                        I Have This Item — Message Student
-                      </Link>
-                    </div>
-                  </div>
                 </div>
               </div>
+
             </div>
           </div>
         </section>
 
-        {/* 8. Campus Community / Trust Section */}
-        <section className="py-20 sm:py-24 bg-white border-b border-brand-border">
+        {/* 7. Student Requests Section ("Can't find what you need?") */}
+        <section id="requests" className="py-16 sm:py-20 bg-white border-b border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="text-center max-w-2xl mx-auto space-y-4 mb-16">
-              <span className="text-xs font-bold uppercase tracking-wider text-brand-muted bg-slate-100 rounded-full px-3 py-1">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+
+              {/* Left pitch */}
+              <div className="lg:col-span-7 space-y-4">
+                <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+                  Student Requests
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
+                  Can't find what you need?
+                </h2>
+                <p className="text-sm sm:text-base text-[#555d56] leading-relaxed max-w-lg">
+                  Post a request to the campus board. Fellow students who have the item can message you directly.
+                </p>
+                <div className="pt-2">
+                  <Link
+                    to="/register"
+                    className="inline-flex items-center justify-center rounded-full bg-[#204b39] px-7 py-3 text-sm font-semibold text-white shadow-xs hover:bg-[#183a2c] transition-all cursor-pointer"
+                  >
+                    Get Started
+                  </Link>
+                </div>
+              </div>
+
+              {/* Right sample request preview card */}
+              <div className="lg:col-span-5">
+                <div className="rounded-2xl border border-[#dedcd4] bg-white p-5 shadow-sm space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#edf1ec] border border-[#dedcd4] px-2.5 py-0.5 text-[11px] font-semibold text-[#204b39]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#204b39]" />
+                      Active Request
+                    </span>
+                    <span className="text-[11px] text-[#717870]">Sample request</span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-base font-bold text-[#252b27]">
+                      Scientific Calculator
+                    </h3>
+                    <p className="text-xs text-[#555d56] mt-0.5">
+                      Needed by Friday for Semester Exam
+                    </p>
+                  </div>
+
+                  <div className="text-xs text-[#204b39] font-medium">
+                    Willing to pay ₹300–₹400
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-xs text-[#717870]">
+                    <MapPin className="h-3.5 w-3.5 text-[#204b39]" />
+                    <span>Hostel 2 • 2nd Year ECE</span>
+                  </div>
+
+                  <Link
+                    to="/register"
+                    className="w-full flex items-center justify-center rounded-xl bg-[#204b39] py-2.5 text-xs font-semibold text-white hover:bg-[#183a2c] transition-colors"
+                  >
+                    I have this item — Message student
+                  </Link>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        {/* 8. A Marketplace Made for Students, by Students */}
+        <section id="about" className="py-16 sm:py-20 bg-[#f7f6f2] border-b border-[#dedcd4]">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="text-left space-y-2 mb-10">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
                 Student Community
               </span>
-              <h2 className="text-3xl font-extrabold tracking-tight text-brand-charcoal sm:text-4xl">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
                 A marketplace made for students, by students.
               </h2>
-              <p className="text-base sm:text-lg text-brand-muted">
-                Built specifically around the practical reality of college life and peer sharing.
+              <p className="text-sm sm:text-base text-[#555d56]">
+                Built specifically for university campuses, starting with Anna University.
               </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {trustPrinciples.map((item) => (
+              {communityValues.map((item) => (
                 <div
                   key={item.title}
-                  className="rounded-2xl border border-brand-border bg-brand-bg/50 p-6 space-y-3 hover:border-brand-teal/40 transition-colors"
+                  className="rounded-2xl border border-[#dedcd4] bg-white p-6 space-y-3 shadow-2xs hover:border-[#204b39]/40 transition-colors"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-teal-light text-brand-teal-hover border border-brand-teal-border">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#edf1ec] text-[#204b39]">
                     <item.icon className="h-5 w-5" />
                   </div>
-                  <h3 className="text-base font-bold text-brand-charcoal">{item.title}</h3>
-                  <p className="text-xs sm:text-sm text-brand-muted leading-relaxed">
+                  <h3 className="text-base font-bold text-[#252b27]">{item.title}</h3>
+                  <p className="text-xs sm:text-sm text-[#555d56] leading-relaxed">
                     {item.description}
                   </p>
                 </div>
@@ -714,96 +695,66 @@ export function Launch() {
           </div>
         </section>
 
-        {/* 9. Final CTA Section */}
-        <section className="py-20 sm:py-24 bg-brand-charcoal text-white text-center">
-          <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 space-y-8">
-            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl text-balance">
+        {/* 9. Prominent Deep-Green CTA Banner */}
+        <section className="py-16 sm:py-20 bg-[#204b39] text-white">
+          <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center space-y-6">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight text-balance">
               Your next useful item could be one student away.
             </h2>
-            <p className="text-base sm:text-lg text-zinc-300 max-w-2xl mx-auto leading-relaxed">
-              Join StudentNeed and discover what's already available on your campus.
+            <p className="text-sm sm:text-base text-zinc-200 max-w-xl mx-auto leading-relaxed">
+              Join fellow Anna University students on the campus exchange network.
             </p>
             <div className="pt-2">
               <Link
-                to="/login"
-                className="inline-flex items-center gap-2 rounded-full bg-brand-teal px-8 py-3.5 text-base font-bold text-white shadow-lg shadow-brand-teal/25 hover:bg-brand-teal-hover transition-all hover:gap-3 active:scale-95"
+                to="/register"
+                className="inline-flex items-center justify-center rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-[#204b39] shadow-sm hover:bg-zinc-100 transition-all active:scale-95 cursor-pointer"
               >
                 Get Started
-                <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
-            <p className="text-xs text-zinc-400 pt-2">
-              Sign in with your official college email address (@student.annauniv.edu)
+            <p className="text-xs text-zinc-300">
+              Free to use • Anna University student email required
             </p>
           </div>
         </section>
 
-        {/* 10. Contact Section */}
-        <section id="contact" className="py-20 sm:py-24 bg-white">
+        {/* 10. Contact Information Panel */}
+        <section id="contact" className="py-16 sm:py-20 bg-[#f7f6f2] border-t border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="max-w-2xl mx-auto text-center space-y-4 mb-12">
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 bg-zinc-100 rounded-full px-3 py-1">
+            <div className="text-left space-y-2 mb-8">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
                 Contact
               </span>
-              <h2 className="text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
                 Get in touch
               </h2>
-              <p className="text-base text-zinc-600">
-                Have questions or feedback about StudentNeed? Connect with the campus team.
+              <p className="text-sm text-[#555d56]">
+                Have questions, feedback, or need support? We're here for the campus community.
               </p>
             </div>
 
-            <div className="max-w-3xl mx-auto rounded-2xl border border-brand-border bg-brand-bg p-8 sm:p-10 shadow-xs space-y-8">
-              <div className="flex items-center gap-3">
-                <StudentNeedIcon size="xl" />
-                <div>
-                  <h3 className="text-lg font-bold tracking-tight text-brand-charcoal">
-                    Student<span className="text-brand-teal">Need</span>
-                  </h3>
-                  <p className="text-xs text-brand-muted">Campus marketplace for students</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-2 border-t border-brand-border">
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-brand-charcoal font-semibold text-sm">
-                    <Mail className="h-4 w-4 text-brand-teal" /> Email
-                  </div>
-                  <a
-                    href="mailto:studentneed.info@gmail.com"
-                    className="text-xs text-brand-muted hover:text-brand-teal underline block transition-colors"
-                  >
-                    studentneed.info@gmail.com
-                  </a>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-brand-charcoal font-semibold text-sm">
-                    <Globe className="h-4 w-4 text-brand-teal" /> Website
-                  </div>
-                  <a
-                    href="https://studentneed.me"
-                    className="text-xs text-brand-muted hover:text-brand-teal underline block transition-colors"
-                  >
-                    studentneed.me
-                  </a>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-brand-charcoal font-semibold text-sm">
-                    <MapPin className="h-4 w-4 text-brand-teal" /> Campus
-                  </div>
-                  <p className="text-xs text-brand-muted leading-relaxed">
-                    Madras Institute of Technology (MIT Campus), Anna University, Chromepet, Chennai
-                  </p>
-                </div>
-              </div>
+            <div className="rounded-2xl border border-[#dedcd4] bg-white p-6 sm:p-8 shadow-2xs space-y-4 max-w-4xl">
+              <p className="text-sm text-[#555d56]">
+                <strong className="text-[#252b27] font-semibold">For general inquiries:</strong>{' '}
+                <a href="mailto:support@studentneed.me" className="text-[#204b39] hover:underline">
+                  support@studentneed.me
+                </a>
+              </p>
+              <p className="text-sm text-[#555d56]">
+                <strong className="text-[#252b27] font-semibold">Campus location:</strong> MIT Campus, Chromepet, Chennai
+              </p>
+              <p className="text-sm text-[#555d56]">
+                <strong className="text-[#252b27] font-semibold">Student moderators:</strong> Active daily
+              </p>
+              <p className="text-xs text-[#717870] pt-2 border-t border-[#dedcd4]/60">
+                Notice: StudentNeed is an independent student platform built for campus exchanges.
+              </p>
             </div>
           </div>
         </section>
       </main>
 
-      {/* 11. Launch Footer */}
+      {/* 11. Footer */}
       <LaunchFooter />
     </div>
   );
