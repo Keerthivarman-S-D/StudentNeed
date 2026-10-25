@@ -189,24 +189,24 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
   return (
     <div 
       id="edit-listing-modal" 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/60 backdrop-blur-xs p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#173e2d]/60 backdrop-blur-xs p-4 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-listing-title"
     >
-      <div className="relative w-full max-w-xl rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-zinc-200 my-8 space-y-5 animate-in fade-in duration-200">
+      <div className="relative w-full max-w-xl rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-[#dedcd4] my-8 space-y-5 animate-in fade-in duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-200/80">
+        <div className="flex items-center justify-between pb-3 border-b border-[#dedcd4]">
           <div>
-            <h2 id="edit-listing-title" className="text-xl font-bold text-brand-charcoal">Edit Listing</h2>
-            <p className="text-xs text-zinc-500 mt-0.5">
+            <h2 id="edit-listing-title" className="text-xl font-bold text-[#252b27]">Edit Listing</h2>
+            <p className="text-xs text-[#717870] mt-0.5">
               Update listing details while preserving security immutability guarantees
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal"
+            className="rounded-full p-2 text-[#717870] hover:bg-[#edf1ec] hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39]"
             aria-label="Close edit listing modal"
           >
             <X className="h-5 w-5" />
@@ -221,8 +221,8 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         )}
 
         {successMessage && (
-          <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-3.5 flex items-center gap-2.5 text-emerald-900 text-xs font-semibold">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+          <div className="rounded-2xl bg-[#edf1ec] border border-[#dedcd4] p-3.5 flex items-center gap-2.5 text-[#204b39] text-xs font-semibold">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-[#204b39]" />
             <span>{successMessage}</span>
           </div>
         )}
@@ -299,7 +299,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 <select
                   value={type}
                   onChange={(e) => setType(e.target.value as ActiveListingType)}
-                  className="flex h-11 w-full rounded-xl border border-brand-border bg-white px-3.5 py-2 text-sm text-brand-charcoal font-medium focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs"
+                  className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
                 >
                   <option value="Sale">Sell</option>
                   <option value="Donate">Donate</option>
@@ -317,7 +317,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as Category)}
-                  className="flex h-11 w-full rounded-xl border border-brand-border bg-white px-3.5 py-2 text-sm text-brand-charcoal font-medium focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs"
+                  className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
                 >
                   {CATEGORIES.map((cat) => (
                     <option key={cat} value={cat}>
@@ -335,7 +335,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                   <select
                     value={condition}
                     onChange={(e) => setCondition(e.target.value as Condition)}
-                    className="flex h-11 w-full rounded-xl border border-brand-border bg-white px-3.5 py-2 text-sm text-brand-charcoal font-medium focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs"
+                    className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
                   >
                     {CONDITIONS.map((cond) => (
                       <option key={cond} value={cond}>
@@ -397,7 +397,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
               <select
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                className="flex h-11 w-full rounded-xl border border-brand-border bg-white px-3.5 py-2 text-sm text-brand-charcoal font-medium focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs"
+                className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
                 required
               >
                 {!APPROVED_CAMPUS_LOCATIONS.includes(location as any) && (
@@ -432,7 +432,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="w-full rounded-xl border border-brand-border bg-white p-3.5 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs"
+                className="w-full rounded-xl border border-[#dedcd4] bg-[#faf9f5] focus:bg-white p-3.5 text-sm text-[#252b27] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
                 placeholder="Provide detailed description of the item (10–100 characters)..."
                 required
                 maxLength={100}
@@ -453,7 +453,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
               <div className="flex flex-wrap items-center gap-3">
                 {images.map((imgUrl, index) => (
-                  <div key={index} className="relative h-20 w-20 rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-100 shrink-0 shadow-2xs">
+                  <div key={index} className="relative h-20 w-20 rounded-2xl overflow-hidden border border-[#dedcd4] bg-[#faf9f5] shrink-0 shadow-2xs">
                     <img src={imgUrl} alt={`Listing photo ${index + 1}`} className="h-full w-full object-cover" />
                     <button
                       type="button"
@@ -468,12 +468,12 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 ))}
 
                 {images.length < MAX_IMAGES && (
-                  <label className="h-20 w-20 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 hover:border-emerald-500 hover:bg-emerald-50/20 bg-zinc-50/60 cursor-pointer text-zinc-500 hover:text-zinc-800 transition-all focus-within:ring-2 focus-within:ring-brand-teal">
+                  <label className="h-20 w-20 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#dedcd4] hover:border-[#204b39] hover:bg-[#edf1ec]/40 bg-[#faf9f5] cursor-pointer text-[#717870] hover:text-[#204b39] transition-all focus-within:ring-2 focus-within:ring-[#204b39]">
                     {isUploading ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-emerald-700" />
+                      <Loader2 className="h-5 w-5 animate-spin text-[#204b39]" />
                     ) : (
                       <>
-                        <ImagePlus className="h-5 w-5 mb-1 text-zinc-400" />
+                        <ImagePlus className="h-5 w-5 mb-1 text-[#717870]" />
                         <span className="text-[10px] font-bold">Add photo</span>
                       </>
                     )}
@@ -489,38 +489,38 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 )}
               </div>
               {isUploading && (
-                <p className="text-xs text-emerald-700 font-medium mt-2 flex items-center gap-1.5">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-700" />
+                <p className="text-xs text-[#204b39] font-medium mt-2 flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[#204b39]" />
                   Uploading photo…
                 </p>
               )}
             </div>
 
             {/* Security Notice on Protected Fields */}
-            <div className="rounded-2xl bg-zinc-50 border border-zinc-200 p-4 text-xs text-zinc-600 space-y-1.5">
-              <div className="font-bold text-zinc-800 flex items-center gap-1.5">
-                <ShieldAlert className="h-4 w-4 text-zinc-500" />
+            <div className="rounded-2xl bg-[#faf9f5] border border-[#dedcd4] p-4 text-xs text-[#555d56] space-y-1.5">
+              <div className="font-bold text-[#252b27] flex items-center gap-1.5">
+                <ShieldAlert className="h-4 w-4 text-[#717870]" />
                 Protected Security Attributes (Immutable)
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs pt-0.5 text-zinc-500">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs pt-0.5 text-[#717870]">
                 <div>
-                  <span className="font-semibold text-zinc-700">Listing Owner:</span> {listing.sellerId.substring(0, 10)}...
+                  <span className="font-semibold text-[#252b27]">Listing Owner:</span> {listing.sellerId.substring(0, 10)}...
                 </div>
                 <div>
-                  <span className="font-semibold text-zinc-700">Created:</span> {new Date(listing.createdAt).toLocaleDateString()}
+                  <span className="font-semibold text-[#252b27]">Created:</span> {new Date(listing.createdAt).toLocaleDateString()}
                 </div>
                 <div className="col-span-2">
-                  <span className="font-semibold text-zinc-700">Expires:</span> {new Date(listing.expiresAt).toLocaleDateString()} (Fixed: cannot be extended via edit)
+                  <span className="font-semibold text-[#252b27]">Expires:</span> {new Date(listing.expiresAt).toLocaleDateString()} (Fixed: cannot be extended via edit)
                 </div>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-100">
-              <Button type="button" variant="outline" onClick={onClose} disabled={isSaving} className="h-10">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#dedcd4]">
+              <Button type="button" variant="outline" onClick={onClose} disabled={isSaving} className="h-10 border-[#dedcd4] text-[#555d56] hover:bg-[#edf1ec] hover:text-[#204b39]">
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSaving || isUploading} className="h-10 min-w-[140px]">
+              <Button type="submit" disabled={isSaving || isUploading} className="h-10 min-w-[140px] bg-[#204b39] hover:bg-[#183a2c] text-white font-semibold shadow-xs">
                 {isSaving ? (
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />

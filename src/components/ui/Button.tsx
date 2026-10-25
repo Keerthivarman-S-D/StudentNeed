@@ -13,14 +13,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer select-none",
+          "inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer select-none",
           {
-            'bg-brand-teal text-white hover:bg-brand-teal-hover shadow-xs motion-safe:active:scale-[0.98]': variant === 'default',
-            'bg-zinc-100 text-brand-charcoal hover:bg-zinc-200 motion-safe:active:scale-[0.98]': variant === 'secondary',
-            'border border-brand-border bg-white text-brand-charcoal hover:bg-emerald-50 hover:text-emerald-900 hover:border-emerald-300 shadow-2xs motion-safe:active:scale-[0.98]': variant === 'outline',
-            'hover:bg-zinc-100 text-zinc-700 hover:text-brand-charcoal': variant === 'ghost',
+            'bg-[#204b39] text-white hover:bg-[#183a2c] shadow-xs motion-safe:active:scale-[0.98]': variant === 'default',
+            'bg-zinc-100 text-[#252b27] hover:bg-zinc-200 motion-safe:active:scale-[0.98]': variant === 'secondary',
+            'border border-[#dedcd4] bg-white text-[#252b27] hover:bg-[#edf1ec] hover:text-[#204b39] hover:border-[#204b39]/40 shadow-2xs motion-safe:active:scale-[0.98]': variant === 'outline',
+            'hover:bg-zinc-100 text-[#555d56] hover:text-[#252b27]': variant === 'ghost',
             'bg-red-600 text-white hover:bg-red-700 shadow-xs motion-safe:active:scale-[0.98]': variant === 'destructive',
-            'bg-brand-charcoal text-white hover:bg-zinc-800 shadow-xs motion-safe:active:scale-[0.98]': variant === 'charcoal',
+            'bg-[#252b27] text-white hover:bg-zinc-800 shadow-xs motion-safe:active:scale-[0.98]': variant === 'charcoal',
             'h-10 px-4 py-2': size === 'default',
             'h-9 rounded-lg px-3 text-xs': size === 'sm',
             'h-11 rounded-xl px-6 text-base': size === 'lg',

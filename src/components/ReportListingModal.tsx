@@ -92,16 +92,16 @@ export function ReportListingModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-zinc-200">
-        <div className="flex items-center justify-between pb-4 border-b border-zinc-100">
-          <div className="flex items-center gap-2 text-brand-charcoal">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#173e2d]/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl border border-[#dedcd4]">
+        <div className="flex items-center justify-between pb-4 border-b border-[#dedcd4]">
+          <div className="flex items-center gap-2 text-[#252b27]">
             <div className="p-2 rounded-xl bg-red-50 text-red-600">
               <Flag className="h-5 w-5" />
             </div>
             <div>
               <h3 className="font-bold text-base leading-tight">Report Listing</h3>
-              <p className="text-xs text-zinc-500 line-clamp-1 max-w-[280px]">
+              <p className="text-xs text-[#717870] line-clamp-1 max-w-[280px]">
                 {listingTitle}
               </p>
             </div>
@@ -109,7 +109,7 @@ export function ReportListingModal({
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 transition-colors"
+            className="rounded-lg p-1.5 text-[#717870] hover:bg-[#edf1ec] hover:text-[#204b39] transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -117,11 +117,11 @@ export function ReportListingModal({
 
         {isSuccess ? (
           <div className="py-8 text-center space-y-3">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-teal-light text-brand-teal border border-brand-teal-border">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#edf1ec] text-[#204b39] border border-[#dedcd4]">
               <CheckCircle2 className="h-6 w-6" />
             </div>
-            <h4 className="font-semibold text-brand-charcoal">Report Submitted</h4>
-            <p className="text-xs text-zinc-500 max-w-xs mx-auto">
+            <h4 className="font-semibold text-[#252b27]">Report Submitted</h4>
+            <p className="text-xs text-[#717870] max-w-xs mx-auto">
               Thank you for keeping StudentNeed safe. Campus moderators have been notified and will review this listing shortly.
             </p>
           </div>
@@ -145,7 +145,7 @@ export function ReportListingModal({
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-brand-charcoal uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#252b27] uppercase tracking-wider mb-2">
                 Reason for reporting
               </label>
               <div className="space-y-2">
@@ -154,8 +154,8 @@ export function ReportListingModal({
                     key={r}
                     className={`flex items-center gap-3 p-2.5 rounded-xl border text-sm cursor-pointer transition-colors ${
                       selectedReason === r
-                        ? 'border-brand-teal bg-brand-teal-light/50 font-medium text-brand-charcoal ring-1 ring-brand-teal/20'
-                        : 'border-zinc-200 hover:bg-brand-bg text-zinc-700'
+                        ? 'border-[#204b39] bg-[#edf1ec]/60 font-medium text-[#252b27] ring-1 ring-[#204b39]/20'
+                        : 'border-[#dedcd4] hover:bg-[#faf9f5] text-[#555d56]'
                     }`}
                   >
                     <input
@@ -164,7 +164,7 @@ export function ReportListingModal({
                       value={r}
                       checked={selectedReason === r}
                       onChange={() => setSelectedReason(r)}
-                      className="accent-brand-teal"
+                      className="accent-[#204b39]"
                     />
                     <span>{r}</span>
                   </label>
@@ -173,7 +173,7 @@ export function ReportListingModal({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-brand-charcoal uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-semibold text-[#252b27] uppercase tracking-wider mb-1.5">
                 Additional Details (Optional)
               </label>
               <textarea
@@ -182,9 +182,9 @@ export function ReportListingModal({
                 rows={3}
                 maxLength={400}
                 placeholder="Provide any specific context or details to help moderators review..."
-                className="w-full rounded-xl border border-zinc-200 p-3 text-xs outline-none focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 transition-all resize-none"
+                className="w-full rounded-xl border border-[#dedcd4] bg-[#faf9f5] p-3 text-xs outline-none focus:border-[#204b39] focus:bg-white focus:ring-2 focus:ring-[#204b39]/20 transition-all resize-none text-[#252b27]"
               />
-              <p className="text-[10px] text-zinc-400 text-right mt-1">
+              <p className="text-[10px] text-[#717870] text-right mt-1">
                 {description.length}/400
               </p>
             </div>
@@ -193,7 +193,7 @@ export function ReportListingModal({
               <Button
                 type="button"
                 variant="outline"
-                className="flex-1"
+                className="flex-1 border-[#dedcd4] text-[#555d56] hover:bg-[#edf1ec] hover:text-[#204b39]"
                 disabled={isSubmitting}
                 onClick={onClose}
               >

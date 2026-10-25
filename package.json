@@ -10,11 +10,15 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx test_requests_chat.ts && tsx test_password_security.ts && tsx test_auth_redesign.ts && tsx test_marketplace_redesign.ts && tsx test_listing_detail_redesign.ts",
+    "test": "tsx test_requests_chat.ts && tsx test_password_security.ts && tsx test_auth_redesign.ts && tsx test_marketplace_redesign.ts && tsx test_listing_detail_redesign.ts && tsx test_requests_redesign.ts && tsx test_chat_redesign.ts && tsx test_profile_redesign.ts && tsx test_integration_regression.ts",
     "test:security": "tsx test_password_security.ts",
     "test:auth": "tsx test_auth_redesign.ts",
     "test:marketplace": "tsx test_marketplace_redesign.ts",
-    "test:detail": "tsx test_listing_detail_redesign.ts"
+    "test:detail": "tsx test_listing_detail_redesign.ts",
+    "test:requests": "tsx test_requests_redesign.ts",
+    "test:chat": "tsx test_chat_redesign.ts",
+    "test:profile": "tsx test_profile_redesign.ts",
+    "test:integration": "tsx test_integration_regression.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
