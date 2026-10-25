@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   collection, 
@@ -18,11 +18,18 @@ import {
 import { db, auth } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { Chat, ChatMessage, User, Listing, Reservation, CAMPUS_MEETUP_LOCATIONS, CampusMeetupLocation, ItemRequest } from '../types';
+import { useAppContext } from '../context/AppContext';
+import { 
+  Chat, 
+  ChatMessage, 
+  User, 
+  Listing, 
+  Reservation, 
+  CAMPUS_MEETUP_LOCATIONS, 
+  CampusMeetupLocation, 
+  ItemRequest 
+} from '../types';
 import { RESERVATION_ENDPOINTS } from '../config/api';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { Badge } from '../components/ui/Badge';
 import { cn } from '../lib/utils';
 import { 
   Send, 
@@ -42,19 +49,20 @@ import {
   IndianRupee,
   ShieldCheck,
   ShieldAlert,
-  Sparkles,
+  Search,
   Package,
-  Calendar,
-  ArrowRight
+  Inbox
 } from 'lucide-react';
 
 export function ChatPage() {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { markChatAsRead } = useNotifications();
+  const { markChatAsRead, chatUnreadCounts } = useNotifications();
+  const { users } = useAppContext();
   const currentUserId = auth.currentUser?.uid || currentUser?.id;
 
+  // Active chat state
   const [chat, setChat] = useState<Chat | null>(null);
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const [listing, setListing] = useState<Listing | null>(null);
@@ -62,7 +70,7 @@ export function ChatPage() {
   const [reservation, setReservation] = useState<Reservation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(chatId));
   const [authError, setAuthError] = useState<string | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null);
   
@@ -73,7 +81,7 @@ export function ChatPage() {
   const lastSentTimestampRef = useRef<number>(0);
 
   // Reservation action states
-  const [isActionLoading, setIsActionLoading] = useState<'reserving' | 'accepting' | 'rejecting' | null>(null);
+  const [isActionLoading, setIsActionLoading] = useState<'reserving' | 'accepting' | 'rejecting' | 'completing' | 'cancelling' | null>(null);
   const [reservationError, setReservationError] = useState<string | null>(null);
   const [reservationSuccess, setReservationSuccess] = useState<string | null>(null);
 
@@ -82,6 +90,13 @@ export function ChatPage() {
   const [isMeetupLoading, setIsMeetupLoading] = useState<'proposing' | 'confirming' | 'cancelling' | null>(null);
   const [meetupError, setMeetupError] = useState<string | null>(null);
   const [meetupSuccess, setMeetupSuccess] = useState<string | null>(null);
+
+  // Conversation Sidebar state
+  const [sidebarChats, setSidebarChats] = useState<Chat[]>([]);
+  const [sidebarLoading, setSidebarLoading] = useState(true);
+  const [searchFilter, setSearchFilter] = useState('');
+  const [recentMessagesMap, setRecentMessagesMap] = useState<Record<string, { text: string; createdAt: any }>>({});
+  const [sidebarUsersMap, setSidebarUsersMap] = useState<Record<string, User>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -98,12 +113,127 @@ export function ChatPage() {
     }
   }, [messages]);
 
-  // 1. Subscribe to Chat Document and verify participant
+  // 1. Subscribe to User's Conversations for Sidebar
+  useEffect(() => {
+    if (!currentUserId) {
+      setSidebarChats([]);
+      setSidebarLoading(false);
+      return;
+    }
+
+    const chatsQuery = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', currentUserId),
+      limit(50)
+    );
+
+    const messageUnsubs: Record<string, () => void> = {};
+
+    const unsubChats = onSnapshot(
+      chatsQuery,
+      (snapshot) => {
+        const loadedChats: Chat[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            participants: data.participants || [],
+            listingId: data.listingId,
+            requestId: data.requestId,
+            reservationId: data.reservationId,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+          };
+        });
+
+        // Sort chats by recent activity
+        loadedChats.sort((a, b) => {
+          const timeA = a.updatedAt?.toMillis ? a.updatedAt.toMillis() : new Date(a.updatedAt || a.createdAt || 0).getTime();
+          const timeB = b.updatedAt?.toMillis ? b.updatedAt.toMillis() : new Date(b.updatedAt || b.createdAt || 0).getTime();
+          return timeB - timeA;
+        });
+
+        setSidebarChats(loadedChats);
+        setSidebarLoading(false);
+
+        // Fetch latest preview message for each chat
+        const currentChatIds = new Set(loadedChats.map(c => c.id));
+        Object.keys(messageUnsubs).forEach(id => {
+          if (!currentChatIds.has(id)) {
+            messageUnsubs[id]();
+            delete messageUnsubs[id];
+          }
+        });
+
+        loadedChats.forEach((c) => {
+          if (!messageUnsubs[c.id]) {
+            const lastMsgQuery = query(
+              collection(db, 'chats', c.id, 'messages'),
+              orderBy('createdAt', 'desc'),
+              limit(1)
+            );
+            messageUnsubs[c.id] = onSnapshot(lastMsgQuery, (msgSnap) => {
+              if (!msgSnap.empty) {
+                const msgData = msgSnap.docs[0].data();
+                setRecentMessagesMap((prev) => ({
+                  ...prev,
+                  [c.id]: {
+                    text: msgData.text || '',
+                    createdAt: msgData.createdAt,
+                  },
+                }));
+              }
+            }, (err) => console.warn('Sidebar message preview note:', err));
+          }
+
+          // Fetch other participant profile if not already cached
+          const otherId = c.participants.find((p) => p !== currentUserId);
+          if (otherId && !sidebarUsersMap[otherId]) {
+            const existingUser = users.find(u => u.id === otherId);
+            if (existingUser) {
+              setSidebarUsersMap(prev => ({ ...prev, [otherId]: existingUser }));
+            } else {
+              getDoc(doc(db, 'users', otherId))
+                .then((snap) => {
+                  if (snap.exists()) {
+                    setSidebarUsersMap((prev) => ({
+                      ...prev,
+                      [otherId]: { id: snap.id, ...snap.data() } as User,
+                    }));
+                  }
+                })
+                .catch(() => {});
+            }
+          }
+        });
+      },
+      (err) => {
+        console.warn('Sidebar conversations listener notice:', err);
+        setSidebarLoading(false);
+      }
+    );
+
+    return () => {
+      unsubChats();
+      Object.values(messageUnsubs).forEach((unsub) => unsub());
+    };
+  }, [currentUserId, users]);
+
+  // 2. Subscribe to Active Chat Document and verify participant
   useEffect(() => {
     if (!chatId || !currentUserId) {
       setLoading(false);
+      setChat(null);
+      setOtherUser(null);
+      setListing(null);
+      setItemRequest(null);
+      setReservation(null);
+      setMessages([]);
       return;
     }
+
+    setLoading(true);
+    setAuthError(null);
+    setGeneralError(null);
 
     const chatDocRef = doc(db, 'chats', chatId);
     const unsubscribeChat = onSnapshot(
@@ -159,6 +289,8 @@ export function ChatPage() {
           } catch (err) {
             console.error('Failed to load listing info:', err);
           }
+        } else {
+          setListing(null);
         }
 
         // Fetch request details if attached
@@ -171,6 +303,8 @@ export function ChatPage() {
           } catch (err) {
             console.error('Failed to load request info:', err);
           }
+        } else {
+          setItemRequest(null);
         }
       },
       (err) => {
@@ -189,11 +323,10 @@ export function ChatPage() {
   const isSeller = Boolean(currentUserId && sellerId && currentUserId === sellerId);
   const isBuyer = Boolean(currentUserId && buyerId && currentUserId === buyerId);
 
-  // 2. Subscribe to Reservation Document in real time
+  // 3. Subscribe to Reservation Document in real time
   useEffect(() => {
     if (!chat || !listing || !buyerId || !currentUserId) return;
 
-    // If chat already has a reservationId, listen to it directly
     if (chat.reservationId) {
       const resRef = doc(db, 'reservations', chat.reservationId);
       const unsubscribeRes = onSnapshot(
@@ -216,14 +349,11 @@ export function ChatPage() {
             setReservation(null);
           }
         },
-        (err) => {
-          console.warn('Reservation listener notice:', err);
-        }
+        (err) => console.warn('Reservation listener notice:', err)
       );
       return () => unsubscribeRes();
     }
 
-    // When reservationId is not yet on chat, use role-scoped queries to avoid permission errors on non-existent documents
     const q = isBuyer
       ? query(
           collection(db, 'reservations'),
@@ -259,15 +389,13 @@ export function ChatPage() {
           updatedAt: data.updatedAt,
         });
       },
-      (err) => {
-        console.warn('Reservation query listener notice:', err);
-      }
+      (err) => console.warn('Reservation query listener notice:', err)
     );
 
     return () => unsubscribeQuery();
   }, [chat, listing, buyerId, currentUserId, isBuyer]);
 
-  // 3. Subscribe to Messages subcollection in real time
+  // 4. Subscribe to Messages subcollection in real time
   useEffect(() => {
     if (!chatId || !currentUserId || authError) {
       return;
@@ -314,7 +442,6 @@ export function ChatPage() {
       }
     };
 
-    // Mark read on initial render or when messages array updates while viewing
     tryMarkRead();
 
     window.addEventListener('focus', tryMarkRead);
@@ -326,7 +453,7 @@ export function ChatPage() {
     };
   }, [chatId, currentUserId, authError, messages.length, markChatAsRead]);
 
-  // 4. Send Message
+  // 5. Send Message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = inputText.trim();
@@ -391,7 +518,7 @@ export function ChatPage() {
     }
   };
 
-  // 5. Reservation Handlers
+  // 6. Reservation Handlers
   const handleRequestReservation = async () => {
     setReservationError(null);
     setReservationSuccess(null);
@@ -401,7 +528,6 @@ export function ChatPage() {
       return;
     }
 
-    // Prevent student from reserving their own listing
     if (currentUserId === sellerId) {
       setReservationError('You cannot reserve your own listing.');
       return;
@@ -412,7 +538,6 @@ export function ChatPage() {
       return;
     }
 
-    // Prevent duplicate active reservations
     if (reservation && (reservation.status === 'pending' || reservation.status === 'accepted')) {
       setReservationError(`You already have an active reservation (${reservation.status}) for this item.`);
       return;
@@ -424,7 +549,6 @@ export function ChatPage() {
       const resId = `res_${listing.id}_${buyerId}`;
       const resRef = doc(db, 'reservations', resId);
 
-      // Verify server-side state via a secure query instead of getDoc to avoid permission error on non-existent doc
       const qExisting = query(
         collection(db, 'reservations'),
         where('buyerId', '==', currentUserId),
@@ -444,7 +568,6 @@ export function ChatPage() {
         }
 
         if (existingStatus === 'rejected' || existingStatus === 'cancelled') {
-          // Re-request reservation: allowed for original buyer (rejected/cancelled -> pending)
           await updateDoc(doc(db, 'reservations', existingDoc.id), {
             status: 'pending',
             updatedAt: serverTimestamp(),
@@ -460,7 +583,6 @@ export function ChatPage() {
         }
       }
 
-      // Create reservation with required fields and initial status "pending"
       await setDoc(resRef, {
         listingId: listing.id,
         buyerId: currentUserId,
@@ -471,7 +593,6 @@ export function ChatPage() {
         updatedAt: serverTimestamp(),
       });
 
-      // Update chat document with reservationId & updatedAt
       await updateDoc(doc(db, 'chats', chat.id), {
         reservationId: resId,
         updatedAt: serverTimestamp(),
@@ -492,13 +613,11 @@ export function ChatPage() {
 
     if (!reservation || !currentUserId || isActionLoading) return;
 
-    // Authorization check: Only the seller can accept or reject
     if (currentUserId !== reservation.sellerId) {
       setReservationError('Only the seller is authorized to accept or reject reservation requests.');
       return;
     }
 
-    // Status transition enforcement: only pending -> accepted or pending -> rejected
     if (reservation.status !== 'pending') {
       setReservationError(`Cannot update status: reservation is already ${reservation.status}.`);
       return;
@@ -508,11 +627,11 @@ export function ChatPage() {
 
     try {
       if (targetStatus === 'accepted') {
-        const currentUser = auth.currentUser;
-        if (!currentUser) {
+        const user = auth.currentUser;
+        if (!user) {
           throw new Error('You must be signed in to accept a reservation.');
         }
-        const idToken = await currentUser.getIdToken();
+        const idToken = await user.getIdToken();
         const response = await fetch(RESERVATION_ENDPOINTS.accept, {
           method: 'POST',
           headers: {
@@ -532,7 +651,6 @@ export function ChatPage() {
           updatedAt: serverTimestamp(),
         });
 
-        // Synchronize listing status to available if rejected
         if (listing?.id && currentUserId === listing.sellerId) {
           await updateDoc(doc(db, 'listings', listing.id), {
             status: 'available',
@@ -541,7 +659,6 @@ export function ChatPage() {
         }
       }
 
-      // Also update chat timestamp
       if (chat?.id) {
         await updateDoc(doc(db, 'chats', chat.id), {
           updatedAt: serverTimestamp(),
@@ -565,7 +682,6 @@ export function ChatPage() {
     }
   };
 
-  // Legitimate Exchange Completion (Accepted -> Completed)
   const handleCompleteExchange = async () => {
     setReservationError(null);
     setReservationSuccess(null);
@@ -582,17 +698,17 @@ export function ChatPage() {
       return;
     }
 
-    setIsActionLoading('completing' as any);
+    setIsActionLoading('completing');
 
     try {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const idToken = await currentUser.getIdToken();
+      const user = auth.currentUser;
+      if (user) {
+        const idToken = await user.getIdToken();
         const response = await fetch('/api/reservations/complete', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}`,
+            Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({ reservationId: reservation.id }),
         });
@@ -623,7 +739,6 @@ export function ChatPage() {
     }
   };
 
-  // Reservation Cancellation (Pending -> Cancelled by Buyer, Accepted -> Cancelled by Buyer or Seller)
   const handleCancelReservation = async () => {
     setReservationError(null);
     setReservationSuccess(null);
@@ -649,12 +764,12 @@ export function ChatPage() {
       return;
     }
 
-    setIsActionLoading('cancelling' as any);
+    setIsActionLoading('cancelling');
 
     try {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const idToken = await currentUser.getIdToken();
+      const user = auth.currentUser;
+      if (user) {
+        const idToken = await user.getIdToken();
         const response = await fetch('/api/reservations/cancel', {
           method: 'POST',
           headers: {
@@ -690,7 +805,7 @@ export function ChatPage() {
     }
   };
 
-  // Campus Meetup Handlers (Only for Accepted Reservations)
+  // Campus Meetup Handlers
   const handleProposeMeetup = async (locationOverride?: CampusMeetupLocation) => {
     setMeetupError(null);
     setMeetupSuccess(null);
@@ -699,19 +814,16 @@ export function ChatPage() {
 
     if (!reservation || !currentUserId || isMeetupLoading) return;
 
-    // Must be accepted
     if (reservation.status !== 'accepted') {
       setMeetupError('A meetup can only be arranged once the reservation has been accepted.');
       return;
     }
 
-    // Must be participant
     if (currentUserId !== reservation.buyerId && currentUserId !== reservation.sellerId) {
       setMeetupError('Only the buyer or seller can arrange campus meetup locations.');
       return;
     }
 
-    // Must be valid predefined location
     if (!loc || !CAMPUS_MEETUP_LOCATIONS.includes(loc as any)) {
       setMeetupError('Please select a valid campus meetup location.');
       return;
@@ -853,7 +965,7 @@ export function ChatPage() {
     }
   };
 
-  // Helper to format timestamp
+  // Timestamp formatting
   const formatTime = (timestamp: any) => {
     if (!timestamp) return '';
     const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -873,7 +985,36 @@ export function ChatPage() {
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
 
-  // Quick conversation starters for students
+  const formatRelativeTime = (timestamp: any) => {
+    if (!timestamp) return '';
+    const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+    const ms = date.getTime();
+    if (isNaN(ms)) return '';
+    const diff = Date.now() - ms;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d`;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  // Filtered sidebar conversations
+  const filteredSidebarChats = useMemo(() => {
+    if (!searchFilter.trim()) return sidebarChats;
+    const q = searchFilter.toLowerCase().trim();
+    return sidebarChats.filter((c) => {
+      const otherId = c.participants.find((p) => p !== currentUserId);
+      const user = otherId ? sidebarUsersMap[otherId] : null;
+      const userName = user?.name?.toLowerCase() || '';
+      const previewText = recentMessagesMap[c.id]?.text?.toLowerCase() || '';
+      return userName.includes(q) || previewText.includes(q) || c.id.toLowerCase().includes(q);
+    });
+  }, [sidebarChats, searchFilter, currentUserId, sidebarUsersMap, recentMessagesMap]);
+
+  // Quick conversation starters for empty chats
   const quickStarters = listing
     ? [
         'Hi! Is this still available?',
@@ -891,850 +1032,802 @@ export function ChatPage() {
         'When is a convenient time to meet on campus?'
       ];
 
-  // Loading View
-  if (loading) {
-    return (
-      <div className="flex h-[calc(100vh-8rem)] flex-col items-center justify-center space-y-4">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-        <p className="text-sm font-medium text-zinc-600">Loading conversation...</p>
-      </div>
-    );
-  }
-
-  // Unauthorized / Auth Error View
-  if (authError) {
-    return (
-      <div className="mx-auto max-w-md px-4 py-16 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600 border border-red-200">
-          <AlertCircle className="h-7 w-7" />
-        </div>
-        <h2 className="text-xl font-bold text-zinc-900 mb-2">Access Denied</h2>
-        <p className="text-sm text-zinc-600 mb-6">{authError}</p>
-        <Button onClick={() => navigate('/marketplace')} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium">
-          Back to Marketplace
-        </Button>
-      </div>
-    );
-  }
-
-  // General Error View
-  if (generalError && !chat) {
-    return (
-      <div className="mx-auto max-w-md px-4 py-16 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 border border-amber-200">
-          <AlertCircle className="h-7 w-7" />
-        </div>
-        <h2 className="text-xl font-bold text-zinc-900 mb-2">Unable to Load Conversation</h2>
-        <p className="text-sm text-zinc-600 mb-6">{generalError}</p>
-        <Button onClick={() => window.location.reload()} variant="outline" className="w-full border-zinc-300">
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-4xl px-3 py-3 sm:px-6 sm:py-5">
-      <div className="flex h-[calc(100vh-9.5rem)] md:h-[calc(100vh-7.5rem)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+    <div className="min-h-screen bg-[#f7f6f2] text-[#252b27]">
+      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
         
-        {/* Chat Header */}
-        <div className="flex items-center justify-between border-b border-zinc-200/90 bg-white px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate(-1)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20"
-              aria-label="Back to conversations"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
+        {/* Main 2-Panel Card */}
+        <div className="flex h-[calc(100vh-6.5rem)] sm:h-[calc(100vh-7.5rem)] overflow-hidden rounded-2xl border border-[#dedcd4] bg-white shadow-xs">
+          
+          {/* ========================================================= */}
+          {/* LEFT PANEL: Conversation Sidebar                           */}
+          {/* ========================================================= */}
+          <aside 
+            className={cn(
+              "w-full md:w-80 lg:w-96 flex flex-col border-r border-[#dedcd4] bg-white shrink-0",
+              chatId ? "hidden md:flex" : "flex"
+            )}
+            aria-label="Conversation list"
+          >
+            {/* Sidebar Header */}
+            <div className="p-4 border-b border-[#dedcd4]">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold tracking-tight text-[#252b27]">Messages</h1>
+                  {sidebarChats.length > 0 && (
+                    <span className="rounded-full bg-[#edf1ec] px-2 py-0.5 text-xs font-semibold text-[#204b39]">
+                      {sidebarChats.length}
+                    </span>
+                  )}
+                </div>
+              </div>
 
-            <div className="flex items-center gap-3">
-              {otherUser?.avatarUrl ? (
-                <img
-                  src={otherUser.avatarUrl}
-                  alt={otherUser.name || 'Student'}
-                  className="h-10 w-10 rounded-full object-cover border border-zinc-200 ring-2 ring-emerald-500/20"
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#717870]" />
+                <input
+                  type="text"
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  placeholder="Search conversations..."
+                  className="h-9 w-full rounded-xl border border-[#dedcd4] bg-[#f7f6f2] pl-8 pr-8 text-xs text-[#252b27] placeholder:text-[#8a918a] outline-none transition-colors focus:border-[#204b39] focus:bg-white"
                 />
-              ) : (
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-700 text-sm font-semibold text-white ring-2 ring-emerald-500/20 shadow-xs">
-                  {(otherUser?.name || 'S').charAt(0).toUpperCase()}
-                </div>
-              )}
-
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <h2 className="text-sm font-semibold text-zinc-900 sm:text-base">
-                    {otherUser?.name || 'Student'}
-                  </h2>
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 border border-emerald-200">
-                    <ShieldCheck className="h-3 w-3 text-emerald-700" />
-                    Verified
-                  </span>
-                </div>
-                <p className="text-xs text-zinc-500">
-                  {otherUser?.department ? `${otherUser.department} • ` : ''}Anna University
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Attached Listing Preview Pill (Desktop) */}
-          {listing && (
-            <Link
-              to={`/listing/${listing.id}`}
-              className="hidden sm:flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-all hover:border-emerald-300 hover:bg-emerald-50/60 hover:text-emerald-900 shadow-2xs"
-              title="View item details"
-            >
-              <Package className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-              <span className="max-w-[160px] truncate">{listing.title}</span>
-              {listing.price !== undefined && (
-                <span className="font-bold text-zinc-900">₹{listing.price}</span>
-              )}
-              <ExternalLink className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-            </Link>
-          )}
-
-          {/* Attached Request Preview Pill (Desktop) */}
-          {itemRequest && (
-            <Link
-              to="/requests"
-              className="hidden sm:flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-all hover:border-emerald-300 hover:bg-emerald-50/60 hover:text-emerald-900 shadow-2xs"
-              title="View campus requests"
-            >
-              <MessageSquare className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-              <span className="max-w-[160px] truncate">Request: {itemRequest.title}</span>
-              <ExternalLink className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-            </Link>
-          )}
-        </div>
-
-        {/* Attached Listing Mobile Strip */}
-        {listing && (
-          <div className="flex items-center justify-between border-b border-zinc-200/70 bg-zinc-50/90 px-4 py-2 sm:hidden text-xs">
-            <div className="flex items-center gap-1.5 truncate mr-2">
-              <Package className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-              <span className="text-zinc-500 truncate">
-                Item: <strong className="text-zinc-800">{listing.title}</strong>
-              </span>
-              {listing.price !== undefined && (
-                <span className="font-bold text-zinc-900 ml-1">₹{listing.price}</span>
-              )}
-            </div>
-            <Link 
-              to={`/listing/${listing.id}`} 
-              className="text-emerald-700 font-semibold hover:underline shrink-0 flex items-center gap-0.5"
-            >
-              View Item
-              <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
-        )}
-
-        {/* Attached Request Mobile Strip */}
-        {itemRequest && (
-          <div className="flex items-center justify-between border-b border-zinc-200/70 bg-zinc-50/90 px-4 py-2 sm:hidden text-xs">
-            <div className="flex items-center gap-1.5 truncate mr-2">
-              <MessageSquare className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-              <span className="text-zinc-500 truncate">
-                Request: <strong className="text-zinc-800">{itemRequest.title}</strong>
-              </span>
-            </div>
-            <Link 
-              to="/requests" 
-              className="text-emerald-700 font-semibold hover:underline shrink-0 flex items-center gap-0.5"
-            >
-              View Request
-              <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
-        )}
-
-        {/* Reservation Status & Action Bar */}
-        {listing && (
-          <div className="border-b border-zinc-200 bg-zinc-50/90 px-4 py-3 sm:px-6">
-            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-              {/* Left Side: Listing Info & Status Badge */}
-              <div className="flex items-start sm:items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
-                  <Tag className="h-4 w-4" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-zinc-900 truncate max-w-[180px] sm:max-w-[240px]">
-                      {listing.title}
-                    </span>
-                    {listing.price !== undefined && (
-                      <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                        ₹{listing.price}
-                      </span>
-                    )}
-
-                    {/* Status Badge */}
-                    {listing.status === 'cancelled' ? (
-                      <Badge variant="destructive" className="gap-1 font-medium bg-red-600 text-white">
-                        Cancelled
-                      </Badge>
-                    ) : reservation?.status === 'pending' ? (
-                      <Badge variant="warning" className="gap-1 font-medium bg-amber-50 text-amber-800 border-amber-200">
-                        <Clock className="h-3 w-3 text-amber-600" />
-                        Pending Confirmation
-                      </Badge>
-                    ) : reservation?.status === 'accepted' ? (
-                      <Badge variant="success" className="gap-1 font-medium bg-emerald-50 text-emerald-800 border-emerald-200">
-                        <Check className="h-3 w-3 text-emerald-600" />
-                        Reserved
-                      </Badge>
-                    ) : reservation?.status === 'rejected' ? (
-                      <Badge variant="secondary" className="gap-1 font-medium text-zinc-700 bg-zinc-100 border-zinc-200">
-                        <X className="h-3 w-3" />
-                        Declined
-                      </Badge>
-                    ) : reservation?.status === 'cancelled' ? (
-                      <Badge variant="secondary" className="gap-1 font-medium text-zinc-600 bg-zinc-100 border-zinc-200">
-                        <X className="h-3 w-3" />
-                        Cancelled
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-zinc-600 font-normal border-zinc-300">
-                        No active reservation
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Contextual Description */}
-                  <p className="text-[11px] text-zinc-600 mt-1">
-                    {listing.status === 'cancelled' && 'This listing has been cancelled by the seller.'}
-                    {listing.status !== 'cancelled' && reservation?.status === 'pending' && isBuyer && 'Your reservation request is pending seller confirmation.'}
-                    {listing.status !== 'cancelled' && reservation?.status === 'pending' && isSeller && `Incoming reservation request from ${otherUser?.name || 'student'}. Accept to coordinate pickup.`}
-                    {listing.status !== 'cancelled' && reservation?.status === 'accepted' && 'Item is reserved. Coordinate campus meetup point below.'}
-                    {listing.status !== 'cancelled' && reservation?.status === 'rejected' && 'The reservation request for this listing was declined.'}
-                    {listing.status !== 'cancelled' && reservation?.status === 'cancelled' && 'This reservation was cancelled.'}
-                    {listing.status !== 'cancelled' && !reservation && isBuyer && 'Interested in this item? Request to reserve it from the seller.'}
-                    {listing.status !== 'cancelled' && !reservation && isSeller && 'Waiting for student reservation request.'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Right Side: Dynamic Action Buttons */}
-              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                {/* Cancelled Listing notice for Buyer */}
-                {isBuyer && listing.status === 'cancelled' && (
-                  <span className="text-xs text-red-600 font-medium">Listing Cancelled</span>
-                )}
-
-                {/* Buyer: Request Reservation button */}
-                {isBuyer && listing.status !== 'cancelled' && (!reservation || reservation.status === 'rejected' || reservation.status === 'cancelled') && (
-                  <Button
-                    size="sm"
-                    onClick={handleRequestReservation}
-                    disabled={isActionLoading === 'reserving'}
-                    className="gap-1.5 text-xs h-8 px-3 font-medium bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs"
+                {searchFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchFilter('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-[#717870] hover:text-[#252b27]"
                   >
-                    {isActionLoading === 'reserving' ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <BookmarkCheck className="h-3.5 w-3.5" />
-                    )}
-                    {isActionLoading === 'reserving'
-                      ? 'Requesting...'
-                      : reservation?.status === 'rejected'
-                      ? 'Re-request Reservation'
-                      : reservation?.status === 'cancelled'
-                      ? 'Reserve Again'
-                      : 'Request Reservation'}
-                  </Button>
-                )}
-
-                {/* Buyer: Cancel Pending Request button */}
-                {isBuyer && reservation?.status === 'pending' && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleCancelReservation}
-                    disabled={isActionLoading !== null}
-                    className="gap-1 text-xs h-8 px-3 font-medium border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
-                  >
-                    {isActionLoading === ('cancelling' as any) ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <X className="h-3.5 w-3.5" />
-                    )}
-                    Cancel Request
-                  </Button>
-                )}
-
-                {/* Seller: Accept / Reject buttons */}
-                {isSeller && reservation?.status === 'pending' && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleUpdateReservationStatus('accepted')}
-                      disabled={isActionLoading !== null}
-                      className="gap-1 text-xs h-8 px-3 font-medium bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-                    >
-                      {isActionLoading === 'accepting' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Check className="h-3.5 w-3.5" />
-                      )}
-                      Accept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleUpdateReservationStatus('rejected')}
-                      disabled={isActionLoading !== null}
-                      className="gap-1 text-xs h-8 px-3 font-medium border-zinc-300 text-zinc-700 hover:bg-zinc-100"
-                    >
-                      {isActionLoading === 'rejecting' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <X className="h-3.5 w-3.5" />
-                      )}
-                      Reject
-                    </Button>
-                  </div>
-                )}
-
-                {/* Complete Exchange and Cancel Actions (Only when Accepted) */}
-                {reservation?.status === 'accepted' && (currentUserId === reservation.buyerId || currentUserId === reservation.sellerId) && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={handleCompleteExchange}
-                      disabled={isActionLoading !== null}
-                      className="gap-1.5 text-xs h-8 px-3 font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs"
-                    >
-                      {isActionLoading === ('completing' as any) ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-white" />
-                      )}
-                      Complete Exchange
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleCancelReservation}
-                      disabled={isActionLoading !== null}
-                      className="gap-1 text-xs h-8 px-2.5 font-medium border-red-200 text-red-600 hover:bg-red-50"
-                    >
-                      {isActionLoading === ('cancelling' as any) ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <X className="h-3.5 w-3.5" />
-                      )}
-                      Cancel
-                    </Button>
-                  </div>
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 )}
               </div>
             </div>
 
-            {/* Notification messages for reservation actions */}
-            {reservationError && (
-              <div className="mt-2.5 flex items-center justify-between rounded-xl bg-red-50 p-2.5 text-xs text-red-700 border border-red-200">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
-                  <span>{reservationError}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setReservationError(null)}
-                  className="text-zinc-500 hover:text-zinc-700 ml-2 p-0.5 rounded focus:outline-hidden"
-                  aria-label="Dismiss error"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-
-            {reservationSuccess && (
-              <div className="mt-2.5 flex items-center justify-between rounded-xl bg-emerald-50 p-2.5 text-xs text-emerald-800 border border-emerald-200">
-                <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 shrink-0 text-emerald-600" />
-                  <span>{reservationSuccess}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setReservationSuccess(null)}
-                  className="text-emerald-700 hover:text-emerald-900 ml-2 p-0.5 rounded focus:outline-hidden"
-                  aria-label="Dismiss message"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-
-            {/* Campus Meetup Section - ONLY for ACCEPTED Reservations */}
-            {reservation?.status === 'accepted' && (
-              <div className="mt-3.5 pt-3.5 border-t border-zinc-200">
-                {/* Section Header */}
-                <div className="flex items-center justify-between mb-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
-                      <MapPin className="h-3.5 w-3.5" />
-                    </div>
-                    <span className="text-xs font-bold text-zinc-900 uppercase tracking-wider">
-                      Campus Meetup Point
-                    </span>
-                  </div>
-
-                  {/* Status Badge */}
-                  {(!reservation.meetup || reservation.meetup.status === 'not_set') && (
-                    <Badge variant="outline" className="text-zinc-600 bg-white border-zinc-300 text-[11px]">
-                      Not Set
-                    </Badge>
-                  )}
-                  {reservation.meetup?.status === 'proposed' && (
-                    <Badge variant="warning" className="gap-1 font-medium text-[11px] bg-amber-50 text-amber-800 border-amber-200">
-                      <Clock className="h-3 w-3 text-amber-600" />
-                      Proposal Pending
-                    </Badge>
-                  )}
-                  {reservation.meetup?.status === 'confirmed' && (
-                    <Badge variant="success" className="gap-1 font-medium text-[11px] bg-emerald-50 text-emerald-800 border-emerald-200">
-                      <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                      Confirmed
-                    </Badge>
-                  )}
-                  {reservation.meetup?.status === 'cancelled' && (
-                    <Badge variant="secondary" className="gap-1 font-medium text-[11px] bg-zinc-100 text-zinc-700 border-zinc-200">
-                      <X className="h-3 w-3" />
-                      Cancelled
-                    </Badge>
-                  )}
-                </div>
-
-                {/* Sub-view based on Meetup Status */}
-                {/* State 1: Not Set or Cancelled */}
-                {(!reservation.meetup || reservation.meetup.status === 'not_set' || reservation.meetup.status === 'cancelled') && (
-                  <div className="rounded-xl border border-zinc-200 bg-white p-3.5 space-y-3 shadow-2xs">
-                    <div>
-                      <p className="text-xs font-semibold text-zinc-900">
-                        Select a campus exchange landmark
-                      </p>
-                      <p className="text-[11px] text-zinc-500 mt-0.5">
-                        Choose a safe, well-lit campus location to meet in person for the item handover.
-                      </p>
-                    </div>
-
-                    {/* Predefined Campus Locations Selector */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {CAMPUS_MEETUP_LOCATIONS.map((loc) => {
-                        const isSelected = selectedMeetupLocation === loc;
-                        return (
-                          <button
-                            key={loc}
-                            type="button"
-                            onClick={() => setSelectedMeetupLocation(loc)}
-                            className={cn(
-                              'flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium border transition-all text-left focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20',
-                              isSelected
-                                ? 'border-emerald-600 bg-emerald-600 text-white shadow-xs'
-                                : 'border-zinc-200 bg-zinc-50/70 text-zinc-800 hover:bg-zinc-100 hover:border-emerald-300'
-                            )}
-                          >
-                            <Building2 className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-white' : 'text-zinc-500')} />
-                            <span className="truncate">{loc}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-zinc-500">
-                        {selectedMeetupLocation ? `Selected: ${selectedMeetupLocation}` : 'Pick a location to propose'}
-                      </span>
-                      <Button
-                        size="sm"
-                        disabled={!selectedMeetupLocation || isMeetupLoading !== null}
-                        onClick={() => handleProposeMeetup()}
-                        className="text-xs h-8 px-3.5 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs"
-                      >
-                        {isMeetupLoading === 'proposing' ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <MapPin className="h-3.5 w-3.5" />
-                        )}
-                        Propose Location
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* State 2: Proposed */}
-                {reservation.meetup?.status === 'proposed' && (
-                  <div className={cn(
-                    'rounded-xl border p-3.5 space-y-3',
-                    reservation.meetup.proposedBy === currentUserId
-                      ? 'border-amber-200 bg-amber-50/60'
-                      : 'border-blue-200 bg-blue-50/60'
-                  )}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2.5">
-                        <div className={cn(
-                          'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                          reservation.meetup.proposedBy === currentUserId
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-blue-100 text-blue-800'
-                        )}>
-                          <MapPin className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-zinc-900">
-                            {reservation.meetup.proposedBy === currentUserId ? (
-                              <>You proposed meeting at <strong className="text-amber-950 underline decoration-amber-300">{reservation.meetup.location}</strong></>
-                            ) : (
-                              <><strong className="text-blue-950">{otherUser?.name || 'Other student'}</strong> proposed meeting at <strong className="underline decoration-blue-300">{reservation.meetup.location}</strong></>
-                            )}
-                          </p>
-                          <p className="text-[11px] text-zinc-600 mt-0.5">
-                            {reservation.meetup.proposedBy === currentUserId
-                              ? `Waiting for ${otherUser?.name || 'the other student'} to confirm this location.`
-                              : 'Review this campus location. Confirm if it works for you, or suggest another.'}
-                          </p>
-                        </div>
+            {/* Conversation Threads List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-[#dedcd4]/60">
+              {sidebarLoading ? (
+                <div className="p-4 space-y-3">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-zinc-200 animate-pulse shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-4 w-28 rounded bg-zinc-200 animate-pulse" />
+                        <div className="h-3 w-40 rounded bg-zinc-200 animate-pulse" />
                       </div>
                     </div>
-
-                    {/* Action buttons */}
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      {reservation.meetup.proposedBy !== currentUserId ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleCancelMeetup}
-                            disabled={isMeetupLoading !== null}
-                            className="text-xs h-8 px-3 border-zinc-300 text-zinc-700 hover:bg-white"
-                          >
-                            Suggest Different Spot
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={handleConfirmMeetup}
-                            disabled={isMeetupLoading !== null}
-                            className="text-xs h-8 px-3 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-                          >
-                            {isMeetupLoading === 'confirming' ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Check className="h-3.5 w-3.5" />
-                            )}
-                            Confirm Meetup at {reservation.meetup.location}
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleCancelMeetup}
-                          disabled={isMeetupLoading !== null}
-                          className="text-xs h-8 px-3 border-amber-300 text-amber-900 hover:bg-amber-100/70"
-                        >
-                          {isMeetupLoading === 'cancelling' ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <X className="h-3.5 w-3.5" />
-                          )}
-                          Cancel Proposal
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* State 3: Confirmed */}
-                {reservation.meetup?.status === 'confirmed' && (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 space-y-2.5">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-2xs">
-                          <MapPin className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-zinc-900">
-                              Confirmed Meetup Point
-                            </span>
-                            <Badge variant="success" className="text-[10px] py-0 px-1.5 bg-emerald-100 text-emerald-800 border-emerald-300">
-                              Agreed
-                            </Badge>
-                          </div>
-                          <p className="text-sm font-extrabold text-emerald-900 mt-0.5">
-                            {reservation.meetup.location}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleCancelMeetup}
-                          disabled={isMeetupLoading !== null}
-                          className="text-xs h-7 px-2.5 border-emerald-300 text-emerald-800 hover:bg-white"
-                        >
-                          {isMeetupLoading === 'cancelling' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <X className="h-3 w-3" />
-                          )}
-                          Change Location
-                        </Button>
-                      </div>
-                    </div>
-
-                    <p className="text-[11px] text-zinc-700 leading-relaxed border-t border-emerald-200/80 pt-2">
-                      Both students agreed to meet at <strong>{reservation.meetup.location}</strong>. Meet during daylight hours and inspect the item before completing the handover.
-                    </p>
-                  </div>
-                )}
-
-                {/* Meetup Error and Success notifications */}
-                {meetupError && (
-                  <div className="mt-2.5 flex items-center justify-between rounded-xl bg-red-50 p-2.5 text-xs text-red-700 border border-red-200">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-600" />
-                      <span>{meetupError}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setMeetupError(null)}
-                      className="text-zinc-500 hover:text-zinc-700 ml-2 p-0.5 rounded focus:outline-hidden"
-                      aria-label="Dismiss error"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-
-                {meetupSuccess && (
-                  <div className="mt-2.5 flex items-center justify-between rounded-xl bg-emerald-50 p-2.5 text-xs text-emerald-800 border border-emerald-200">
-                    <div className="flex items-center gap-2">
-                      <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                      <span>{meetupSuccess}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setMeetupSuccess(null)}
-                      className="text-emerald-700 hover:text-emerald-900 ml-2 p-0.5 rounded focus:outline-hidden"
-                      aria-label="Dismiss message"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Request Context Bar */}
-        {itemRequest && (
-          <div className="border-b border-zinc-200 bg-zinc-50/90 px-4 py-3 sm:px-6">
-            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 mt-0.5 border border-emerald-200 shadow-2xs">
-                  <MessageSquare className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-zinc-900 truncate max-w-[180px] sm:max-w-[260px]">
-                      {itemRequest.title}
-                    </span>
-                    {itemRequest.budget && (
-                      <span className="flex items-center text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                        <IndianRupee className="h-3 w-3 mr-0.5" />
-                        Budget: ₹{itemRequest.budget}
-                      </span>
-                    )}
-                    <Badge
-                      variant={itemRequest.status === 'open' ? 'default' : itemRequest.status === 'matched' ? 'success' : 'secondary'}
-                      className="text-[10px] py-0 px-1.5 font-medium"
-                    >
-                      {itemRequest.status.charAt(0).toUpperCase() + itemRequest.status.slice(1)}
-                    </Badge>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 mt-1">
-                    {itemRequest.location && (
-                      <span className="flex items-center gap-1">
-                        <MapPin className="h-3 w-3 text-emerald-600" />
-                        {itemRequest.location}
-                      </span>
-                    )}
-                    {itemRequest.neededBy && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3 text-zinc-400" />
-                        Needed by: {itemRequest.neededBy}
-                      </span>
-                    )}
-                    <span className="text-zinc-400">• Campus Request</span>
-                  </div>
-
-                  {itemRequest.description && (
-                    <p className="text-[11px] text-zinc-600 line-clamp-1 italic mt-1">
-                      "{itemRequest.description}"
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="self-end sm:self-auto shrink-0">
-                <Link to="/requests">
-                  <Button size="sm" variant="outline" className="text-xs h-7 px-2.5 text-zinc-700 border-zinc-300 hover:bg-zinc-100">
-                    Back to Requests
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* In-Chat Safety Notice Banner */}
-        <div className="border-b border-amber-200/80 bg-amber-50/70 px-4 py-2 sm:px-6">
-          <div className="flex items-center gap-2 text-[11px] sm:text-xs text-amber-900 leading-snug">
-            <ShieldAlert className="h-4 w-4 shrink-0 text-amber-700" />
-            <p>
-              <strong>Safety Notice:</strong> StudentNeed only connects students. We do not guarantee the product or money involved in a transaction. Please meet in person, inspect the item, and complete the deal safely.
-            </p>
-          </div>
-        </div>
-
-        {/* Messages List Area */}
-        <div 
-          ref={messageListRef}
-          className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 bg-zinc-50/40"
-        >
-          {messages.length === 0 ? (
-            /* Empty State */
-            <div className="flex h-full flex-col items-center justify-center text-center p-6 space-y-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white border border-zinc-200 text-emerald-600 shadow-xs">
-                <MessageSquare className="h-7 w-7" />
-              </div>
-              <div className="max-w-xs space-y-1">
-                <h3 className="text-base font-semibold text-zinc-900">No messages yet</h3>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Start the conversation with {otherUser?.name || 'this student'} about campus pickup or item details.
-                </p>
-              </div>
-
-              {/* Quick conversation starters */}
-              <div className="pt-2 flex flex-col items-center gap-1.5 w-full max-w-sm">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Quick Starters</span>
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {quickStarters.map((starter, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setInputText(starter)}
-                      className="text-xs px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/60 hover:text-emerald-900 text-zinc-700 transition-colors shadow-2xs"
-                    >
-                      {starter}
-                    </button>
                   ))}
                 </div>
-              </div>
-            </div>
-          ) : (
-            /* Message Bubbles */
-            messages.map((msg, idx) => {
-              const isCurrentUser = msg.senderId === currentUserId;
-              const prevMsg = idx > 0 ? messages[idx - 1] : null;
-              const showDate = !prevMsg || formatDateHeader(msg.createdAt) !== formatDateHeader(prevMsg.createdAt);
+              ) : filteredSidebarChats.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-8 text-center h-full">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#edf1ec] text-[#204b39] mb-3">
+                    <Inbox className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-sm font-bold text-[#252b27]">
+                    {searchFilter ? 'No conversations found' : 'No messages yet'}
+                  </h3>
+                  <p className="text-xs text-[#555d56] mt-1 max-w-[200px]">
+                    {searchFilter
+                      ? 'Try searching with a different student name.'
+                      : 'When you connect with peers about an item or request, your messages will appear here.'}
+                  </p>
+                </div>
+              ) : (
+                filteredSidebarChats.map((c) => {
+                  const otherId = c.participants.find((p) => p !== currentUserId);
+                  const participant = otherId ? sidebarUsersMap[otherId] : null;
+                  const isSelected = chatId === c.id;
+                  const preview = recentMessagesMap[c.id];
+                  const unreadCount = chatUnreadCounts[c.id] || 0;
+                  const isRequestChat = Boolean(c.requestId);
 
-              return (
-                <React.Fragment key={msg.id}>
-                  {showDate && (
-                    <div className="flex justify-center my-3">
-                      <span className="rounded-full bg-zinc-200/70 px-2.5 py-0.5 text-[10px] font-medium text-zinc-600">
-                        {formatDateHeader(msg.createdAt)}
-                      </span>
-                    </div>
-                  )}
-                  <div
-                    className={cn(
-                      'flex flex-col',
-                      isCurrentUser ? 'items-end' : 'items-start'
-                    )}
-                  >
-                    <div
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => navigate(`/chat/${c.id}`)}
                       className={cn(
-                        'rounded-2xl px-4 py-2.5 text-sm max-w-[85%] sm:max-w-[70%] break-words shadow-xs',
-                        isCurrentUser
-                          ? 'bg-emerald-600 text-white rounded-tr-xs'
-                          : 'bg-white text-zinc-900 border border-zinc-200/90 rounded-tl-xs'
+                        "w-full text-left px-3.5 py-2.5 sm:px-4 sm:py-2.5 flex items-start gap-2.5 transition-colors cursor-pointer",
+                        isSelected
+                          ? "bg-[#edf1ec] border-l-4 border-l-[#204b39]"
+                          : "hover:bg-[#f7f6f2]"
                       )}
                     >
-                      <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
-                    </div>
-                    <span className="mt-1 px-1 text-[10px] text-zinc-400">
-                      {formatTime(msg.createdAt)}
-                    </span>
-                  </div>
-                </React.Fragment>
-              );
-            })
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+                      {/* Avatar */}
+                      <div className="relative shrink-0 mt-0.5">
+                        {participant?.avatarUrl ? (
+                          <img
+                            src={participant.avatarUrl}
+                            alt={participant.name || 'Student'}
+                            className="h-9 w-9 rounded-full object-cover border border-[#dedcd4]"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#204b39] text-white text-xs font-bold">
+                            {(participant?.name || 'S').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        {unreadCount > 0 && (
+                          <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#204b39] px-1 text-[10px] font-bold text-white shadow-xs">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </div>
 
-        {/* Send Error Alert */}
-        {sendError && (
-          <div className="flex items-center justify-between border-t border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
-              <span>{sendError}</span>
+                      {/* Text info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1 mb-0.5">
+                          <span className="text-xs font-bold text-[#252b27] truncate">
+                            {participant?.name || 'Campus Student'}
+                          </span>
+                          <span className="text-[10px] text-[#717870] shrink-0 font-medium">
+                            {formatRelativeTime(preview?.createdAt || c.updatedAt || c.createdAt)}
+                          </span>
+                        </div>
+
+                        {/* Subtitle context tag */}
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="inline-flex items-center text-[10px] font-semibold text-[#204b39] bg-[#edf1ec] px-1.5 py-0.2 rounded border border-[#dedcd4]">
+                            {isRequestChat ? 'Request' : 'Item'}
+                          </span>
+                        </div>
+
+                        {/* Last message preview */}
+                        <p className={cn(
+                          "text-xs truncate leading-snug",
+                          unreadCount > 0 ? "font-bold text-[#252b27]" : "text-[#555d56]"
+                        )}>
+                          {preview?.text || 'Start conversation...'}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => setSendError(null)}
-              className="text-zinc-500 hover:text-zinc-700"
-              aria-label="Dismiss error"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
+          </aside>
 
-        {/* Message Input Bar */}
-        <form
-          onSubmit={handleSendMessage}
-          className="border-t border-zinc-200 bg-white p-3 sm:p-4 flex items-center gap-2"
-        >
-          <div className="relative flex-1">
-            <Input
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="Type your message to coordinate pickup..."
-              disabled={isSending}
-              maxLength={2000}
-              className="w-full bg-zinc-50/80 border-zinc-200 focus:bg-white focus:border-emerald-500 focus:ring-emerald-500/20 text-sm h-11 rounded-xl pr-14"
-              autoFocus
-            />
-            {inputText.length > 1800 && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 font-mono">
-                {inputText.length}/2000
-              </span>
+          {/* ========================================================= */}
+          {/* RIGHT PANEL: Active Conversation or Empty View             */}
+          {/* ========================================================= */}
+          <section 
+            className={cn(
+              "flex-1 flex flex-col bg-white min-w-0 h-full",
+              !chatId ? "hidden md:flex" : "flex"
             )}
-          </div>
-          <Button
-            type="submit"
-            disabled={!inputText.trim() || isSending}
-            size="default"
-            aria-label="Send message"
-            className="gap-1.5 shrink-0 px-4 sm:px-5 h-11 rounded-xl font-medium bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors"
+            aria-label="Active conversation"
           >
-            {isSending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+            {!chatId ? (
+              /* Desktop Empty Selection State */
+              <div className="flex h-full flex-col items-center justify-center p-8 text-center bg-[#faf9f5]">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#edf1ec] text-[#204b39] mb-4 shadow-2xs">
+                  <MessageSquare className="h-8 w-8" />
+                </div>
+                <h2 className="text-lg font-bold text-[#252b27]">Select a conversation</h2>
+                <p className="text-sm text-[#555d56] mt-1.5 max-w-sm">
+                  Choose a thread from the messages list to view details and coordinate your campus pickup.
+                </p>
+              </div>
+            ) : loading ? (
+              /* Conversation Loading State */
+              <div className="flex h-full flex-col items-center justify-center p-8 space-y-3">
+                <Loader2 className="h-8 w-8 animate-spin text-[#204b39]" />
+                <p className="text-xs font-semibold text-[#555d56]">Loading conversation...</p>
+              </div>
+            ) : authError ? (
+              /* Access Denied */
+              <div className="flex h-full flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600 mb-3 border border-red-200">
+                  <AlertCircle className="h-6 w-6" />
+                </div>
+                <h2 className="text-base font-bold text-[#252b27] mb-1">Access Denied</h2>
+                <p className="text-xs text-[#555d56] mb-5">{authError}</p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/chat')}
+                  className="rounded-xl bg-[#204b39] px-4 py-2 text-xs font-semibold text-white hover:bg-[#183a2c]"
+                >
+                  Back to Messages
+                </button>
+              </div>
+            ) : generalError && !chat ? (
+              /* General Load Error */
+              <div className="flex h-full flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 mb-3 border border-amber-200">
+                  <AlertCircle className="h-6 w-6" />
+                </div>
+                <h2 className="text-base font-bold text-[#252b27] mb-1">Unable to Load Conversation</h2>
+                <p className="text-xs text-[#555d56] mb-5">{generalError}</p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="rounded-xl border border-[#dedcd4] bg-white px-4 py-2 text-xs font-semibold text-[#252b27] hover:bg-[#f7f6f2]"
+                >
+                  Retry
+                </button>
+              </div>
             ) : (
-              <Send className="h-4 w-4" />
+              /* Active Chat UI */
+              <>
+                {/* 1. Header */}
+                <div className="flex items-center justify-between border-b border-[#dedcd4] bg-white px-4 py-3 sm:px-6">
+                  <div className="flex items-center gap-3">
+                    {/* Mobile Back Button */}
+                    <button
+                      type="button"
+                      onClick={() => navigate('/chat')}
+                      className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-xl text-[#555d56] hover:bg-[#edf1ec] hover:text-[#252b27] transition-colors"
+                      aria-label="Back to conversations"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+
+                    <div className="flex items-center gap-2.5">
+                      {otherUser?.avatarUrl ? (
+                        <img
+                          src={otherUser.avatarUrl}
+                          alt={otherUser.name || 'Student'}
+                          className="h-10 w-10 rounded-full object-cover border border-[#dedcd4]"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#204b39] text-xs font-bold text-white">
+                          {(otherUser?.name || 'S').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <h2 className="text-sm sm:text-base font-bold text-[#252b27]">
+                            {otherUser?.name || 'Campus Student'}
+                          </h2>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[#edf1ec] px-2 py-0.5 text-[10px] font-bold text-[#204b39] border border-[#dedcd4]">
+                            <ShieldCheck className="h-3 w-3 text-[#204b39]" />
+                            Verified
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#717870]">
+                          {otherUser?.department ? `${otherUser.department} · ` : ''}Anna University
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Desktop Item / Request Preview Pill */}
+                  {listing && (
+                    <Link
+                      to={`/listing/${listing.id}`}
+                      className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-[#dedcd4] bg-[#edf1ec] px-3 py-1.5 text-xs font-semibold text-[#204b39] hover:bg-emerald-100 transition-colors shadow-2xs"
+                    >
+                      <Package className="h-3.5 w-3.5 text-[#204b39] shrink-0" />
+                      <span className="max-w-[160px] truncate">{listing.title}</span>
+                      {listing.price !== undefined && (
+                        <span className="font-bold text-[#252b27]">₹{listing.price}</span>
+                      )}
+                      <ExternalLink className="h-3 w-3 text-[#717870] shrink-0" />
+                    </Link>
+                  )}
+
+                  {itemRequest && (
+                    <Link
+                      to="/requests"
+                      className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-[#dedcd4] bg-[#edf1ec] px-3 py-1.5 text-xs font-semibold text-[#204b39] hover:bg-emerald-100 transition-colors shadow-2xs"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 text-[#204b39] shrink-0" />
+                      <span className="max-w-[160px] truncate">Request: {itemRequest.title}</span>
+                      <ExternalLink className="h-3 w-3 text-[#717870] shrink-0" />
+                    </Link>
+                  )}
+                </div>
+
+                {/* 2. Request Context Bar (strictly required for requests chat) */}
+                {itemRequest && (
+                  <div className="border-b border-[#dedcd4] bg-[#edf1ec]/60 px-4 py-2.5 sm:px-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div className="flex items-start gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-[#204b39] border border-[#dedcd4]">
+                          <MessageSquare className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-[#252b27] max-w-[200px] truncate">
+                              {itemRequest.title}
+                            </span>
+                            {itemRequest.budget !== undefined && itemRequest.budget > 0 && (
+                              <span className="inline-flex items-center text-xs font-bold text-[#204b39] bg-white border border-[#dedcd4] px-1.5 py-0.2 rounded">
+                                <IndianRupee className="h-3 w-3 mr-0.5" />
+                                Budget: ₹{itemRequest.budget}
+                              </span>
+                            )}
+                            <span className="text-[10px] font-semibold rounded-full bg-white border border-[#dedcd4] px-2 py-0.2 text-[#252b27]">
+                              {itemRequest.status.charAt(0).toUpperCase() + itemRequest.status.slice(1)}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-[#717870] mt-0.5 font-medium">
+                            {itemRequest.location && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3 text-[#204b39]" />
+                                {itemRequest.location}
+                              </span>
+                            )}
+                            {itemRequest.neededBy && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-[#717870]" />
+                                Needed by: {itemRequest.neededBy}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="self-end sm:self-auto shrink-0">
+                        <Link to="/requests">
+                          <button
+                            type="button"
+                            className="rounded-lg border border-[#dedcd4] bg-white px-2.5 py-1 text-xs font-semibold text-[#252b27] hover:bg-[#f7f6f2] transition-colors"
+                          >
+                            Back to Requests
+                          </button>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Reservation Status & Action Bar (for listing chats) */}
+                {listing && (
+                  <div className="border-b border-[#dedcd4] bg-[#edf1ec]/40 px-4 py-2.5 sm:px-6">
+                    <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                      {/* Left Side: Listing Info & Status Badge */}
+                      <div className="flex items-start sm:items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-[#204b39] border border-[#dedcd4]">
+                          <Tag className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-[#252b27] truncate max-w-[180px] sm:max-w-[240px]">
+                              {listing.title}
+                            </span>
+                            {listing.price !== undefined && (
+                              <span className="text-xs font-bold text-[#204b39] bg-white px-1.5 py-0.2 rounded border border-[#dedcd4]">
+                                ₹{listing.price}
+                              </span>
+                            )}
+
+                            {/* Status Badge */}
+                            {listing.status === 'cancelled' ? (
+                              <span className="rounded-full bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.2">
+                                Cancelled
+                              </span>
+                            ) : reservation?.status === 'pending' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold px-2 py-0.2">
+                                <Clock className="h-3 w-3 text-amber-600" />
+                                Pending Confirmation
+                              </span>
+                            ) : reservation?.status === 'accepted' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-[#edf1ec] text-[#204b39] border border-[#dedcd4] text-[10px] font-bold px-2 py-0.2">
+                                <Check className="h-3 w-3 text-[#204b39]" />
+                                Reserved
+                              </span>
+                            ) : reservation?.status === 'rejected' ? (
+                              <span className="rounded-full bg-zinc-100 text-zinc-700 text-[10px] font-bold px-2 py-0.2">
+                                Declined
+                              </span>
+                            ) : reservation?.status === 'cancelled' ? (
+                              <span className="rounded-full bg-zinc-100 text-zinc-600 text-[10px] font-bold px-2 py-0.2">
+                                Cancelled
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-white border border-[#dedcd4] text-zinc-600 text-[10px] font-medium px-2 py-0.2">
+                                Available
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-[11px] text-[#555d56] mt-0.5">
+                            {listing.status === 'cancelled' && 'This listing has been cancelled by the seller.'}
+                            {listing.status !== 'cancelled' && reservation?.status === 'pending' && isBuyer && 'Your reservation request is pending seller confirmation.'}
+                            {listing.status !== 'cancelled' && reservation?.status === 'pending' && isSeller && `Incoming reservation request from ${otherUser?.name || 'student'}. Accept to coordinate pickup.`}
+                            {listing.status !== 'cancelled' && reservation?.status === 'accepted' && 'Item is reserved. Coordinate campus meetup point below.'}
+                            {listing.status !== 'cancelled' && reservation?.status === 'rejected' && 'The reservation request for this listing was declined.'}
+                            {listing.status !== 'cancelled' && reservation?.status === 'cancelled' && 'This reservation was cancelled.'}
+                            {listing.status !== 'cancelled' && !reservation && isBuyer && 'Interested in this item? Request to reserve it from the seller.'}
+                            {listing.status !== 'cancelled' && !reservation && isSeller && 'Waiting for student reservation request.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Right Side: Action Buttons */}
+                      <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                        {isBuyer && listing.status !== 'cancelled' && (!reservation || reservation.status === 'rejected' || reservation.status === 'cancelled') && (
+                          <button
+                            type="button"
+                            onClick={handleRequestReservation}
+                            disabled={isActionLoading === 'reserving'}
+                            className="inline-flex items-center gap-1.5 text-xs h-8 px-3.5 font-semibold bg-[#204b39] hover:bg-[#183a2c] text-white rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            {isActionLoading === 'reserving' ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <BookmarkCheck className="h-3.5 w-3.5" />
+                            )}
+                            {isActionLoading === 'reserving'
+                              ? 'Requesting...'
+                              : reservation?.status === 'rejected'
+                              ? 'Re-request Reservation'
+                              : reservation?.status === 'cancelled'
+                              ? 'Reserve Again'
+                              : 'Request Reservation'}
+                          </button>
+                        )}
+
+                        {isBuyer && reservation?.status === 'pending' && (
+                          <button
+                            type="button"
+                            onClick={handleCancelReservation}
+                            disabled={isActionLoading !== null}
+                            className="inline-flex items-center gap-1 text-xs h-8 px-3 font-semibold border border-red-200 text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            {isActionLoading === 'cancelling' ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <X className="h-3.5 w-3.5" />
+                            )}
+                            Cancel Request
+                          </button>
+                        )}
+
+                        {isSeller && reservation?.status === 'pending' && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateReservationStatus('accepted')}
+                              disabled={isActionLoading !== null}
+                              className="inline-flex items-center gap-1 text-xs h-8 px-3.5 font-semibold bg-[#204b39] hover:bg-[#183a2c] text-white rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              {isActionLoading === 'accepting' ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Check className="h-3.5 w-3.5" />
+                              )}
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateReservationStatus('rejected')}
+                              disabled={isActionLoading !== null}
+                              className="inline-flex items-center gap-1 text-xs h-8 px-3 font-semibold border border-[#dedcd4] bg-white text-[#555d56] hover:bg-zinc-100 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              {isActionLoading === 'rejecting' ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <X className="h-3.5 w-3.5" />
+                              )}
+                              Reject
+                            </button>
+                          </div>
+                        )}
+
+                        {reservation?.status === 'accepted' && (currentUserId === reservation.buyerId || currentUserId === reservation.sellerId) && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleCompleteExchange}
+                              disabled={isActionLoading !== null}
+                              className="inline-flex items-center gap-1.5 text-xs h-8 px-3.5 font-semibold bg-[#204b39] hover:bg-[#183a2c] text-white rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              {isActionLoading === 'completing' ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              )}
+                              Complete Exchange
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCancelReservation}
+                              disabled={isActionLoading !== null}
+                              className="inline-flex items-center gap-1 text-xs h-8 px-2.5 font-medium border border-red-200 text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Reservation notifications */}
+                    {reservationError && (
+                      <div className="mt-2.5 flex items-center justify-between rounded-xl bg-red-50 p-2.5 text-xs text-red-700 border border-red-200">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+                          <span>{reservationError}</span>
+                        </div>
+                        <button type="button" onClick={() => setReservationError(null)}>
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    {reservationSuccess && (
+                      <div className="mt-2.5 flex items-center justify-between rounded-xl bg-[#edf1ec] p-2.5 text-xs text-[#204b39] border border-[#dedcd4]">
+                        <div className="flex items-center gap-2">
+                          <Check className="h-4 w-4 shrink-0 text-[#204b39]" />
+                          <span>{reservationSuccess}</span>
+                        </div>
+                        <button type="button" onClick={() => setReservationSuccess(null)}>
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Campus Meetup Section - Only for Accepted */}
+                    {reservation?.status === 'accepted' && (
+                      <div className="mt-3 pt-3 border-t border-[#dedcd4]">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="h-3.5 w-3.5 text-[#204b39]" />
+                            <span className="text-xs font-bold text-[#252b27] uppercase tracking-wider">
+                              Campus Meetup Point
+                            </span>
+                          </div>
+                          {reservation.meetup?.status === 'confirmed' ? (
+                            <span className="text-[10px] font-bold text-[#204b39] bg-white border border-[#dedcd4] px-2 py-0.2 rounded-full">
+                              Agreed: {reservation.meetup.location}
+                            </span>
+                          ) : reservation.meetup?.status === 'proposed' ? (
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.2 rounded-full">
+                              Proposal Pending
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {(!reservation.meetup || reservation.meetup.status === 'not_set' || reservation.meetup.status === 'cancelled') && (
+                          <div className="rounded-xl border border-[#dedcd4] bg-white p-3 space-y-2">
+                            <p className="text-xs text-[#555d56]">
+                              Select a safe campus meetup landmark for item handover:
+                            </p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                              {CAMPUS_MEETUP_LOCATIONS.map((loc) => {
+                                const isSelected = selectedMeetupLocation === loc;
+                                return (
+                                  <button
+                                    key={loc}
+                                    type="button"
+                                    onClick={() => setSelectedMeetupLocation(loc)}
+                                    className={cn(
+                                      "flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium border text-left transition-colors cursor-pointer",
+                                      isSelected
+                                        ? "bg-[#204b39] text-white border-[#204b39]"
+                                        : "bg-[#f7f6f2] text-[#252b27] border-[#dedcd4] hover:bg-zinc-100"
+                                    )}
+                                  >
+                                    <Building2 className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">{loc}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="flex items-center justify-end pt-1">
+                              <button
+                                type="button"
+                                disabled={!selectedMeetupLocation || isMeetupLoading !== null}
+                                onClick={() => handleProposeMeetup()}
+                                className="text-xs h-7 px-3 bg-[#204b39] text-white rounded-lg font-semibold hover:bg-[#183a2c] disabled:opacity-50 cursor-pointer"
+                              >
+                                {isMeetupLoading === 'proposing' ? 'Proposing...' : 'Propose Spot'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {reservation.meetup?.status === 'proposed' && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <div className="text-xs text-amber-950">
+                              {reservation.meetup.proposedBy === currentUserId ? (
+                                <>You proposed meeting at <strong>{reservation.meetup.location}</strong>. Waiting for other student.</>
+                              ) : (
+                                <>Proposed meetup at <strong>{reservation.meetup.location}</strong>.</>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 self-end sm:self-auto">
+                              {reservation.meetup.proposedBy !== currentUserId ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelMeetup}
+                                    className="text-xs px-2.5 py-1 rounded-lg border border-zinc-300 bg-white text-zinc-700"
+                                  >
+                                    Suggest Other
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleConfirmMeetup}
+                                    className="text-xs px-3 py-1 rounded-lg bg-[#204b39] text-white font-semibold"
+                                  >
+                                    Confirm
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={handleCancelMeetup}
+                                  className="text-xs px-2.5 py-1 rounded-lg border border-amber-300 bg-white text-amber-900"
+                                >
+                                  Cancel Proposal
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {reservation.meetup?.status === 'confirmed' && (
+                          <div className="rounded-xl border border-[#dedcd4] bg-[#edf1ec] p-3 flex items-center justify-between gap-2">
+                            <p className="text-xs text-[#204b39] font-medium">
+                              Meet at <strong>{reservation.meetup.location}</strong>. Inspect item before completing handover.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={handleCancelMeetup}
+                              className="text-xs px-2.5 py-1 rounded-lg border border-[#dedcd4] bg-white text-[#252b27] shrink-0"
+                            >
+                              Change Spot
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 4. Safety Notice Banner */}
+                <div className="border-b border-[#dedcd4] bg-[#edf1ec]/40 px-4 py-2 sm:px-6">
+                  <div className="flex items-center gap-2 text-[11px] text-[#555d56] leading-tight">
+                    <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-[#204b39]" />
+                    <p>
+                      <strong>Safety Reminder:</strong> StudentNeed only connects students. Always inspect items in person at a verified public campus spot before concluding any exchange.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 5. Messages Feed */}
+                <div 
+                  ref={messageListRef}
+                  className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 bg-[#faf9f5]"
+                >
+                  {messages.length === 0 ? (
+                    /* Empty Messages State */
+                    <div className="flex h-full flex-col items-center justify-center text-center p-4 sm:p-6 space-y-2.5 my-auto max-w-sm mx-auto">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white border border-[#dedcd4] text-[#204b39] shadow-2xs">
+                        <MessageSquare className="h-5 w-5" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <h3 className="text-sm font-bold text-[#252b27]">No messages yet</h3>
+                        <p className="text-xs text-[#555d56] leading-normal">
+                          Start the conversation with {otherUser?.name || 'this student'} about campus pickup or item details.
+                        </p>
+                      </div>
+
+                      {/* Quick Starters */}
+                      <div className="pt-1 flex flex-col items-center gap-1.5 w-full">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-[#717870]">Quick Starters</span>
+                        <div className="flex flex-wrap justify-center gap-1.5">
+                          {quickStarters.map((starter, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setInputText(starter)}
+                              className="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[#dedcd4] bg-white hover:bg-[#edf1ec] hover:border-[#204b39]/30 text-[#252b27] transition-colors shadow-2xs cursor-pointer"
+                            >
+                              {starter}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Message Bubbles */
+                    messages.map((msg, idx) => {
+                      const isCurrentUser = msg.senderId === currentUserId;
+                      const prevMsg = idx > 0 ? messages[idx - 1] : null;
+                      const showDate = !prevMsg || formatDateHeader(msg.createdAt) !== formatDateHeader(prevMsg.createdAt);
+
+                      return (
+                        <React.Fragment key={msg.id}>
+                          {showDate && (
+                            <div className="flex justify-center my-3">
+                              <span className="rounded-full bg-[#dedcd4]/60 px-3 py-0.5 text-[10px] font-medium text-[#555d56]">
+                                {formatDateHeader(msg.createdAt)}
+                              </span>
+                            </div>
+                          )}
+                          <div
+                            className={cn(
+                              'flex flex-col',
+                              isCurrentUser ? 'items-end' : 'items-start'
+                            )}
+                          >
+                            <div
+                              className={cn(
+                                'rounded-2xl px-3.5 py-2 sm:px-4 sm:py-2.5 text-sm max-w-[85%] sm:max-w-[70%] break-words [overflow-wrap:anywhere] shadow-2xs',
+                                isCurrentUser
+                                  ? 'bg-[#204b39] text-white rounded-tr-xs'
+                                  : 'bg-white text-[#252b27] border border-[#dedcd4] rounded-tl-xs'
+                              )}
+                            >
+                              <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                            </div>
+                            <span className="mt-1 px-1 text-[10px] text-[#717870]">
+                              {formatTime(msg.createdAt)}
+                            </span>
+                          </div>
+                        </React.Fragment>
+                      );
+                    })
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {/* Send Error Notice */}
+                {sendError && (
+                  <div className="flex items-center justify-between border-t border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+                      <span>{sendError}</span>
+                    </div>
+                    <button type="button" onClick={() => setSendError(null)}>
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* 6. Message Composer */}
+                <form
+                  onSubmit={handleSendMessage}
+                  className="border-t border-[#dedcd4] bg-white p-2.5 sm:p-3.5 flex items-center gap-2"
+                >
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder="Type your message to coordinate pickup..."
+                      disabled={isSending}
+                      maxLength={2000}
+                      className="w-full bg-[#f7f6f2] border border-[#dedcd4] focus:bg-white focus:border-[#204b39] text-sm text-[#252b27] placeholder:text-[#8a918a] h-10 sm:h-11 rounded-xl px-3.5 sm:px-4 pr-14 outline-none transition-colors"
+                      autoFocus
+                    />
+                    {inputText.length > 1800 && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#717870] font-mono">
+                        {inputText.length}/2000
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!inputText.trim() || isSending}
+                    aria-label="Send message"
+                    className={cn(
+                      "inline-flex items-center justify-center gap-1.5 shrink-0 px-4 sm:px-5 h-10 sm:h-11 rounded-xl font-semibold text-sm transition-all duration-150",
+                      inputText.trim() && !isSending
+                        ? "bg-[#204b39] hover:bg-[#183a2c] text-white shadow-xs cursor-pointer active:scale-[0.98]"
+                        : isSending
+                        ? "bg-[#204b39]/80 text-white cursor-wait opacity-90"
+                        : "bg-[#dedcd4] text-[#717870] cursor-not-allowed shadow-none"
+                    )}
+                  >
+                    {isSending ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-white" />
+                    ) : (
+                      <Send className={cn("h-4 w-4", inputText.trim() ? "text-white" : "text-[#717870]")} />
+                    )}
+                    <span className="hidden sm:inline">{isSending ? 'Sending' : 'Send'}</span>
+                  </button>
+                </form>
+              </>
             )}
-            <span className="hidden sm:inline">{isSending ? 'Sending' : 'Send'}</span>
-          </Button>
-        </form>
+          </section>
+
+        </div>
       </div>
     </div>
   );

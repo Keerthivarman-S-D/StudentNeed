@@ -100,20 +100,20 @@ export function CreateRequest() {
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="group inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 hover:text-zinc-900 mb-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded-lg px-1 py-0.5"
+          className="group inline-flex items-center gap-1.5 text-xs font-semibold text-[#555d56] hover:text-[#252b27] mb-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39] rounded-lg px-1 py-0.5"
         >
-          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1 text-zinc-500" />
-          <span>Back</span>
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1 text-[#555d56]" />
+          <span>Back to Requests</span>
         </button>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-brand-charcoal tracking-tight">Can&apos;t find what you need?</h1>
-            <p className="text-zinc-600 text-sm mt-1">
-              Ask fellow students across campus. <span className="font-semibold text-emerald-800">Find → Connect → Meet</span>.
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#252b27] tracking-tight">Can&apos;t find what you need?</h1>
+            <p className="text-[#555d56] text-sm mt-1">
+              Ask fellow students across campus. <span className="font-semibold text-[#204b39]">Find → Connect → Meet</span>.
             </p>
           </div>
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800 border border-emerald-200">
-            <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-[#edf1ec] px-3.5 py-1 text-xs font-semibold text-[#204b39] border border-[#dedcd4]">
+            <Sparkles className="h-3.5 w-3.5 text-[#204b39]" />
             Campus Request
           </span>
         </div>
@@ -126,9 +126,9 @@ export function CreateRequest() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl border border-zinc-200/90 bg-white p-6 sm:p-8 shadow-xs">
+      <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-[#dedcd4] bg-white p-6 sm:p-8 shadow-xs">
         <div>
-          <label className="mb-1.5 block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+          <label className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
             What do you need? <span className="text-red-500">*</span>
           </label>
           <Input 
@@ -136,16 +136,17 @@ export function CreateRequest() {
             placeholder="e.g. Casio fx-991EX Scientific Calculator, Engineering Mechanics textbook" 
             value={title}
             onChange={e => setTitle(e.target.value)}
+            className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
           />
         </div>
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+            <label className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
               Category <span className="text-red-500">*</span>
             </label>
             <select 
-              className="flex h-11 w-full rounded-xl border border-brand-border bg-white px-3.5 py-2 text-sm text-brand-charcoal font-medium focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs"
+              className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
               value={category}
               onChange={e => setCategory(e.target.value as Category)}
             >
@@ -155,8 +156,8 @@ export function CreateRequest() {
           
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider">Budget (₹)</label>
-              <span className="text-[11px] text-zinc-400">Optional</span>
+              <label className="block text-xs font-bold text-[#252b27] uppercase tracking-wider">Budget (₹)</label>
+              <span className="text-[11px] text-[#717870]">Optional</span>
             </div>
             <Input 
               type="number" 
@@ -164,19 +165,20 @@ export function CreateRequest() {
               placeholder="e.g. 300" 
               value={budget}
               onChange={e => setBudget(e.target.value)}
+              className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
             />
           </div>
         </div>
 
         <div>
-          <label className="mb-1.5 block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+          <label className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
             Description <span className="text-red-500">*</span>
           </label>
           <textarea 
             required
             rows={4}
             placeholder="Provide any specific details (model, edition, condition required, course/department)..."
-            className="w-full rounded-xl border border-brand-border bg-white px-3.5 py-2.5 text-sm text-brand-charcoal focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all shadow-2xs placeholder:text-zinc-400"
+            className="w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2.5 text-sm text-[#252b27] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs placeholder:text-[#717870]"
             value={description}
             onChange={e => setDescription(e.target.value)}
           />
@@ -184,7 +186,7 @@ export function CreateRequest() {
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+            <label className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
               When do you need it? <span className="text-red-500">*</span>
             </label>
             <Input 
@@ -192,10 +194,11 @@ export function CreateRequest() {
               placeholder="e.g. By Friday, Next Monday, Urgent" 
               value={neededBy}
               onChange={e => setNeededBy(e.target.value)}
+              className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+            <label className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
               Preferred Meetup Location <span className="text-red-500">*</span>
             </label>
             <Input 
@@ -203,24 +206,34 @@ export function CreateRequest() {
               placeholder="e.g. Library, Red Building, Main Gate" 
               value={location}
               onChange={e => setLocation(e.target.value)}
+              className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
             />
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-100">
-          <Button type="button" variant="ghost" onClick={() => navigate(-1)} disabled={isSubmitting}>
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#dedcd4]">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            disabled={isSubmitting}
+            className="px-4 py-2 text-sm font-semibold text-[#555d56] hover:text-[#252b27] hover:bg-zinc-100 rounded-xl transition-colors disabled:opacity-50"
+          >
             Cancel
-          </Button>
-          <Button type="submit" size="lg" disabled={isSubmitting} className="min-w-[150px] h-11 font-bold">
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="min-w-[150px] h-11 px-6 rounded-xl font-semibold text-sm text-white bg-[#204b39] hover:bg-[#183a2c] transition-colors shadow-xs flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+          >
             {isSubmitting ? (
               <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin text-white" />
                 Posting your request…
               </span>
             ) : (
               'Post Request'
             )}
-          </Button>
+          </button>
         </div>
       </form>
     </div>

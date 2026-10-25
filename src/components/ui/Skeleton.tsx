@@ -20,32 +20,24 @@ export function ListingCardSkeleton() {
   return (
     <div
       aria-hidden="true"
-      className="flex flex-col overflow-hidden rounded-2xl border border-brand-border bg-white shadow-xs"
+      className="flex flex-col rounded-2xl border border-[#dedcd4] bg-white p-3.5 shadow-none"
     >
       {/* Image Skeleton */}
-      <div className="relative aspect-square w-full bg-zinc-100 flex items-center justify-center overflow-hidden">
+      <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl bg-zinc-100 flex items-center justify-center">
         <Skeleton className="h-full w-full rounded-none bg-zinc-200/70" />
-        <div className="absolute left-3 top-3 flex gap-1.5">
-          <Skeleton className="h-5 w-16 rounded-full bg-zinc-300/80" />
-        </div>
-        <div className="absolute right-3 top-3">
-          <Skeleton className="h-8 w-8 rounded-full bg-zinc-300/80" />
-        </div>
       </div>
 
       {/* Content Skeleton */}
-      <div className="flex flex-1 flex-col p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <Skeleton className="h-5 w-3/4 rounded-md" />
-          <Skeleton className="h-5 w-12 rounded-md" />
+      <div className="flex flex-1 flex-col pt-3 px-0.5 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-5 w-16 rounded-full bg-zinc-200" />
+          <Skeleton className="h-5 w-5 rounded-full bg-zinc-200" />
         </div>
 
-        <Skeleton className="h-4 w-1/2 rounded-md" />
-
-        <div className="mt-auto pt-3 border-t border-zinc-100 flex items-center justify-between">
-          <Skeleton className="h-3.5 w-20 rounded-md" />
-          <Skeleton className="h-5 w-14 rounded-md" />
-        </div>
+        <Skeleton className="h-5 w-3/4 rounded-md bg-zinc-200" />
+        <Skeleton className="h-3.5 w-1/2 rounded-md bg-zinc-200" />
+        <Skeleton className="h-6 w-16 rounded-md bg-zinc-200" />
+        <Skeleton className="h-3.5 w-2/3 rounded-md bg-zinc-200 mt-1" />
       </div>
     </div>
   );
