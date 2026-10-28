@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, UserCircle2, MessageSquare, LayoutGrid, ShieldAlert } from 'lucide-react';
+import { Search, Plus, UserCircle2, MessageSquare, LayoutGrid, ShieldAlert, ChevronDown } from 'lucide-react';
 import { collection, query, where, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { cn } from '../lib/utils';
@@ -110,32 +110,34 @@ export function Navbar() {
             </nav>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {/* Functional Desktop Search Form */}
-            <form onSubmit={handleSearchSubmit} className="relative hidden lg:block w-56">
+            <form onSubmit={handleSearchSubmit} className="relative hidden lg:block w-48 xl:w-56">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#717870]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 aria-label="Search campus items"
                 placeholder="Search campus..."
-                className="h-9 w-full rounded-lg border border-[#dedcd4] bg-[#f4f3ee] px-3.5 text-xs text-[#252b27] outline-none transition-colors placeholder:text-[#8a918a] focus:border-[#204b39] focus:bg-white"
+                className="h-9 w-full rounded-full border border-[#dedcd4] bg-[#f4f3ee] pl-8.5 pr-3 text-xs text-[#252b27] outline-none transition-all placeholder:text-[#717870] focus:border-[#204b39] focus:bg-white focus:ring-1 focus:ring-[#204b39]"
               />
             </form>
 
             <Link
               to="/create-listing"
-              className="flex h-9 items-center justify-center rounded-lg bg-[#204b39] px-4 text-xs sm:text-sm font-semibold text-white shadow-xs transition-colors hover:bg-[#183a2c] motion-safe:active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39]"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-[#204b39] px-3.5 sm:px-4 text-xs sm:text-sm font-semibold text-white shadow-2xs transition-all hover:bg-[#183a2c] motion-safe:active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39]"
             >
-              Post Item
+              <Plus className="h-4 w-4" />
+              <span>Post Item</span>
             </Link>
 
             {currentUser ? (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 <NotificationBell />
                 <Link
                   to="/profile"
-                  className="flex items-center gap-2 rounded-xl border border-[#dedcd4] p-1 pr-3 hover:bg-[#f7f6f2] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39]"
+                  className="flex h-9 items-center gap-2 rounded-full border border-[#dedcd4] pl-1 pr-2.5 hover:bg-[#f7f6f2] hover:border-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39]"
                   aria-label={`Profile of ${currentUser.name}`}
                 >
                   <div className="relative">
@@ -143,10 +145,10 @@ export function Navbar() {
                       <img
                         src={currentUser.avatarUrl}
                         alt={currentUser.name}
-                        className="h-8 w-8 rounded-lg object-cover"
+                        className="h-7 w-7 rounded-full object-cover"
                       />
                     ) : (
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#252b27] text-white text-xs font-bold">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#252b27] text-white text-xs font-bold">
                         {currentUser.name.charAt(0).toUpperCase()}
                       </div>
                     )}
@@ -157,21 +159,23 @@ export function Navbar() {
                       />
                     )}
                   </div>
-                  <span className="text-sm font-semibold text-[#252b27] truncate max-w-[120px]">{currentUser.name}</span>
+                  <span className="text-xs sm:text-sm font-semibold text-[#252b27] truncate max-w-[110px] xl:max-w-[130px]">{currentUser.name}</span>
+                  <ChevronDown className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
                 </Link>
                 {hasActiveReservation && (
                   <Link
                     to="/reserved"
-                    className="hidden xl:inline-flex items-center rounded-full bg-[#edf1ec] px-2.5 py-0.5 text-[11px] font-bold text-[#204b39] border border-[#204b39]/30 hover:bg-emerald-100 transition-colors shadow-2xs"
+                    className="hidden xl:inline-flex items-center gap-1.5 rounded-full bg-[#edf1ec] px-3 py-1 text-[11px] font-bold text-[#204b39] border border-[#204b39]/20 hover:bg-[#dce6dc] transition-colors shadow-2xs"
                   >
-                    Active Trade
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#204b39] motion-safe:animate-pulse" />
+                    <span>Active Trade</span>
                   </Link>
                 )}
               </div>
             ) : (
               <Link
                 to="/login"
-                className="text-sm font-semibold text-[#252b27] hover:text-[#204b39] transition-colors px-2 py-1"
+                className="inline-flex h-9 items-center justify-center text-xs sm:text-sm font-semibold text-[#252b27] hover:text-[#204b39] transition-colors px-3 py-1 rounded-xl hover:bg-[#f7f6f2]"
               >
                 Sign in
               </Link>

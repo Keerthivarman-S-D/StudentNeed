@@ -2113,7 +2113,7 @@ export function AdminDashboard() {
                 <label className="font-medium text-zinc-700 block mb-1">Campus Meetup Location</label>
                 <Input
                   required
-                  placeholder="e.g. Central Library, Main Gate..."
+                  placeholder="e.g. MIT Library, Main Gate..."
                   value={editListingForm.location}
                   onChange={(e) => setEditListingForm({ ...editListingForm, location: e.target.value })}
                   className="text-xs rounded-xl"
@@ -2233,7 +2233,7 @@ export function AdminDashboard() {
                   <label className="font-medium text-zinc-700 block mb-1">Location</label>
                   <Input
                     required
-                    placeholder="e.g. Central Library, Hostel..."
+                    placeholder="e.g. MIT Library, Hostel Gate..."
                     value={editRequestForm.location}
                     onChange={(e) => setEditRequestForm({ ...editRequestForm, location: e.target.value })}
                     className="text-xs rounded-xl"

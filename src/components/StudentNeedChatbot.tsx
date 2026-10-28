@@ -9,39 +9,67 @@ import {
   Loader2, 
   AlertCircle,
   HelpCircle,
-  ShieldCheck
+  ShieldCheck,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { CHAT_ENDPOINTS } from '../config/api';
 import { Button } from './ui/Button';
 import { cn } from '../lib/utils';
+import { GenUIChatMessageItem, GenUIPayload } from '../types/genui';
+import { GenUIRenderer } from './genui/GenUIRenderer';
+import { useAppContext } from '../context/AppContext';
 
-export interface ChatMessageItem {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-  timestamp: string;
-  source?: 'ai' | 'knowledge_base';
-}
+export type ChatMessageItem = GenUIChatMessageItem;
 
-const INITIAL_GREETING: ChatMessageItem = {
+const INITIAL_GREETING: GenUIChatMessageItem = {
   id: 'msg_welcome',
   role: 'assistant',
-  text: "Hello! I'm the StudentNeed Campus Guide. I can help you understand how to buy, donate, or exchange items, post requests for what you need, navigate the Find → Connect → Meet process, or answer questions about listings and safe campus meetups. How can I help you today?",
+  text: "Hello! I'm the StudentNeed Campus Guide with dynamic Generative UI. I can help you search marketplace listings, compare listing types & meetup spots, view marketplace summaries, post requests, or answer questions about safe campus trades. How can I help you today?",
   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  source: 'knowledge_base'
+  source: 'knowledge_base',
+  genui: {
+    intent: 'informational',
+    message: "Welcome to StudentNeed! Here's how our verified peer-to-peer campus exchange works:",
+    component: {
+      type: 'text',
+      headline: 'Find → Connect → Meet Campus Flow',
+      body: '1. **Find**: Browse items or post an item request.\n2. **Connect**: Chat with peers & reserve.\n3. **Meet**: Safe in-person handoff at approved campus landmarks.',
+      badges: [
+        { label: 'Anna Univ Only', variant: 'success' },
+        { label: 'Generative UI Enabled', variant: 'info' }
+      ],
+      tips: [
+        'Ask to search items, compare listing types, or see campus statistics',
+        'Try typing "Show Casio calculator" or "Compare meetup spots"'
+      ]
+    },
+    suggestions: [
+      "Search for textbooks",
+      "Compare Sale vs Borrow vs Donate",
+      "Compare campus meetup locations",
+      "Show marketplace stats",
+      "Post a request for an item"
+    ]
+  }
 };
 
 const SUGGESTED_QUESTIONS = [
+  "Search for textbooks",
+  "Compare Sale vs Borrow vs Donate",
+  "Compare campus meetup locations",
+  "Show marketplace stats",
+  "Post a request for an item",
+  "What are the photo rules?",
   "How does Find → Connect → Meet work?",
-  "How do I list an item to sell, donate, or exchange?",
-  "What categories and types are supported?",
-  "How do campus meetups work?",
-  "Are online payments or deliveries supported?"
+  "Are online payments supported?"
 ];
 
 export function StudentNeedChatbot() {
+  const { listings, savedListings } = useAppContext();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessageItem[]>([INITIAL_GREETING]);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [messages, setMessages] = useState<GenUIChatMessageItem[]>([INITIAL_GREETING]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +106,7 @@ export function StudentNeedChatbot() {
     setInputText('');
     setHasInteracted(true);
 
-    const userMessage: ChatMessageItem = {
+    const userMessage: GenUIChatMessageItem = {
       id: `usr_${Date.now()}`,
       role: 'user',
       text,
@@ -117,12 +145,13 @@ export function StudentNeedChatbot() {
 
       const botReply = data.reply || "I'm sorry, I couldn't process that response. Please try asking in a different way.";
 
-      const assistantMessage: ChatMessageItem = {
+      const assistantMessage: GenUIChatMessageItem = {
         id: `ast_${Date.now()}`,
         role: 'assistant',
         text: botReply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        source: data.source || 'knowledge_base'
+        source: data.source || 'knowledge_base',
+        genui: data.genui // Dynamic Generative UI payload
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -166,6 +195,12 @@ export function StudentNeedChatbot() {
     });
   };
 
+  // Determine active suggestion chips (either from latest GenUI payload or defaults)
+  const lastAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant');
+  const activeSuggestions = lastAssistantMessage?.genui?.suggestions && lastAssistantMessage.genui.suggestions.length > 0
+    ? lastAssistantMessage.genui.suggestions
+    : SUGGESTED_QUESTIONS.slice(0, 4);
+
   return (
     <>
       {/* Floating Launcher Trigger (Desktop: bottom-6 right-6; Mobile: bottom-20 right-4 above bottom nav) */}
@@ -186,7 +221,7 @@ export function StudentNeedChatbot() {
             {!hasInteracted && (
               <span className="absolute right-16 hidden md:flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-[#252b27] shadow-md border border-[#dedcd4] pointer-events-none animate-in fade-in slide-in-from-right-2 duration-300">
                 <Sparkles className="h-3.5 w-3.5 text-[#204b39]" />
-                Ask StudentNeed
+                Ask StudentNeed (GenUI)
               </span>
             )}
           </button>
@@ -202,12 +237,14 @@ export function StudentNeedChatbot() {
             "fixed z-50 flex flex-col overflow-hidden bg-white shadow-2xl border border-[#dedcd4] transition-all animate-in fade-in zoom-in-95 duration-200",
             // Mobile: positioned neatly above the bottom nav bar with safe margins
             "inset-x-3 bottom-20 top-16 rounded-2xl",
-            // Desktop: sleek floating window in bottom-right corner
-            "md:inset-auto md:bottom-6 md:right-6 md:top-auto md:h-[580px] md:w-[410px] md:rounded-3xl"
+            // Desktop: floating window with responsive expanded width mode for wide tables/cards
+            isExpanded
+              ? "md:inset-auto md:bottom-6 md:right-6 md:top-auto md:h-[660px] md:w-[580px] md:rounded-3xl"
+              : "md:inset-auto md:bottom-6 md:right-6 md:top-auto md:h-[580px] md:w-[410px] md:rounded-3xl"
           )}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-[#204b39]/30 bg-[#173e2d] px-4 py-3.5 text-white">
+          <div className="flex items-center justify-between border-b border-[#204b39]/30 bg-[#173e2d] px-4 py-3 text-white">
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-white border border-white/20">
                 <Bot className="h-5 w-5 text-emerald-300" />
@@ -216,14 +253,24 @@ export function StudentNeedChatbot() {
                 <div className="flex items-center gap-1.5">
                   <h3 className="text-sm font-bold tracking-tight text-white leading-tight">StudentNeed Guide</h3>
                   <span className="inline-flex items-center rounded-md bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300 border border-emerald-500/30">
-                    Anna Univ
+                    GenUI Active
                   </span>
                 </div>
-                <p className="text-[11px] text-zinc-300 leading-none mt-0.5">Verified Campus Knowledge</p>
+                <p className="text-[11px] text-zinc-300 leading-none mt-0.5">Anna Univ Campus Assistant</p>
               </div>
             </div>
 
             <div className="flex items-center gap-1">
+              {/* Expand / Minimize Desktop toggle */}
+              <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                title={isExpanded ? "Collapse view" : "Expand for wider cards & tables"}
+                aria-label={isExpanded ? "Collapse view" : "Expand view"}
+                className="hidden md:flex rounded-lg p-1.5 text-zinc-300 hover:bg-white/10 hover:text-white transition"
+              >
+                {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </button>
               <button
                 type="button"
                 onClick={handleResetConversation}
@@ -246,15 +293,15 @@ export function StudentNeedChatbot() {
           </div>
 
           {/* Messages Feed */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[#faf9f5]">
+          <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 bg-[#faf9f5]">
             {messages.map((msg) => {
               const isUser = msg.role === 'user';
               return (
                 <div
                   key={msg.id}
                   className={cn(
-                    "flex flex-col max-w-[85%] text-sm",
-                    isUser ? "ml-auto items-end" : "mr-auto items-start"
+                    "flex flex-col text-sm",
+                    isUser ? "max-w-[85%] ml-auto items-end" : "w-full mr-auto items-start"
                   )}
                 >
                   <div
@@ -262,15 +309,29 @@ export function StudentNeedChatbot() {
                       "px-3.5 py-2.5 shadow-2xs leading-relaxed",
                       isUser
                         ? "bg-[#204b39] text-white rounded-2xl rounded-tr-xs"
-                        : "bg-white text-[#252b27] border border-[#dedcd4] rounded-2xl rounded-tl-xs"
+                        : "bg-white text-[#252b27] border border-[#dedcd4] rounded-2xl rounded-tl-xs w-full"
                     )}
                   >
                     {renderMessageContent(msg.text)}
+
+                    {/* Generative UI Component Injection */}
+                    {!isUser && msg.genui && (
+                      <GenUIRenderer
+                        payload={msg.genui}
+                        fallbackText={msg.text}
+                      />
+                    )}
                   </div>
+
                   <div className="flex items-center gap-1 text-[10px] text-[#717870] mt-1 px-1">
                     <span>{msg.timestamp}</span>
                     {!isUser && msg.source === 'knowledge_base' && (
                       <span className="text-[9px] text-[#204b39] font-medium">• Verified</span>
+                    )}
+                    {!isUser && msg.source === 'ai' && (
+                      <span className="text-[9px] text-emerald-700 font-medium flex items-center gap-0.5">
+                        <Sparkles className="h-2.5 w-2.5" /> AI Powered
+                      </span>
                     )}
                   </div>
                 </div>
@@ -281,7 +342,7 @@ export function StudentNeedChatbot() {
             {isLoading && (
               <div className="mr-auto flex items-center gap-2 rounded-2xl rounded-tl-xs bg-white border border-[#dedcd4] px-4 py-2.5 text-sm text-[#717870] shadow-2xs">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-[#204b39]" />
-                <span className="text-xs">Consulting StudentNeed guide...</span>
+                <span className="text-xs">Generating interface components...</span>
               </div>
             )}
 
@@ -313,15 +374,18 @@ export function StudentNeedChatbot() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Starter Suggestions (shown when conversation is fresh) */}
-          {messages.length <= 2 && !isLoading && (
+          {/* Contextual Intent Suggestions Chips */}
+          {!isLoading && (
             <div className="border-t border-[#dedcd4] bg-white px-3 py-2">
-              <p className="text-[11px] font-semibold text-[#717870] mb-1.5 px-1 flex items-center gap-1">
-                <HelpCircle className="h-3 w-3" />
-                Popular Questions
-              </p>
+              <div className="flex items-center justify-between mb-1 px-0.5">
+                <p className="text-[10px] font-bold text-[#717870] uppercase tracking-wider flex items-center gap-1">
+                  <Sparkles className="h-2.5 w-2.5 text-[#204b39]" />
+                  Intent Suggestions
+                </p>
+                <span className="text-[9px] text-[#717870]">1-click prompt</span>
+              </div>
               <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-                {SUGGESTED_QUESTIONS.map((q, idx) => (
+                {activeSuggestions.map((q, idx) => (
                   <button
                     key={idx}
                     type="button"
@@ -348,7 +412,7 @@ export function StudentNeedChatbot() {
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="Ask about listings, meetups, requests..."
+                  placeholder="Ask about listings, compare, post requests..."
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -375,7 +439,7 @@ export function StudentNeedChatbot() {
             <div className="mt-1.5 flex items-center justify-between px-2 text-[10px] text-[#717870]">
               <span className="flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3 text-[#204b39]" />
-                Grounded in StudentNeed Verified Rules
+                Strict Schema Validated & Grounded
               </span>
               <span>{inputText.length}/600</span>
             </div>

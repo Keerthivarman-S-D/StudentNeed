@@ -87,7 +87,7 @@ export const ListingCard = memo(function ListingCard({ listing }: { listing: Lis
   return (
     <Link
       to={`/listing/${listing.id}`}
-      className="group flex flex-col rounded-2xl border border-[#dedcd4] bg-white p-3.5 shadow-none transition-all duration-200 hover:border-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39]"
+      className="group flex flex-col rounded-2xl border border-[#dedcd4] bg-white p-3.5 shadow-2xs transition-all duration-200 hover:border-[#204b39]/40 hover:shadow-xs hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39] h-full"
     >
       {/* Product Image Section */}
       <div className="relative aspect-[16/10] overflow-hidden rounded-xl bg-[#f4f3ee] flex items-center justify-center">
@@ -133,7 +133,7 @@ export const ListingCard = memo(function ListingCard({ listing }: { listing: Lis
         </div>
 
         {/* Title */}
-        <h3 className="line-clamp-1 text-base font-semibold text-[#252b27] group-hover:text-[#204b39] transition-colors mb-0.5 mt-1.5">
+        <h3 className="line-clamp-1 text-sm sm:text-base font-semibold text-[#252b27] group-hover:text-[#204b39] transition-colors mb-0.5 mt-1">
           {listing.title}
         </h3>
 
@@ -151,14 +151,16 @@ export const ListingCard = memo(function ListingCard({ listing }: { listing: Lis
           )}
         </div>
 
-        {/* Price */}
-        <div className="text-xl font-bold text-[#252b27] tracking-tight">
-          {priceDisplay}
-        </div>
+        {/* Price & Location anchored to bottom */}
+        <div className="mt-auto pt-1">
+          <div className="text-lg sm:text-xl font-bold text-[#252b27] tracking-tight">
+            {priceDisplay}
+          </div>
 
-        {/* Meetup Info */}
-        <div className="mt-2 text-xs text-[#717870] line-clamp-1">
-          {meetupLocation}
+          {/* Meetup Info */}
+          <div className="mt-1.5 text-[11px] sm:text-xs text-[#717870] flex items-center gap-1 line-clamp-1">
+            <span className="truncate">{meetupLocation}</span>
+          </div>
         </div>
       </div>
     </Link>

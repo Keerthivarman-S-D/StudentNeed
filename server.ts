@@ -11,6 +11,8 @@ import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 import { GoogleAuth } from "google-auth-library";
 import * as webpush from "web-push";
+import { generateGenUIPayload } from "./src/lib/genuiEngine";
+import { validateGenUIPayload } from "./src/lib/genuiValidator";
 
 // Load Firebase Config for REST API
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf8"));
@@ -85,17 +87,22 @@ interface OtpFirestoreDoc {
   verifiedExpiresAt?: number;
 }
 
-// In-memory IP rate limiter for auth endpoints
+// In-memory IP rate limiter for auth endpoints with bounded capacity protection
 interface RateLimitBucket {
   count: number;
   resetAt: number;
 }
 const ipRateLimits = new Map<string, RateLimitBucket>();
+const MAX_RATE_LIMIT_ENTRIES = 10000;
 
 function checkIpRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
   const now = Date.now();
   const bucket = ipRateLimits.get(key);
   if (!bucket || now > bucket.resetAt) {
+    if (ipRateLimits.size >= MAX_RATE_LIMIT_ENTRIES) {
+      const oldestKey = ipRateLimits.keys().next().value;
+      if (oldestKey) ipRateLimits.delete(oldestKey);
+    }
     ipRateLimits.set(key, { count: 1, resetAt: now + windowMs });
     return true;
   }
@@ -480,11 +487,13 @@ CORE PRODUCT KNOWLEDGE & RULES:
    - When a reservation is accepted by the seller, the listing status updates to 'reserved'.
    - Once accepted, participants coordinate a campus meetup at one of the approved campus locations:
      * Main Gate
-     * Central Library
-     * Food Court
-     * Hostel
-     * CSE Block
-     * ECE Block
+     * Hostel Gate
+     * Back Gate
+     * MIT Library
+     * Canteen
+     * Hanger 1
+     * Hanger 2
+     * MIT Connect
    - One student proposes the meetup location, the other confirms.
    - After meetup, either participant clicks "Complete Exchange" to finalize.
 7. Requests (/requests & /create-request):
@@ -516,7 +525,7 @@ CORE PRODUCT KNOWLEDGE & RULES:
     }
 
     if (q.includes("find connect meet") || q.includes("how it work") || q.includes("how does it work") || q.includes("workflow") || q.includes("steps")) {
-      return "StudentNeed works in 3 simple campus-focused steps:\n\n1. **Find**: Browse items on the Marketplace (/marketplace) with filters, or post an Item Request (/create-request) if you can't find what you need.\n2. **Connect**: Chat 1-on-1 with fellow students in real-time (/chat) to discuss details or submit an item reservation.\n3. **Meet**: Coordinate a safe in-person campus meetup at approved spots (like Central Library or Main Gate) and complete the exchange.";
+      return "StudentNeed works in 3 simple campus-focused steps:\n\n1. **Find**: Browse items on the Marketplace (/marketplace) with filters, or post an Item Request (/create-request) if you can't find what you need.\n2. **Connect**: Chat 1-on-1 with fellow students in real-time (/chat) to discuss details or submit an item reservation.\n3. **Meet**: Coordinate a safe in-person campus meetup at approved spots (like MIT Library or Main Gate) and complete the exchange.";
     }
 
     if (q.includes("browse") || q.includes("search") || q.includes("find item") || q.includes("filter") || q.includes("sort")) {
@@ -540,7 +549,7 @@ CORE PRODUCT KNOWLEDGE & RULES:
     }
 
     if (q.includes("contact") || q.includes("reserve") || q.includes("reservation") || q.includes("meetup") || q.includes("location") || q.includes("spot") || q.includes("where to meet")) {
-      return "Contacting Sellers & Campus Meetups:\n- On any listing page (/listing/:id), click **Contact Student** to chat or **Reserve Item** to submit a hold request.\n- When the seller accepts the reservation, the item status changes to 'reserved'.\n- Either student can propose an approved campus meetup location:\n  * **Main Gate**\n  * **Central Library**\n  * **Food Court**\n  * **Hostel**\n  * **CSE Block**\n  * **ECE Block**\n  * The other student confirms the location. After completing the in-person exchange on campus, either student clicks **Complete Exchange**.";
+      return "Contacting Sellers & Campus Meetups:\n- On any listing page (/listing/:id), click **Contact Student** to chat or **Reserve Item** to submit a hold request.\n- When the seller accepts the reservation, the item status changes to 'reserved'.\n- Either student can propose an approved campus meetup location:\n  * **Main Gate**\n  * **Hostel Gate**\n  * **Back Gate**\n  * **MIT Library**\n  * **Canteen**\n  * **Hanger 1**\n  * **Hanger 2**\n  * **MIT Connect**\n  * The other student confirms the location. After completing the in-person exchange on campus, either student clicks **Complete Exchange**.";
     }
 
     if (q.includes("request") || q.includes("can't find") || q.includes("looking for")) {
@@ -611,29 +620,72 @@ CORE PRODUCT KNOWLEDGE & RULES:
             parts: [{ text: trimmedMessage }],
           });
 
+          const genuiPrompt = `${STUDENTNEED_SYSTEM_INSTRUCTION}
+
+You are the StudentNeed Campus AI Assistant with Generative UI (GenUI) capabilities.
+Respond to the student's question directly, and if possible provide structured JSON in this format:
+{
+  "reply": "Concise text explanation or advice",
+  "intent": "informational" | "item_search" | "comparison" | "data_summary" | "user_input" | "destructive_action" | "unsupported"
+}`;
+
           const response = await ai.models.generateContent({
             model: modelName,
             contents: formattedContents as any,
             config: {
-              systemInstruction: STUDENTNEED_SYSTEM_INSTRUCTION,
+              systemInstruction: genuiPrompt,
               maxOutputTokens: 800,
               temperature: 0.2,
             },
           });
 
-          const replyText = response.text?.trim();
-          if (replyText) {
-            return res.json({ reply: replyText, source: "ai" });
+          const rawText = response.text?.trim() || "";
+
+          // Attempt to parse JSON if model returned structured output
+          let parsedData: any = null;
+          try {
+            const cleanJsonMatch = rawText.match(/\{[\s\S]*\}/);
+            if (cleanJsonMatch) {
+              parsedData = JSON.parse(cleanJsonMatch[0]);
+            }
+          } catch {
+            parsedData = null;
           }
+
+          const fallbackGenUI = generateGenUIPayload(trimmedMessage);
+          const replyText = parsedData?.reply?.trim() || rawText || fallbackGenUI.message;
+
+          // If model returned a valid GenUI payload, validate it
+          if (parsedData?.genui) {
+            const validation = validateGenUIPayload(parsedData.genui);
+            if (validation.valid && validation.sanitizedPayload) {
+              return res.json({
+                reply: replyText,
+                genui: validation.sanitizedPayload,
+                source: "ai"
+              });
+            }
+          }
+
+          // Otherwise return model's reply with deterministic verified GenUI component
+          return res.json({
+            reply: replyText,
+            genui: fallbackGenUI,
+            source: "ai"
+          });
         } catch (aiErr: any) {
           // Log safe diagnostic notice without exposing any keys or credentials
-          console.warn("[Campus Assistant Notice] Upstream AI dispatch failed, using verified knowledge base fallback:", aiErr?.status || aiErr?.code || "Generation unavailable");
+          console.warn("[Campus Assistant Notice] Upstream AI dispatch failed, using verified GenUI fallback:", aiErr?.status || aiErr?.code || "Generation unavailable");
         }
       }
 
-      // Safe deterministic knowledge base fallback (always available even if GEMINI_API_KEY is unset or fails)
-      const fallbackReply = getDeterministicKnowledgeResponse(trimmedMessage);
-      return res.json({ reply: fallbackReply, source: "knowledge_base" });
+      // Safe deterministic knowledge base & GenUI fallback (always available even if GEMINI_API_KEY is unset or fails)
+      const deterministicGenUI = generateGenUIPayload(trimmedMessage);
+      return res.json({
+        reply: deterministicGenUI.message,
+        genui: deterministicGenUI,
+        source: "knowledge_base"
+      });
     } catch (err: any) {
       console.error("[Campus Assistant Endpoint Error]:", err?.message || "Internal error");
       return res.status(500).json({ error: "Unable to process assistant request at this time. Please try again." });
@@ -4546,6 +4598,13 @@ CORE PRODUCT KNOWLEDGE & RULES:
     if (err instanceof SyntaxError && "body" in err) {
       return res.status(400).json({ error: "Malformed JSON payload in request." });
     }
+    if (req.path.startsWith("/api")) {
+      console.error(`API Error [${req.method} ${req.path}]:`, err?.message || err);
+      const statusCode = typeof err.status === "number" && err.status >= 400 && err.status < 600 ? err.status : 500;
+      return res.status(statusCode).json({
+        error: statusCode < 500 ? (err.message || "Request failed.") : "An unexpected server error occurred."
+      });
+    }
     next(err);
   });
 
@@ -4564,9 +4623,33 @@ CORE PRODUCT KNOWLEDGE & RULES:
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
   });
+
+  const gracefulShutdown = (signal: string) => {
+    console.log(`Received ${signal}. Gracefully shutting down HTTP server...`);
+    server.close(() => {
+      console.log("HTTP server closed.");
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.error("Graceful shutdown timeout exceeded. Exiting forcibly.");
+      process.exit(1);
+    }, 10000).unref();
+  };
+
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 }
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled Rejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception — exiting process safely:", error);
+  process.exit(1);
+});
 
 startServer();

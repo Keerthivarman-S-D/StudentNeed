@@ -1,6 +1,6 @@
 // API configuration for StudentNeed frontend
 const getApiBaseUrl = (): string => {
-  const customUrl = (import.meta.env.VITE_API_URL as string)?.trim();
+  const customUrl = ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_URL) as string)?.trim();
   if (customUrl && !customUrl.includes('student.annauniv.edu')) {
     return customUrl.replace(/\/+$/, '');
   }
@@ -12,7 +12,7 @@ const getApiBaseUrl = (): string => {
 export const API_BASE_URL: string = getApiBaseUrl();
 
 export const COLLEGE_EMAIL_DOMAIN: string =
-  (import.meta.env.VITE_COLLEGE_EMAIL_DOMAIN as string) ||
+  ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_COLLEGE_EMAIL_DOMAIN) as string) ||
   'student.annauniv.edu';
 
 export const AUTH_ENDPOINTS = {

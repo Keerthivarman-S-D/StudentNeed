@@ -94,12 +94,22 @@ service cloud.firestore {
     function isValidCampusLocation(loc) {
       return loc is string && (
         loc == 'Main Gate' ||
+        loc == 'Hostel Gate' ||
+        loc == 'Back Gate' ||
+        loc == 'MIT Library' ||
+        loc == 'Canteen' ||
+        loc == 'Hanger 1' ||
+        loc == 'Hanger 2' ||
+        loc == 'MIT Connect' ||
         loc == 'Central Library' ||
         loc == 'Library' ||
         loc == 'Food Court' ||
         loc == 'Hostel' ||
+        loc == 'Hostel Zone' ||
         loc == 'CSE Block' ||
-        loc == 'ECE Block'
+        loc == 'ECE Block' ||
+        loc == 'SBI ATM' ||
+        loc == 'Sports Ground'
       );
     }
 
