@@ -771,7 +771,7 @@ export function ListingDetail() {
                 Meet on campus
               </h3>
               <p className="text-sm font-semibold text-[#252b27] mb-1">
-                {listing.location || 'Central Library'}
+                {listing.location || 'MIT Library'}
               </p>
               <p className="text-xs text-[#555d56] leading-relaxed">
                 Suggested by the student, not an official pickup location. Agree on the time in chat.

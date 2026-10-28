@@ -7,21 +7,59 @@ import { validatePassword } from '../lib/passwordSecurity';
 import { PasswordRequirements } from '../components/PasswordRequirements';
 import { AuthLayout } from '../components/AuthLayout';
 
+// In-memory registration form draft to preserve values if navigation occurs
+// Plaintext passwords are NEVER stored in localStorage, sessionStorage, or any browser persistent storage
+interface RegistrationDraft {
+  name: string;
+  email: string;
+  yearOfStudy: string;
+  password?: string;
+  confirmPassword?: string;
+  agreedToTerms: boolean;
+}
+
+let registrationDraft: RegistrationDraft = {
+  name: '',
+  email: '',
+  yearOfStudy: '',
+  password: '',
+  confirmPassword: '',
+  agreedToTerms: false,
+};
+
+export const clearRegistrationDraft = () => {
+  registrationDraft = {
+    name: '',
+    email: '',
+    yearOfStudy: '',
+    password: '',
+    confirmPassword: '',
+    agreedToTerms: false,
+  };
+};
+
 export function Register() {
   const navigate = useNavigate();
   const { firebaseUser, currentUser } = useAuth();
 
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [yearOfStudy, setYearOfStudy] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [name, setName] = useState(registrationDraft.name);
+  const [email, setEmail] = useState(registrationDraft.email);
+  const [yearOfStudy, setYearOfStudy] = useState(registrationDraft.yearOfStudy);
+  const [password, setPassword] = useState(registrationDraft.password || '');
+  const [confirmPassword, setConfirmPassword] = useState(registrationDraft.confirmPassword || '');
+  const [agreedToTerms, setAgreedToTerms] = useState(registrationDraft.agreedToTerms);
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const updateDraft = (updates: Partial<RegistrationDraft>) => {
+    registrationDraft = {
+      ...registrationDraft,
+      ...updates,
+    };
+  };
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -105,6 +143,9 @@ export function Register() {
         })
       );
 
+      // Clear in-memory draft upon proceeding to verification step
+      clearRegistrationDraft();
+
       // Navigate to OTP verification page
       navigate('/verify-email', {
         state: {
@@ -157,7 +198,10 @@ export function Register() {
               required
               placeholder="Your name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                updateDraft({ name: e.target.value });
+              }}
               className="w-full h-10 sm:h-[42px] rounded-lg border border-[#dedcd4] bg-white px-3.5 text-sm text-[#252b27] placeholder:text-[#9ea39c] focus:outline-none focus:border-[#204b39] focus:ring-1 focus:ring-[#204b39]/20 transition-all"
             />
           </div>
@@ -173,7 +217,10 @@ export function Register() {
               required
               placeholder="you@student.annauniv.edu"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                updateDraft({ email: e.target.value });
+              }}
               className="w-full h-10 sm:h-[42px] rounded-lg border border-[#dedcd4] bg-white px-3.5 text-sm text-[#252b27] placeholder:text-[#9ea39c] focus:outline-none focus:border-[#204b39] focus:ring-1 focus:ring-[#204b39]/20 transition-all"
             />
             <p className="mt-1 text-[11px] sm:text-xs text-[#667065]">
@@ -201,7 +248,10 @@ export function Register() {
                 id="reg-year"
                 required
                 value={yearOfStudy}
-                onChange={(e) => setYearOfStudy(e.target.value)}
+                onChange={(e) => {
+                  setYearOfStudy(e.target.value);
+                  updateDraft({ yearOfStudy: e.target.value });
+                }}
                 className="w-full h-10 sm:h-[42px] appearance-none rounded-lg border border-[#dedcd4] bg-white px-3.5 pr-10 text-sm text-[#252b27] focus:outline-none focus:border-[#204b39] focus:ring-1 focus:ring-[#204b39]/20 transition-all cursor-pointer"
               >
                 <option value="" disabled className="text-zinc-400">
@@ -231,7 +281,10 @@ export function Register() {
                 required
                 placeholder="Create a password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  updateDraft({ password: e.target.value });
+                }}
                 className="w-full h-10 sm:h-[42px] rounded-lg border border-[#dedcd4] bg-white px-3.5 pr-11 text-sm text-[#252b27] placeholder:text-[#9ea39c] focus:outline-none focus:border-[#204b39] focus:ring-1 focus:ring-[#204b39]/20 transition-all"
               />
               <button
@@ -265,7 +318,10 @@ export function Register() {
                 required
                 placeholder="Enter your password again"
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  updateDraft({ confirmPassword: e.target.value });
+                }}
                 className="w-full h-10 sm:h-[42px] rounded-lg border border-[#dedcd4] bg-white px-3.5 pr-11 text-sm text-[#252b27] placeholder:text-[#9ea39c] focus:outline-none focus:border-[#204b39] focus:ring-1 focus:ring-[#204b39]/20 transition-all"
               />
               <button
@@ -283,19 +339,50 @@ export function Register() {
           </div>
 
           {/* Terms Agreement Checkbox */}
-          <div className="pt-0.5">
-            <label className="flex items-start gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                required
-                checked={agreedToTerms}
-                onChange={(e) => setAgreedToTerms(e.target.checked)}
-                className="mt-0.5 h-3.5 w-3.5 rounded border-[#dedcd4] text-[#204b39] focus:ring-[#204b39] accent-[#204b39]"
-              />
-              <span className="text-xs text-[#555d56] leading-snug">
-                I agree to the Terms of Service and Privacy Policy.
-              </span>
-            </label>
+          <div className="pt-0.5 flex items-start gap-2.5">
+            <input
+              id="terms-agreement-checkbox"
+              type="checkbox"
+              required
+              checked={agreedToTerms}
+              onChange={(e) => {
+                setAgreedToTerms(e.target.checked);
+                updateDraft({ agreedToTerms: e.target.checked });
+              }}
+              className="mt-0.5 h-3.5 w-3.5 rounded border-[#dedcd4] text-[#204b39] focus:ring-[#204b39] accent-[#204b39] cursor-pointer shrink-0"
+            />
+            <div
+              className="text-xs text-[#555d56] leading-snug select-none"
+              aria-label="I agree to the Terms of Service and Privacy Policy."
+            >
+              <label htmlFor="terms-agreement-checkbox" className="cursor-pointer">
+                I agree to the{' '}
+              </label>
+              <Link
+                to="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="font-medium text-[#2563EB] hover:text-[#1d4ed8] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded px-0.5 transition-colors inline-block"
+              >
+                Terms of Service
+              </Link>
+              <label htmlFor="terms-agreement-checkbox" className="cursor-pointer">
+                {' '}and{' '}
+              </label>
+              <Link
+                to="/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="font-medium text-[#2563EB] hover:text-[#1d4ed8] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded px-0.5 transition-colors inline-block"
+              >
+                Privacy Policy
+              </Link>
+              <label htmlFor="terms-agreement-checkbox" className="cursor-pointer">
+                .
+              </label>
+            </div>
           </div>
 
           {/* Primary Create Account Button */}

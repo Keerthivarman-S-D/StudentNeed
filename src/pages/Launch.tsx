@@ -42,7 +42,7 @@ export function Launch() {
   const [sampleWishlist, setSampleWishlist] = useState<Record<string, boolean>>({});
   
   // Active campus spot for the meetup section
-  const [selectedSpot, setSelectedSpot] = useState<string>('MIT Library');
+  const [selectedSpot, setSelectedSpot] = useState<string>('Main Gate');
 
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
@@ -142,14 +142,16 @@ export function Launch() {
     },
   ];
 
-  // 6 Familiar campus spots matching the reference screenshot
+  // Exactly 8 campus meetup locations in order
   const campusSpots = [
-    { name: 'Main Gate', tip: 'Prominent landmark, well-staffed and easily accessible for day scholars and hostellers.' },
+    { name: 'Main Gate', tip: 'Prominent campus entrance, well-staffed and easily accessible for day scholars and hostellers.' },
+    { name: 'Hostel Gate', tip: 'Convenient gate near hostel blocks, ideal for evening and resident handoffs.' },
+    { name: 'Back Gate', tip: 'Quiet campus exit point with easy access for quick transit and nearby student housing.' },
     { name: 'MIT Library', tip: 'Air-conditioned entrance foyer with quiet surroundings, convenient between lectures.' },
-    { name: 'Hostel Zone', tip: 'Common quadrangle between hostel blocks, ideal for evening handoffs.' },
-    { name: 'Food Court', tip: 'Spacious outdoor seating area with high foot traffic during lunch hours.' },
-    { name: 'SBI ATM', tip: 'Central campus landmark near administrative offices with good lighting.' },
-    { name: 'Sports Ground', tip: 'Open pavilion area, convenient after sports practice or lab sessions.' },
+    { name: 'Canteen', tip: 'Central campus dining area with high foot traffic and active seating during breaks.' },
+    { name: 'Hanger 1', tip: 'Historic aeronautical hangar landmark, spacious and easily recognizable across campus.' },
+    { name: 'Hanger 2', tip: 'Open aerospace engineering hangar area, prominent and convenient between lab sessions.' },
+    { name: 'MIT Connect', tip: 'Central student activity and connectivity hub, lively and safe for daytime meetups.' },
   ];
 
   // 4 Community values matching the reference screenshot
@@ -176,7 +178,7 @@ export function Launch() {
     },
   ];
 
-  const activeSpotDetail = campusSpots.find(s => s.name === selectedSpot) || campusSpots[1];
+  const activeSpotDetail = campusSpots.find(s => s.name === selectedSpot) || campusSpots[0];
 
   return (
     <div className="min-h-screen bg-[#f7f6f2] text-[#252b27] flex flex-col font-sans selection:bg-[#204b39] selection:text-white">
@@ -719,34 +721,34 @@ export function Launch() {
         </section>
 
         {/* 10. Contact Information Panel */}
-        <section id="contact" className="py-16 sm:py-20 bg-[#f7f6f2] border-t border-[#dedcd4]">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="text-left space-y-2 mb-8">
-              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+        <section id="contact" className="py-16 sm:py-20 lg:py-24 bg-[#f7f6f2] border-t border-[#dedcd4]">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col items-center">
+            <div className="text-center space-y-2 mb-8 sm:mb-10 max-w-2xl mx-auto">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870] block">
                 Contact
               </span>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
                 Get in touch
               </h2>
-              <p className="text-sm text-[#555d56]">
+              <p className="text-sm sm:text-base text-[#555d56]">
                 Have questions, feedback, or need support? We're here for the campus community.
               </p>
             </div>
 
-            <div className="rounded-2xl border border-[#dedcd4] bg-white p-6 sm:p-8 shadow-2xs space-y-4 max-w-4xl">
-              <p className="text-sm text-[#555d56]">
+            <div className="w-full max-w-[900px] mx-auto rounded-2xl border border-[#dedcd4] bg-white p-6 sm:p-8 lg:p-10 shadow-2xs space-y-4 text-center">
+              <p className="text-sm sm:text-base text-[#555d56]">
                 <strong className="text-[#252b27] font-semibold">For general inquiries:</strong>{' '}
-                <a href="mailto:support@studentneed.me" className="text-[#204b39] hover:underline">
+                <a href="mailto:support@studentneed.me" className="text-[#204b39] hover:underline font-medium break-all sm:break-normal">
                   support@studentneed.me
                 </a>
               </p>
-              <p className="text-sm text-[#555d56]">
+              <p className="text-sm sm:text-base text-[#555d56]">
                 <strong className="text-[#252b27] font-semibold">Campus location:</strong> MIT Campus, Chromepet, Chennai
               </p>
-              <p className="text-sm text-[#555d56]">
+              <p className="text-sm sm:text-base text-[#555d56]">
                 <strong className="text-[#252b27] font-semibold">Student moderators:</strong> Active daily
               </p>
-              <p className="text-xs text-[#717870] pt-2 border-t border-[#dedcd4]/60">
+              <p className="text-xs sm:text-sm text-[#717870] pt-4 border-t border-[#dedcd4]/60">
                 Notice: StudentNeed is an independent student platform built for campus exchanges.
               </p>
             </div>

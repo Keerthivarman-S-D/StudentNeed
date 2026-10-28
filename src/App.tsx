@@ -26,6 +26,9 @@ const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Pro
 const Requests = lazy(() => import('./pages/Requests').then(m => ({ default: m.Requests })));
 const ChatPage = lazy(() => import('./pages/Chat').then(m => ({ default: m.ChatPage })));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const Terms = lazy(() => import('./pages/Terms').then(m => ({ default: m.Terms })));
+const Privacy = lazy(() => import('./pages/Privacy').then(m => ({ default: m.Privacy })));
+const GenUIDemo = lazy(() => import('./pages/GenUIDemo').then(m => ({ default: m.GenUIDemo })));
 
 const PageLoadingFallback = () => (
   <div className="flex min-h-[50vh] flex-col items-center justify-center space-y-4">
@@ -54,7 +57,7 @@ function AppContent() {
   const isRootLaunch = location.pathname === '/' && !firebaseUser;
   const isLaunchActive = isLaunchExplicit || isRootLaunch;
   const isAuthPage = ['/login', '/register', '/verify-email'].includes(location.pathname);
-  const isWarmBgPage = isAuthPage || location.pathname === '/' || location.pathname === '/launch' || location.pathname === '/marketplace' || location.pathname.startsWith('/listing/') || location.pathname === '/requests' || location.pathname === '/create-request' || location.pathname === '/create-listing' || location.pathname.startsWith('/chat') || location.pathname === '/profile' || location.pathname === '/reserved' || location.pathname === '/onboarding' || location.pathname === '/admin';
+  const isWarmBgPage = isAuthPage || location.pathname === '/' || location.pathname === '/launch' || location.pathname === '/marketplace' || location.pathname.startsWith('/listing/') || location.pathname === '/requests' || location.pathname === '/create-request' || location.pathname === '/create-listing' || location.pathname.startsWith('/chat') || location.pathname === '/profile' || location.pathname === '/reserved' || location.pathname === '/onboarding' || location.pathname === '/admin' || location.pathname === '/terms' || location.pathname === '/privacy' || location.pathname === '/genui';
   const hideAppNavbar = isLaunchActive || isAuthPage;
 
   return (
@@ -135,6 +138,9 @@ function AppContent() {
                 </AdminRoute>
               }
             />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/genui" element={<GenUIDemo />} />
           </Routes>
         </Suspense>
       </main>

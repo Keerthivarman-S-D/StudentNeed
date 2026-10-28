@@ -39,8 +39,8 @@ export function AppFooter() {
           <div className="space-y-2">
             <p className="text-xs font-semibold text-[#252b27] uppercase tracking-wider">Legal</p>
             <ul className="space-y-1.5 text-xs text-[#717870]">
-              <li>Privacy Policy</li>
-              <li>Terms of Service</li>
+              <li><Link to="/privacy" className="hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:underline">Privacy Policy</Link></li>
+              <li><Link to="/terms" className="hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:underline">Terms of Service</Link></li>
               <li className="text-[#555d56] font-medium pt-1">studentneed.me</li>
             </ul>
           </div>

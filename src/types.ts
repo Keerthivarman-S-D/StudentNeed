@@ -105,11 +105,13 @@ export type ItemRequest = {
 
 export const CAMPUS_MEETUP_LOCATIONS = [
   'Main Gate',
-  'Central Library',
-  'Food Court',
-  'Hostel',
-  'CSE Block',
-  'ECE Block',
+  'Hostel Gate',
+  'Back Gate',
+  'MIT Library',
+  'Canteen',
+  'Hanger 1',
+  'Hanger 2',
+  'MIT Connect',
 ] as const;
 
 export type CampusMeetupLocation = typeof CAMPUS_MEETUP_LOCATIONS[number];
@@ -119,15 +121,31 @@ export const APPROVED_CAMPUS_LOCATIONS = CAMPUS_MEETUP_LOCATIONS;
 export type ApprovedCampusLocation = CampusMeetupLocation;
 
 /**
+ * Legacy campus locations retained for backward compatibility
+ * to safely handle existing listings and reservations without deleting or breaking existing user data.
+ */
+export const LEGACY_CAMPUS_LOCATIONS = [
+  'Central Library',
+  'Library',
+  'Food Court',
+  'Hostel',
+  'Hostel Zone',
+  'CSE Block',
+  'ECE Block',
+  'SBI ATM',
+  'Sports Ground',
+] as const;
+
+/**
  * Validates campus location against approved list with backward compatibility
- * for legacy alternate naming (such as 'Library').
+ * for existing records and legacy alternate naming.
  */
 export function isValidApprovedLocation(loc: string | null | undefined): boolean {
   if (!loc || typeof loc !== 'string') return false;
   const trimmed = loc.trim();
   return (
     (APPROVED_CAMPUS_LOCATIONS as readonly string[]).includes(trimmed) ||
-    trimmed === 'Library'
+    (LEGACY_CAMPUS_LOCATIONS as readonly string[]).includes(trimmed)
   );
 }
 
