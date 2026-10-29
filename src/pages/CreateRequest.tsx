@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AlertCircle, Loader2, ArrowLeft, Sparkles, HelpCircle, CheckCircle2 } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { AlertCircle, Loader2, ArrowLeft, Sparkles, HelpCircle, CheckCircle2, Clock } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
@@ -9,15 +9,18 @@ import { Category } from '../types';
 
 export function CreateRequest() {
   const navigate = useNavigate();
+  const locationState = useLocation();
+  const repostFrom = (locationState.state as any)?.repostFrom;
+
   const { addRequest } = useAppContext();
   const { currentUser, firebaseUser } = useAuth();
   
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [budget, setBudget] = useState('');
-  const [category, setCategory] = useState<Category>('Other');
-  const [location, setLocation] = useState('');
-  const [neededBy, setNeededBy] = useState('');
+  const [title, setTitle] = useState(repostFrom?.title || '');
+  const [description, setDescription] = useState(repostFrom?.description || '');
+  const [budget, setBudget] = useState(repostFrom?.budget ? String(repostFrom.budget) : '');
+  const [category, setCategory] = useState<Category>(repostFrom?.category || 'Other');
+  const [location, setLocation] = useState(repostFrom?.location || '');
+  const [neededBy, setNeededBy] = useState(repostFrom?.neededBy || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +120,24 @@ export function CreateRequest() {
             Campus Request
           </span>
         </div>
+      </div>
+
+      {repostFrom && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-[#204b39]/20 bg-[#edf1ec] p-4 text-[#204b39] text-sm">
+          <Sparkles className="h-5 w-5 shrink-0 mt-0.5 text-[#204b39]" />
+          <div>
+            <span className="font-bold block">Reposting Campus Request</span>
+            <span className="text-xs text-[#555d56]">Details from your previous request have been prefilled. Submitting will publish a fresh request active for 24 hours.</span>
+          </div>
+        </div>
+      )}
+
+      {/* 24-Hour Expiry Info Notice */}
+      <div className="mb-6 flex items-start gap-3 rounded-2xl border border-[#dedcd4] bg-white p-4 text-xs text-[#555d56]">
+        <Clock className="h-4 w-4 shrink-0 mt-0.5 text-[#204b39]" />
+        <span>
+          Every campus request expires automatically after <strong>24 hours</strong> to ensure requests stay timely and relevant. You can renew your request anytime from <strong>My Requests</strong>.
+        </span>
       </div>
 
       {error && (

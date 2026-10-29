@@ -1337,9 +1337,15 @@ export function ChatPage() {
                                 Budget: ₹{itemRequest.budget}
                               </span>
                             )}
-                            <span className="text-[10px] font-semibold rounded-full bg-white border border-[#dedcd4] px-2 py-0.2 text-[#252b27]">
-                              {itemRequest.status.charAt(0).toUpperCase() + itemRequest.status.slice(1)}
-                            </span>
+                            {itemRequest.status === 'expired' || (itemRequest.expiresAt && new Date(itemRequest.expiresAt).getTime() <= Date.now()) ? (
+                              <span className="text-[10px] font-semibold rounded-full bg-amber-50 border border-amber-300 px-2 py-0.2 text-amber-800">
+                                Expired
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-semibold rounded-full bg-white border border-[#dedcd4] px-2 py-0.2 text-[#252b27]">
+                                {itemRequest.status.charAt(0).toUpperCase() + itemRequest.status.slice(1)}
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-[#717870] mt-0.5 font-medium">

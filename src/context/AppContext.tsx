@@ -19,6 +19,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { User, Listing, ItemRequest, RequestStatus, UpdateListingInput, isValidApprovedLocation } from '../types';
 import { mockUsers } from '../data';
+import { REQUEST_ENDPOINTS } from '../config/api';
 
 export type NewListingInput = {
   title: string;
@@ -45,6 +46,8 @@ export type NewRequestInput = {
   budget?: number;
   status?: RequestStatus;
   requesterId?: string;
+  expiresAt?: any;
+  deleteAt?: any;
 };
 
 type AppContextType = {
@@ -62,6 +65,7 @@ type AppContextType = {
   hasMoreRequests: boolean;
   loadMoreRequests: () => void;
   addRequest: (request: NewRequestInput | ItemRequest) => Promise<string>;
+  renewRequest: (requestId: string) => Promise<void>;
   cancelRequest: (requestId: string) => Promise<void>;
   updateRequestStatus: (requestId: string, status: RequestStatus) => Promise<void>;
   savedListings: string[];
@@ -386,6 +390,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               ? data.updatedAt
               : new Date().toISOString();
 
+            const rawExpiresAt = data.expiresAt?.toDate
+              ? data.expiresAt.toDate().toISOString()
+              : typeof data.expiresAt === 'string'
+              ? data.expiresAt
+              : undefined;
+
+            const deleteAt = data.deleteAt?.toDate
+              ? data.deleteAt.toDate().toISOString()
+              : typeof data.deleteAt === 'string'
+              ? data.deleteAt
+              : undefined;
+
+            const renewedAt = data.renewedAt?.toDate
+              ? data.renewedAt.toDate().toISOString()
+              : typeof data.renewedAt === 'string'
+              ? data.renewedAt
+              : undefined;
+
+            const renewalCount = typeof data.renewalCount === 'number'
+              ? data.renewalCount
+              : Number(data.renewalCount) || 0;
+
+            // Safe legacy fallback policy:
+            // 1. If explicit expiresAt exists, use it.
+            // 2. If missing and createdAt is within 24h, expiresAt = createdAt + 24h.
+            // 3. If missing and created >24h ago with active status (open/active), grant 24h grace window from now
+            //    so legacy requests are not abruptly wiped or hidden during migration.
+            let expiresAt = rawExpiresAt;
+            if (!expiresAt && createdAt) {
+              const createdMs = new Date(createdAt).getTime();
+              if (!isNaN(createdMs)) {
+                if (Date.now() - createdMs < 24 * 60 * 60 * 1000) {
+                  expiresAt = new Date(createdMs + 24 * 60 * 60 * 1000).toISOString();
+                } else if (data.status === 'open' || data.status === 'active' || !data.status) {
+                  // Legacy active grace period ensures existing requests remain manageable
+                  expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+                } else {
+                  expiresAt = new Date(createdMs + 24 * 60 * 60 * 1000).toISOString();
+                }
+              }
+            }
+
             return {
               id: docSnap.id,
               title: data.title || '',
@@ -398,6 +444,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               requesterId: data.requesterId || '',
               createdAt,
               updatedAt,
+              expiresAt,
+              deleteAt,
+              renewedAt,
+              renewalCount,
             };
           });
 
@@ -682,6 +732,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const requesterId = auth.currentUser.uid;
     const docRef = doc(collection(db, 'requests'));
 
+    const now = Date.now();
+    const expiresAtDate = new Date(now + 24 * 60 * 60 * 1000);
+    const deleteAtDate = new Date(now + 31 * 24 * 60 * 60 * 1000); // 30-day retention after 24h expiry
+
     const newRequestData: Record<string, any> = {
       title: requestInput.title.trim(),
       description: requestInput.description.trim(),
@@ -692,6 +746,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       status: requestInput.status || 'open',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      expiresAt: Timestamp.fromDate(expiresAtDate),
+      deleteAt: Timestamp.fromDate(deleteAtDate),
+      renewalCount: 0,
     };
 
     if (requestInput.budget !== undefined && requestInput.budget !== null && !isNaN(Number(requestInput.budget))) {
@@ -703,6 +760,61 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return docRef.id;
     } catch (err: unknown) {
       handleFirestoreError(err, OperationType.CREATE, `requests/${docRef.id}`);
+    }
+  };
+
+  const renewRequest = async (requestId: string): Promise<void> => {
+    if (!auth.currentUser) {
+      throw new Error('Authentication required: please log in to renew a request.');
+    }
+
+    const currentUid = auth.currentUser.uid;
+    const currentReq = requests.find((r) => r.id === requestId);
+    if (currentReq && currentReq.requesterId !== currentUid) {
+      throw new Error('Unauthorized: only the requester can renew this request.');
+    }
+
+    if (currentReq?.status === 'completed' || currentReq?.status === 'cancelled') {
+      throw new Error('Completed or cancelled requests cannot be renewed.');
+    }
+
+    // 1. Attempt trusted server renewal endpoint
+    let serverRenewed = false;
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch(REQUEST_ENDPOINTS.renew, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ requestId }),
+      });
+      if (res.ok) {
+        serverRenewed = true;
+      }
+    } catch (apiErr) {
+      console.warn('Backend renewal endpoint notice, falling back to direct Firestore update:', apiErr);
+    }
+
+    // 2. Direct Firestore fallback if server endpoint unavailable
+    if (!serverRenewed) {
+      const docRef = doc(db, 'requests', requestId);
+      const now = Date.now();
+      const expiresAtTimestamp = Timestamp.fromDate(new Date(now + 24 * 60 * 60 * 1000));
+      const deleteAtTimestamp = Timestamp.fromDate(new Date(now + 31 * 24 * 60 * 60 * 1000));
+      try {
+        await updateDoc(docRef, {
+          status: 'open',
+          expiresAt: expiresAtTimestamp,
+          deleteAt: deleteAtTimestamp,
+          renewedAt: serverTimestamp(),
+          renewalCount: (currentReq?.renewalCount || 0) + 1,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err: unknown) {
+        handleFirestoreError(err, OperationType.UPDATE, `requests/${requestId}`);
+      }
     }
   };
 
@@ -771,6 +883,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         hasMoreRequests,
         loadMoreRequests,
         addRequest,
+        renewRequest,
         cancelRequest,
         updateRequestStatus,
         savedListings,
