@@ -221,7 +221,7 @@ export function StudentNeedChatbot() {
             {!hasInteracted && (
               <span className="absolute right-16 hidden md:flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-[#252b27] shadow-md border border-[#dedcd4] pointer-events-none animate-in fade-in slide-in-from-right-2 duration-300">
                 <Sparkles className="h-3.5 w-3.5 text-[#204b39]" />
-                Ask StudentNeed (GenUI)
+                Ask StudentNeed AI
               </span>
             )}
           </button>

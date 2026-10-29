@@ -1,12 +1,27 @@
-// API configuration for StudentNeed frontend
-const getApiBaseUrl = (): string => {
+// API configuration and network client for StudentNeed frontend
+
+const CANONICAL_RENDER_BACKEND = 'https://studentneed-backend.onrender.com';
+
+export const getApiBaseUrl = (): string => {
   const customUrl = ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_URL) as string)?.trim();
   if (customUrl && !customUrl.includes('student.annauniv.edu')) {
     return customUrl.replace(/\/+$/, '');
   }
 
-  // Unified full-stack hosting: frontend and Express backend are served together (same-origin relative paths)
-  return '';
+  // Development mode: Same-origin relative paths when Vite is proxied or running under Express
+  const isDev = typeof import.meta !== 'undefined' && Boolean(import.meta?.env?.DEV);
+  const isLocalhost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.endsWith('.local'));
+
+  if (isDev || isLocalhost) {
+    return '';
+  }
+
+  // Production fallback: Always target the dedicated Render backend service
+  return CANONICAL_RENDER_BACKEND;
 };
 
 export const API_BASE_URL: string = getApiBaseUrl();
@@ -14,6 +29,74 @@ export const API_BASE_URL: string = getApiBaseUrl();
 export const COLLEGE_EMAIL_DOMAIN: string =
   ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_COLLEGE_EMAIL_DOMAIN) as string) ||
   'student.annauniv.edu';
+
+export class ApiError extends Error {
+  status: number;
+  data: any;
+  constructor(message: string, status: number = 500, data?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
+  }
+}
+
+export interface ApiFetchOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
+export async function apiFetch<T = any>(endpoint: string, options: ApiFetchOptions = {}): Promise<T> {
+  const { timeoutMs = 15000, ...fetchOptions } = options;
+  const baseUrl = getApiBaseUrl();
+  const url = endpoint.startsWith('http://') || endpoint.startsWith('https://')
+    ? endpoint
+    : `${baseUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = options.signal || controller.signal;
+
+  try {
+    const res = await fetch(url, {
+      ...fetchOptions,
+      signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('text/html')) {
+      const errorMsg = res.ok
+        ? 'Received HTML from server instead of JSON API response. The backend service may be waking up or misconfigured.'
+        : `Backend returned error (HTTP ${res.status}).`;
+      throw new ApiError(errorMsg, res.status);
+    }
+
+    let data: any = null;
+    if (contentType.includes('application/json')) {
+      data = await res.json().catch(() => null);
+    } else {
+      const text = await res.text().catch(() => '');
+      data = text ? { message: text } : {};
+    }
+
+    if (!res.ok) {
+      const message = data?.error || data?.message || `Request failed with status ${res.status}`;
+      throw new ApiError(message, res.status, data);
+    }
+
+    return data as T;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    if (err?.name === 'AbortError') {
+      throw new ApiError('Request timed out while waiting for server response. Please try again.', 408);
+    }
+    throw new ApiError(err?.message || 'Network error connecting to StudentNeed backend.', 0);
+  }
+}
 
 export const AUTH_ENDPOINTS = {
   get sendOtp() {
@@ -36,6 +119,9 @@ export const AUTH_ENDPOINTS = {
   },
   get validatePassword() {
     return `${getApiBaseUrl()}/api/auth/validate-password`;
+  },
+  get deleteAccount() {
+    return `${getApiBaseUrl()}/api/account/delete`;
   },
   get health() {
     return `${getApiBaseUrl()}/api/health`;
@@ -145,6 +231,18 @@ export const NOTIFICATION_ENDPOINTS = {
   get unregisterFcm() {
     return `${getApiBaseUrl()}/api/push/fcm-unsubscribe`;
   },
+  get vapidPublicKey() {
+    return `${getApiBaseUrl()}/api/push/vapid-public-key`;
+  },
+  get subscribe() {
+    return `${getApiBaseUrl()}/api/push/subscribe`;
+  },
+  get unsubscribe() {
+    return `${getApiBaseUrl()}/api/push/unsubscribe`;
+  },
+  get notifyMessage() {
+    return `${getApiBaseUrl()}/api/push/notify-message`;
+  },
   get notifyRequestResponse() {
     return `${getApiBaseUrl()}/api/requests/notify-response`;
   },
@@ -162,3 +260,11 @@ export const REQUEST_ENDPOINTS = {
   },
 };
 
+export const UPLOAD_ENDPOINTS = {
+  get signature() {
+    return `${getApiBaseUrl()}/api/upload/signature`;
+  },
+  get image() {
+    return `${getApiBaseUrl()}/api/upload/image`;
+  },
+};

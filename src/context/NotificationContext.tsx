@@ -26,6 +26,7 @@ import {
   subscribeToFCM,
   onForegroundMessage
 } from '../lib/fcm';
+import { NOTIFICATION_ENDPOINTS } from '../config/api';
 
 export interface ToastNotification {
   id: string;
@@ -227,7 +228,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       try {
         const idToken = await auth.currentUser?.getIdToken();
         if (idToken) {
-          await fetch('/api/push/fcm-unsubscribe', {
+          await fetch(NOTIFICATION_ENDPOINTS.unregisterFcm, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -240,7 +241,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
           if (idToken) {
-            await fetch('/api/push/unsubscribe', {
+            await fetch(NOTIFICATION_ENDPOINTS.unsubscribe, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -282,7 +283,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
       if (!vapidPublicKey) {
         try {
-          const vapidRes = await fetch('/api/push/vapid-public-key');
+          const vapidRes = await fetch(NOTIFICATION_ENDPOINTS.vapidPublicKey);
           if (vapidRes.ok) {
             const vapidData = await vapidRes.json();
             vapidPublicKey = vapidData.publicKey || '';
@@ -295,7 +296,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const idToken = await auth.currentUser?.getIdToken();
 
       if (fcmToken && idToken) {
-        await fetch('/api/push/fcm-token', {
+        await fetch(NOTIFICATION_ENDPOINTS.registerFcm, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -316,7 +317,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           });
         }
         if (idToken && sub) {
-          await fetch('/api/push/subscribe', {
+          await fetch(NOTIFICATION_ENDPOINTS.subscribe, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -604,7 +605,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       // Trigger backend mark-all-read for any documents beyond the loaded batch
       const idToken = await auth.currentUser?.getIdToken();
       if (idToken) {
-        fetch('/api/notifications/mark-all-read', {
+        fetch(NOTIFICATION_ENDPOINTS.markAllRead, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -677,7 +678,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             '';
 
           if (!vapidPublicKey) {
-            const vapidRes = await fetch('/api/push/vapid-public-key').catch(() => null);
+            const vapidRes = await fetch(NOTIFICATION_ENDPOINTS.vapidPublicKey).catch(() => null);
             if (vapidRes?.ok) {
               const data = await vapidRes.json();
               vapidPublicKey = data.publicKey || '';
@@ -688,7 +689,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           const idToken = await auth.currentUser?.getIdToken();
 
           if (fcmToken && idToken) {
-            await fetch('/api/push/fcm-token', {
+            await fetch(NOTIFICATION_ENDPOINTS.registerFcm, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',

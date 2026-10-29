@@ -201,7 +201,7 @@ assert(listingDetailSrc.includes('RESERVATION_ENDPOINTS.notifyCreated'), 'Listin
 assert(profileSrc.includes('RESERVATION_ENDPOINTS.decline'), 'Profile calls server endpoint on reservation decline');
 assert(profileSrc.includes('RESERVATION_ENDPOINTS.notifyMeetup'), 'Profile notifies counterparty on meetup confirmation');
 assert(requestsSrc.includes('NOTIFICATION_ENDPOINTS.notifyRequestResponse'), 'Requests notifies requester on student response');
-assert(chatSrc.includes('/api/push/notify-message'), 'Chat dispatches message notifications to counterparties');
+assert(chatSrc.includes('NOTIFICATION_ENDPOINTS.notifyMessage') || chatSrc.includes('/api/push/notify-message'), 'Chat dispatches message notifications to counterparties');
 
 // 13. Unit test logic simulations
 console.log('\n--- 13. Unit Simulation Tests ---');

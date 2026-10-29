@@ -157,7 +157,7 @@ export function NotificationBell() {
   };
 
   return (
-    <div className="relative inline-block" ref={dropdownRef}>
+    <div className={cn("relative inline-block", isOpen && "z-50")} ref={dropdownRef}>
       {/* Bell Trigger Button */}
       <button
         type="button"
@@ -189,7 +189,7 @@ export function NotificationBell() {
           role="dialog"
           aria-modal="true"
           aria-label="Notification Center"
-          className="fixed inset-x-3 top-16 sm:inset-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[400px] rounded-2xl border border-[#dedcd4] bg-white shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          className="fixed inset-x-3 top-16 sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[400px] rounded-2xl border border-[#dedcd4] bg-white shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         >
           {/* Header */}
           <div className="border-b border-[#dedcd4]/80 px-4 py-3 bg-[#faf9f5]">

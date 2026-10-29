@@ -6,7 +6,7 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAnnaUnivStudent() {
+    function isCollegeEmail() {
       return isAuthenticated() &&
              request.auth.token.email != null &&
              request.auth.token.email.matches('.*@student\\.annauniv\\.edu');
@@ -27,19 +27,35 @@ service cloud.firestore {
       );
     }
 
+    // A student is only verified once they have an existing user profile created via server-side OTP verification
+    // with isVerified == true. Missing user documents strictly DO NOT grant access.
+    function isVerifiedStudent() {
+      return isCollegeEmail() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isVerified == true &&
+             (!('status' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+              (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'suspended' &&
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'banned'));
+    }
+
+    function isAnnaUnivStudent() {
+      return isVerifiedStudent();
+    }
+
     function isAuthorizedStudent() {
-      return isAnnaUnivStudent() || isAdmin() || isInternalSystem();
+      return isVerifiedStudent() || isAdmin() || isInternalSystem();
     }
 
     function isUserActive() {
-      return !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
-             !('status' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
-             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'suspended' &&
-              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'banned');
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             (!('status' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+              (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'suspended' &&
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'banned'));
     }
 
     match /users/{userId} {
-      allow read: if isAuthorizedStudent();
+      // Authenticated users can read their own profile document; verified students/admins can read public student profiles
+      allow read: if isAuthorizedStudent() || (isAuthenticated() && request.auth.uid == userId);
 
       // Creating a user profile:
       // Restricted to verified admin/server system account after OTP verification
