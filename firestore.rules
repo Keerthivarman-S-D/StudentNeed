@@ -492,5 +492,48 @@ service cloud.firestore {
     match /temp_otps/{otpId} {
       allow read, write: if isInternalSystem() || isAdmin();
     }
+
+    // Real-Time Event-Driven Notifications System
+    match /notifications/{notificationId} {
+      // Users can only read their own notifications
+      allow read: if isAuthorizedStudent() && (
+        resource.data.recipientUid == request.auth.uid ||
+        isAdmin() ||
+        isInternalSystem()
+      );
+
+      // Notifications can be created by the internal system, admin, or an authenticated user triggering an event for another user
+      allow create: if isAuthorizedStudent() && (
+        isInternalSystem() ||
+        isAdmin() ||
+        (
+          isUserActive() &&
+          request.resource.data.recipientUid != request.auth.uid &&
+          request.resource.data.actorUid == request.auth.uid &&
+          request.resource.data.read == false &&
+          request.resource.data.title is string &&
+          request.resource.data.body is string &&
+          request.resource.data.type in ['chat', 'reservation', 'request', 'listing', 'system']
+        )
+      );
+
+      // Recipients can only update their own read status (read, readAt)
+      allow update: if isAuthorizedStudent() && (
+        (
+          resource.data.recipientUid == request.auth.uid &&
+          request.resource.data.recipientUid == resource.data.recipientUid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt', 'updatedAt'])
+        ) ||
+        isAdmin() ||
+        isInternalSystem()
+      );
+
+      // Recipients or admins can delete their own notifications
+      allow delete: if isAuthorizedStudent() && (
+        resource.data.recipientUid == request.auth.uid ||
+        isAdmin() ||
+        isInternalSystem()
+      );
+    }
   }
 }

@@ -118,10 +118,35 @@ export const RESERVATION_ENDPOINTS = {
   get accept() {
     return `${getApiBaseUrl()}/api/reservations/accept`;
   },
+  get decline() {
+    return `${getApiBaseUrl()}/api/reservations/decline`;
+  },
   get complete() {
     return `${getApiBaseUrl()}/api/reservations/complete`;
   },
   get cancel() {
     return `${getApiBaseUrl()}/api/reservations/cancel`;
   },
+  get notifyCreated() {
+    return `${getApiBaseUrl()}/api/reservations/notify-created`;
+  },
+  get notifyMeetup() {
+    return `${getApiBaseUrl()}/api/reservations/notify-meetup`;
+  },
 };
+
+export const NOTIFICATION_ENDPOINTS = {
+  get markAllRead() {
+    return `${getApiBaseUrl()}/api/notifications/mark-all-read`;
+  },
+  get registerFcm() {
+    return `${getApiBaseUrl()}/api/push/fcm-token`;
+  },
+  get unregisterFcm() {
+    return `${getApiBaseUrl()}/api/push/fcm-unsubscribe`;
+  },
+  get notifyRequestResponse() {
+    return `${getApiBaseUrl()}/api/requests/notify-response`;
+  },
+};
+

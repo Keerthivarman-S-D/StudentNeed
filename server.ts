@@ -1460,6 +1460,67 @@ Respond to the student's question directly, and if possible provide structured J
     }
   });
 
+  // --- Event-Driven Notification System Helper ---
+  interface ServerNotificationInput {
+    notificationId?: string;
+    recipientUid: string;
+    type: "chat" | "reservation" | "request" | "listing" | "system";
+    title: string;
+    body: string;
+    targetType: "chat" | "reservation" | "listing" | "request" | "system";
+    targetId: string;
+    actorUid?: string;
+    actorName?: string;
+    eventId?: string;
+    link?: string;
+    metadata?: Record<string, any>;
+  }
+
+  async function createServerNotification(notif: ServerNotificationInput): Promise<string> {
+    const systemToken = await getServerToken();
+    const cleanEventId = notif.eventId ? notif.eventId.replace(/[^a-zA-Z0-9_-]/g, "_") : "";
+    const effectiveId =
+      notif.notificationId ||
+      (cleanEventId
+        ? `notif_${cleanEventId}_${notif.recipientUid}`
+        : `notif_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`);
+
+    const notifUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/notifications/${effectiveId}`;
+
+    if (systemToken) {
+      try {
+        await fetch(notifUrl, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${systemToken}`,
+          },
+          body: JSON.stringify({
+            fields: {
+              notificationId: { stringValue: effectiveId },
+              recipientUid: { stringValue: notif.recipientUid },
+              type: { stringValue: notif.type },
+              title: { stringValue: notif.title },
+              body: { stringValue: notif.body },
+              createdAt: { timestampValue: new Date().toISOString() },
+              read: { booleanValue: false },
+              readAt: { nullValue: null },
+              targetType: { stringValue: notif.targetType },
+              targetId: { stringValue: notif.targetId },
+              actorUid: { stringValue: notif.actorUid || "" },
+              actorName: { stringValue: notif.actorName || "" },
+              eventId: { stringValue: notif.eventId || "" },
+              link: { stringValue: notif.link || "" },
+            },
+          }),
+        });
+      } catch (err) {
+        console.warn("[Notifications] Failed to write notification to Firestore:", err);
+      }
+    }
+    return effectiveId;
+  }
+
   // 6. Atomic Reservation Acceptance & Listing Status Synchronization
   app.post("/api/reservations/accept", async (req, res) => {
     try {
@@ -1603,16 +1664,35 @@ Respond to the student's question directly, and if possible provide structured J
 
       const buyerId = fields.buyerId?.stringValue;
       if (buyerId) {
+        const listingTitle = listingFields.title?.stringValue || "your reserved item";
+        const targetChatId = fields.chatId?.stringValue;
+        const targetUrl = targetChatId ? `/chat/${targetChatId}` : "/reserved";
+
+        // Create persistent event-driven Firestore notification
+        await createServerNotification({
+          notificationId: `notif_res_accepted_${reservationId}_${buyerId}`,
+          recipientUid: buyerId,
+          type: "reservation",
+          title: "Reservation Accepted! 🎉",
+          body: `The seller accepted your meetup request for "${listingTitle}".`,
+          targetType: "reservation",
+          targetId: reservationId,
+          actorUid: callerUid,
+          eventId: `res_${reservationId}_accepted`,
+          link: targetUrl,
+          metadata: { reservationId, listingId, chatId: targetChatId || "" },
+        }).catch((err) => console.warn("[Notifications] Accept notification write warning:", err));
+
         sendPushToUser(buyerId, {
           title: "Reservation Accepted! 🎉",
-          body: `The seller accepted your meetup request for "${listingFields.title?.stringValue || "your reserved item"}".`,
-          url: fields.chatId?.stringValue ? `/chat/${fields.chatId.stringValue}` : "/requests",
+          body: `The seller accepted your meetup request for "${listingTitle}".`,
+          url: targetUrl,
           tag: `res_${reservationId}`,
           data: {
             type: "reservation_accepted",
             reservationId,
-            chatId: fields.chatId?.stringValue || "",
-            url: fields.chatId?.stringValue ? `/chat/${fields.chatId.stringValue}` : "/requests",
+            chatId: targetChatId || "",
+            url: targetUrl,
           },
         }).catch((err) => console.warn("[WebPush] Accept reservation push warning:", err));
       }
@@ -1737,6 +1817,40 @@ Respond to the student's question directly, and if possible provide structured J
         })
       });
 
+      const counterpartyUid = callerUid === buyerId ? sellerId : buyerId;
+      if (counterpartyUid) {
+        const listingTitle = listingJson.fields?.title?.stringValue || "your exchange item";
+        const targetChatId = fields.chatId?.stringValue;
+        const targetUrl = targetChatId ? `/chat/${targetChatId}` : "/reserved";
+
+        await createServerNotification({
+          notificationId: `notif_res_completed_${reservationId}_${counterpartyUid}`,
+          recipientUid: counterpartyUid,
+          type: "reservation",
+          title: "Exchange Completed ✅",
+          body: `Your exchange for "${listingTitle}" has been marked complete!`,
+          targetType: "reservation",
+          targetId: reservationId,
+          actorUid: callerUid,
+          eventId: `res_${reservationId}_completed`,
+          link: targetUrl,
+          metadata: { reservationId, listingId: fields.listingId?.stringValue || "", chatId: targetChatId || "" },
+        }).catch((err) => console.warn("[Notifications] Complete notification write warning:", err));
+
+        sendPushToUser(counterpartyUid, {
+          title: "Exchange Completed ✅",
+          body: `Your exchange for "${listingTitle}" has been marked complete!`,
+          url: targetUrl,
+          tag: `res_${reservationId}`,
+          data: {
+            type: "reservation_completed",
+            reservationId,
+            chatId: targetChatId || "",
+            url: targetUrl,
+          },
+        }).catch((err) => console.warn("[WebPush] Complete reservation push warning:", err));
+      }
+
       return res.json({ message: "Reservation and listing successfully marked as completed." });
     } catch (err: any) {
       console.error("Complete reservation error:", err);
@@ -1859,16 +1973,32 @@ Respond to the student's question directly, and if possible provide structured J
       const targetUser = callerUid === buyerId ? sellerId : buyerId;
       if (targetUser) {
         const targetChatId = fields.chatId?.stringValue;
+        const targetUrl = targetChatId ? `/chat/${targetChatId}` : "/reserved";
+
+        await createServerNotification({
+          notificationId: `notif_res_cancelled_${reservationId}_${targetUser}`,
+          recipientUid: targetUser,
+          type: "reservation",
+          title: "Reservation Cancelled",
+          body: "A reservation request has been cancelled.",
+          targetType: "reservation",
+          targetId: reservationId,
+          actorUid: callerUid,
+          eventId: `res_${reservationId}_cancelled`,
+          link: targetUrl,
+          metadata: { reservationId, chatId: targetChatId || "" },
+        }).catch((err) => console.warn("[Notifications] Cancel notification write warning:", err));
+
         sendPushToUser(targetUser, {
           title: "Reservation Cancelled",
           body: "A reservation request has been cancelled.",
-          url: targetChatId ? `/chat/${targetChatId}` : "/requests",
+          url: targetUrl,
           tag: `res_${reservationId}`,
           data: {
             type: "reservation_cancelled",
             reservationId,
             chatId: targetChatId || "",
-            url: targetChatId ? `/chat/${targetChatId}` : "/requests",
+            url: targetUrl,
           },
         }).catch((err) => console.warn("[WebPush] Cancel reservation push warning:", err));
       }
@@ -1877,6 +2007,486 @@ Respond to the student's question directly, and if possible provide structured J
     } catch (err: any) {
       console.error("Cancel reservation error:", err);
       return res.status(500).json({ error: "Internal server error cancelling reservation." });
+    }
+  });
+
+  // 7b. Notify Seller of New Reservation Request
+  app.post("/api/reservations/notify-created", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const { reservationId } = req.body || {};
+      if (!reservationId || typeof reservationId !== "string") {
+        return res.status(400).json({ error: "reservationId is required." });
+      }
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      const resDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/reservations/${reservationId}`;
+      const resDocRes = await fetch(resDocUrl, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (!resDocRes.ok) {
+        return res.status(resDocRes.status).json({ error: "Reservation document not found." });
+      }
+      const resJson = await resDocRes.json();
+      const fields = resJson.fields || {};
+      const buyerId = fields.buyerId?.stringValue;
+      const sellerId = fields.sellerId?.stringValue;
+      const listingId = fields.listingId?.stringValue;
+      const chatId = fields.chatId?.stringValue;
+
+      if (callerUid !== buyerId) {
+        return res.status(403).json({ error: "Forbidden: You are not the creator of this reservation." });
+      }
+      if (!sellerId || sellerId === buyerId) {
+        return res.status(400).json({ error: "Invalid reservation participants." });
+      }
+
+      let listingTitle = "an item";
+      try {
+        const listingDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/listings/${listingId}`;
+        const lRes = await fetch(listingDocUrl, { headers: { Authorization: `Bearer ${effectiveToken}` } });
+        if (lRes.ok) {
+          const lJson = await lRes.json();
+          listingTitle = lJson.fields?.title?.stringValue || "an item";
+        }
+      } catch {}
+
+      let buyerName = "A campus student";
+      try {
+        const userDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${buyerId}`;
+        const uRes = await fetch(userDocUrl, { headers: { Authorization: `Bearer ${effectiveToken}` } });
+        if (uRes.ok) {
+          const uJson = await uRes.json();
+          buyerName = uJson.fields?.name?.stringValue || "A campus student";
+        }
+      } catch {}
+
+      const targetUrl = chatId ? `/chat/${chatId}` : "/reserved";
+
+      await createServerNotification({
+        notificationId: `notif_res_created_${reservationId}_${sellerId}`,
+        recipientUid: sellerId,
+        type: "reservation",
+        title: "New Reservation Request",
+        body: `${buyerName} requested to reserve "${listingTitle}".`,
+        targetType: "reservation",
+        targetId: reservationId,
+        actorUid: buyerId,
+        actorName: buyerName,
+        eventId: `res_${reservationId}_created`,
+        link: targetUrl,
+        metadata: { reservationId, listingId, chatId: chatId || "" },
+      });
+
+      sendPushToUser(sellerId, {
+        title: "New Reservation Request",
+        body: `${buyerName} requested to reserve "${listingTitle}".`,
+        url: targetUrl,
+        tag: `res_${reservationId}`,
+        data: {
+          type: "reservation_request",
+          reservationId,
+          chatId: chatId || "",
+          url: targetUrl,
+        },
+      }).catch((err) => console.warn("[WebPush] New reservation push warning:", err));
+
+      return res.json({ success: true, message: "Seller notified of reservation request." });
+    } catch (err: any) {
+      console.error("notify-created error:", err);
+      return res.status(500).json({ error: "Failed to dispatch reservation notification." });
+    }
+  });
+
+  // 7c. Authorized Reservation Decline
+  app.post("/api/reservations/decline", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const { reservationId } = req.body || {};
+      if (!reservationId || typeof reservationId !== "string") {
+        return res.status(400).json({ error: "reservationId is required." });
+      }
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      const resDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/reservations/${reservationId}`;
+      const resDocRes = await fetch(resDocUrl, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (!resDocRes.ok) {
+        return res.status(resDocRes.status).json({ error: "Reservation not found." });
+      }
+      const resJson = await resDocRes.json();
+      const fields = resJson.fields || {};
+      const sellerId = fields.sellerId?.stringValue;
+      const buyerId = fields.buyerId?.stringValue;
+      const listingId = fields.listingId?.stringValue;
+      const chatId = fields.chatId?.stringValue;
+
+      if (callerUid !== sellerId) {
+        return res.status(403).json({ error: "Forbidden: Only the seller can decline this reservation." });
+      }
+
+      const nowIso = new Date().toISOString();
+      await fetch(resDocUrl + `?updateMask.fieldPaths=status&updateMask.fieldPaths=updatedAt`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${effectiveToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            ...fields,
+            status: { stringValue: "rejected" },
+            updatedAt: { timestampValue: nowIso },
+          },
+        }),
+      });
+
+      let listingTitle = "your reserved item";
+      try {
+        const listingDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/listings/${listingId}`;
+        const lRes = await fetch(listingDocUrl, { headers: { Authorization: `Bearer ${effectiveToken}` } });
+        if (lRes.ok) {
+          const lJson = await lRes.json();
+          listingTitle = lJson.fields?.title?.stringValue || "your reserved item";
+        }
+      } catch {}
+
+      if (buyerId) {
+        const targetUrl = chatId ? `/chat/${chatId}` : "/reserved";
+
+        await createServerNotification({
+          notificationId: `notif_res_declined_${reservationId}_${buyerId}`,
+          recipientUid: buyerId,
+          type: "reservation",
+          title: "Reservation Declined",
+          body: `Your reservation request for "${listingTitle}" was declined.`,
+          targetType: "reservation",
+          targetId: reservationId,
+          actorUid: callerUid,
+          eventId: `res_${reservationId}_declined`,
+          link: targetUrl,
+          metadata: { reservationId, listingId, chatId: chatId || "" },
+        });
+
+        sendPushToUser(buyerId, {
+          title: "Reservation Declined",
+          body: `Your reservation request for "${listingTitle}" was declined.`,
+          url: targetUrl,
+          tag: `res_${reservationId}`,
+          data: {
+            type: "reservation_declined",
+            reservationId,
+            chatId: chatId || "",
+            url: targetUrl,
+          },
+        }).catch((err) => console.warn("[WebPush] Decline reservation push warning:", err));
+      }
+
+      return res.json({ success: true, message: "Reservation successfully declined." });
+    } catch (err: any) {
+      console.error("decline reservation error:", err);
+      return res.status(500).json({ error: "Failed to decline reservation." });
+    }
+  });
+
+  // 7d. Notify Counterparty of Meetup Status Confirmation or Proposal
+  app.post("/api/reservations/notify-meetup", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const { reservationId, status: meetupStatus, location } = req.body || {};
+      if (!reservationId) return res.status(400).json({ error: "reservationId is required." });
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      const resDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/reservations/${reservationId}`;
+      const resDocRes = await fetch(resDocUrl, { headers: { Authorization: `Bearer ${effectiveToken}` } });
+      if (!resDocRes.ok) return res.status(404).json({ error: "Reservation not found." });
+      const resJson = await resDocRes.json();
+      const fields = resJson.fields || {};
+      const sellerId = fields.sellerId?.stringValue;
+      const buyerId = fields.buyerId?.stringValue;
+      const chatId = fields.chatId?.stringValue;
+
+      if (callerUid !== sellerId && callerUid !== buyerId) {
+        return res.status(403).json({ error: "Forbidden: You are not a party to this reservation." });
+      }
+
+      const counterpartyUid = callerUid === buyerId ? sellerId : buyerId;
+      if (!counterpartyUid) return res.json({ success: true });
+
+      const isConfirmed = meetupStatus === "confirmed";
+      const title = isConfirmed ? "Meetup Confirmed 📍" : "Meetup Proposed 📍";
+      const body = isConfirmed
+        ? `Meetup location "${location || "Campus"}" was confirmed.`
+        : `A meetup at "${location || "Campus"}" was proposed.`;
+
+      const targetUrl = chatId ? `/chat/${chatId}` : "/reserved";
+
+      await createServerNotification({
+        notificationId: `notif_meetup_${reservationId}_${isConfirmed ? "confirmed" : "proposed"}_${counterpartyUid}`,
+        recipientUid: counterpartyUid,
+        type: "reservation",
+        title,
+        body,
+        targetType: "reservation",
+        targetId: reservationId,
+        actorUid: callerUid,
+        eventId: `res_${reservationId}_meetup_${isConfirmed ? "confirmed" : "proposed"}`,
+        link: targetUrl,
+        metadata: { reservationId, chatId: chatId || "", location: location || "" },
+      });
+
+      sendPushToUser(counterpartyUid, {
+        title,
+        body,
+        url: targetUrl,
+        tag: `res_${reservationId}`,
+        data: {
+          type: "meetup_update",
+          reservationId,
+          chatId: chatId || "",
+          url: targetUrl,
+        },
+      }).catch((err) => console.warn("[WebPush] Meetup update push warning:", err));
+
+      return res.json({ success: true, message: "Counterparty notified of meetup status." });
+    } catch (err: any) {
+      console.error("notify-meetup error:", err);
+      return res.status(500).json({ error: "Failed to dispatch meetup notification." });
+    }
+  });
+
+  // 7e. Notify Requester of Response to Campus Request
+  app.post("/api/requests/notify-response", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const { requestId, chatId } = req.body || {};
+      if (!requestId) return res.status(400).json({ error: "requestId is required." });
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      const reqDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/item_requests/${requestId}`;
+      const reqRes = await fetch(reqDocUrl, { headers: { Authorization: `Bearer ${effectiveToken}` } });
+      if (!reqRes.ok) return res.status(404).json({ error: "Request not found." });
+      const reqJson = await reqRes.json();
+      const requesterId = reqJson.fields?.requesterId?.stringValue;
+      const requestTitle = reqJson.fields?.title?.stringValue || "campus item";
+
+      if (callerUid === requesterId) {
+        return res.status(400).json({ error: "Cannot notify self on own request." });
+      }
+
+      let callerName = "A campus student";
+      try {
+        const uRes = await fetch(
+          `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${callerUid}`,
+          { headers: { Authorization: `Bearer ${effectiveToken}` } }
+        );
+        if (uRes.ok) {
+          const uJson = await uRes.json();
+          callerName = uJson.fields?.name?.stringValue || "A campus student";
+        }
+      } catch {}
+
+      const targetUrl = chatId ? `/chat/${chatId}` : "/requests";
+
+      await createServerNotification({
+        notificationId: `notif_req_${requestId}_${callerUid}_${requesterId}`,
+        recipientUid: requesterId,
+        type: "request",
+        title: "New Response to Your Request",
+        body: `${callerName} offered to help with your request for "${requestTitle}".`,
+        targetType: "request",
+        targetId: requestId,
+        actorUid: callerUid,
+        actorName: callerName,
+        eventId: `req_${requestId}_${callerUid}`,
+        link: targetUrl,
+        metadata: { requestId, chatId: chatId || "" },
+      });
+
+      sendPushToUser(requesterId, {
+        title: "New Response to Your Request",
+        body: `${callerName} offered to help with your request for "${requestTitle}".`,
+        url: targetUrl,
+        tag: `req_${requestId}`,
+        data: {
+          type: "request_response",
+          requestId,
+          chatId: chatId || "",
+          url: targetUrl,
+        },
+      }).catch((err) => console.warn("[WebPush] Request response push warning:", err));
+
+      return res.json({ success: true, message: "Requester notified." });
+    } catch (err: any) {
+      console.error("notify-response error:", err);
+      return res.status(500).json({ error: "Failed to notify requester." });
+    }
+  });
+
+  // 7f. Bulk Mark All Notifications As Read for Caller
+  app.post("/api/notifications/mark-all-read", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      // Query unread notifications for caller
+      const runQueryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents:runQuery`;
+      const queryPayload = {
+        structuredQuery: {
+          from: [{ collectionId: "notifications" }],
+          where: {
+            compositeFilter: {
+              op: "AND",
+              filters: [
+                {
+                  fieldFilter: {
+                    field: { fieldPath: "recipientUid" },
+                    op: "EQUAL",
+                    value: { stringValue: callerUid },
+                  },
+                },
+                {
+                  fieldFilter: {
+                    field: { fieldPath: "read" },
+                    op: "EQUAL",
+                    value: { booleanValue: false },
+                  },
+                },
+              ],
+            },
+          },
+          limit: 100,
+        },
+      };
+
+      const queryRes = await fetch(runQueryUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${effectiveToken}`,
+        },
+        body: JSON.stringify(queryPayload),
+      });
+
+      let updatedCount = 0;
+      if (queryRes.ok) {
+        const docs = await queryRes.json();
+        const nowIso = new Date().toISOString();
+        for (const item of docs) {
+          if (item.document?.name) {
+            await fetch(item.document.name + `?updateMask.fieldPaths=read&updateMask.fieldPaths=readAt`, {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${effectiveToken}`,
+              },
+              body: JSON.stringify({
+                fields: {
+                  ...item.document.fields,
+                  read: { booleanValue: true },
+                  readAt: { timestampValue: nowIso },
+                },
+              }),
+            }).catch(() => {});
+            updatedCount++;
+          }
+        }
+      }
+
+      return res.json({ success: true, updatedCount });
+    } catch (err: any) {
+      console.error("mark-all-read error:", err);
+      return res.status(500).json({ error: "Failed to mark all as read." });
     }
   });
 
@@ -2203,6 +2813,91 @@ Respond to the student's question directly, and if possible provide structured J
     }
   });
 
+  // 8c-2. Register FCM Device Token
+  app.post("/api/push/fcm-token", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid or expired authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+      const { token } = req.body || {};
+      if (!token || typeof token !== "string") {
+        return res.status(400).json({ error: "Valid FCM token is required." });
+      }
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      const fcmDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${callerUid}/private/fcm_tokens`;
+      await fetch(fcmDocUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${effectiveToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            token: { stringValue: token },
+            updatedAt: { timestampValue: new Date().toISOString() },
+          },
+        }),
+      });
+
+      return res.json({ success: true, message: "FCM token registered." });
+    } catch (err: any) {
+      console.error("fcm-token error:", err);
+      return res.status(500).json({ error: "Failed to register FCM token." });
+    }
+  });
+
+  // 8c-3. Unregister FCM Device Token on Logout
+  app.post("/api/push/fcm-unsubscribe", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Authentication required." });
+      }
+      const idToken = authHeader.split(" ")[1];
+      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+      const verifyRes = await fetch(verifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
+        return res.status(401).json({ error: "Invalid authentication session." });
+      }
+      const callerUid = verifyData.users[0].localId;
+
+      const systemToken = await getServerToken();
+      const effectiveToken = systemToken || idToken;
+
+      const fcmDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${callerUid}/private/fcm_tokens`;
+      await fetch(fcmDocUrl, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+
+      return res.json({ success: true, message: "FCM token unregistered." });
+    } catch (err: any) {
+      console.error("fcm-unsubscribe error:", err);
+      return res.status(500).json({ error: "Failed to unregister FCM token." });
+    }
+  });
+
   // 8d. Secure, Authorized Chat Message Push Notification Dispatch
   app.post("/api/push/notify-message", async (req, res) => {
     try {
@@ -2303,6 +2998,22 @@ Respond to the student's question directly, and if possible provide structured J
       let totalSent = 0;
       let totalPruned = 0;
       for (const recipientUid of recipients) {
+        // Create persistent event-driven Firestore notification
+        await createServerNotification({
+          notificationId: `notif_chat_${messageId}_${recipientUid}`,
+          recipientUid,
+          type: "chat",
+          title: `New message from ${senderName}`,
+          body: textSnippet || "Sent you a message.",
+          targetType: "chat",
+          targetId: chatId,
+          actorUid: callerUid,
+          actorName: senderName,
+          eventId: `chat_${chatId}_${messageId}`,
+          link: `/chat/${chatId}`,
+          metadata: { chatId, messageId },
+        }).catch((err) => console.warn("[Notifications] Chat message notif warning:", err));
+
         const result = await sendPushToUser(recipientUid, {
           title: `New message from ${senderName}`,
           body: textSnippet || "Sent you a message.",
