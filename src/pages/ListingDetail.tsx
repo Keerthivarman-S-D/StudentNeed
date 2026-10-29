@@ -32,6 +32,8 @@ import { ReportListingModal } from '../components/ReportListingModal';
 import { cn } from '../lib/utils';
 import { Listing, User, Reservation } from '../types';
 import { getOptimizedImageUrl } from '../lib/cloudinary';
+import { RESERVATION_ENDPOINTS } from '../config/api';
+
 
 export function ListingDetail() {
   const { id } = useParams<{ id: string }>();
@@ -405,6 +407,21 @@ export function ListingDetail() {
         reservationId: resId,
         updatedAt: serverTimestamp(),
       });
+
+      // Dispatch server-side verified notification to seller
+      try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (idToken) {
+          fetch(RESERVATION_ENDPOINTS.notifyCreated, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({ reservationId: resId }),
+          }).catch((notifyErr) => console.warn('Reservation creation notification notice:', notifyErr));
+        }
+      } catch {}
 
       navigate(`/chat/${chatId}`);
     } catch (err: any) {

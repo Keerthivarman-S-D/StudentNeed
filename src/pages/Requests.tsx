@@ -21,6 +21,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { cn } from '../lib/utils';
 import { ItemRequest, Chat, Category } from '../types';
+import { NOTIFICATION_ENDPOINTS } from '../config/api';
+
 
 export function Requests() {
   const navigate = useNavigate();
@@ -160,6 +162,22 @@ export function Requests() {
             updatedAt: serverTimestamp(),
           });
         }
+        // Notify requester that a student responded to their request
+        if (firebaseUser && request.requesterId !== currentUserId) {
+          firebaseUser.getIdToken().then((idToken) => {
+            fetch(NOTIFICATION_ENDPOINTS.notifyRequestResponse, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+              },
+              body: JSON.stringify({
+                requestId: request.id,
+                chatId,
+              }),
+            }).catch((err) => console.warn('Request notification notice:', err));
+          }).catch(() => {});
+        }
         navigate(`/chat/${chatId}`);
       } catch (checkErr) {
         // Fallback: If getDoc fails due to security rules evaluation on null resource,
@@ -172,6 +190,21 @@ export function Requests() {
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
+          if (firebaseUser && request.requesterId !== currentUserId) {
+            firebaseUser.getIdToken().then((idToken) => {
+              fetch(NOTIFICATION_ENDPOINTS.notifyRequestResponse, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                  requestId: request.id,
+                  chatId,
+                }),
+              }).catch((err) => console.warn('Request notification notice:', err));
+            }).catch(() => {});
+          }
           navigate(`/chat/${chatId}`);
         } catch (createErr) {
           console.error('Failed to initialize request chat:', createErr);

@@ -6,13 +6,19 @@ import {
   where,
   orderBy,
   limit,
+  startAfter,
+  getDocs,
   onSnapshot,
+  updateDoc,
+  writeBatch,
   setDoc,
   serverTimestamp,
+  QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { AppNotification } from '../types';
+import { isPushSupported, requestPushPermission, subscribeToFCM, onForegroundMessage } from '../lib/fcm';
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -31,10 +37,13 @@ interface NotificationContextType {
   chatUnreadCounts: Record<string, number>;
   soundEnabled: boolean;
   browserNotificationsEnabled: boolean;
+  isLoading: boolean;
+  hasMore: boolean;
+  loadMore: () => Promise<void>;
   toggleSound: () => void;
   toggleBrowserNotifications: () => Promise<void>;
   markChatAsRead: (chatId: string) => Promise<void>;
-  markNotificationAsRead: (notificationId: string) => void;
+  markNotificationAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
 }
 
@@ -50,20 +59,24 @@ function toMillis(val: any): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
+function toIsoString(val: any): string {
+  const ms = toMillis(val);
+  return ms > 0 ? new Date(ms).toISOString() : new Date().toISOString();
+}
+
 // Programmatic Web Audio API melodic 2-tone chime
-// Resilient to network outages, 0 asset dependencies, strictly obeys autoplay safety
 function playNotificationChime() {
   try {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
-    
+
     if (ctx.state === 'suspended') {
       ctx.resume().catch(() => {});
     }
-    
+
     const now = ctx.currentTime;
-    
+
     // Tone 1: 587.33 Hz (D5)
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
@@ -90,25 +103,30 @@ function playNotificationChime() {
     osc2.start(now + 0.07);
     osc2.stop(now + 0.28);
 
-    // Clean up AudioContext safely
     setTimeout(() => {
       try {
         ctx.close().catch(() => {});
       } catch {}
     }, 500);
-  } catch {
-    // Graceful fallback if audio is disallowed or blocked by policy
-  }
+  } catch {}
 }
+
+const PAGE_SIZE = 20;
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useAuth();
   const currentUserId = currentUser?.id;
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [chatReads, setChatReads] = useState<Record<string, number>>({});
+  const [unreadTotal, setUnreadTotal] = useState<number>(0);
   const [chatUnreadCounts, setChatUnreadCounts] = useState<Record<string, number>>({});
-  
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+
+  const lastDocRef = useRef<QueryDocumentSnapshot | null>(null);
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const isInitialLoadRef = useRef<boolean>(true);
+
   // User sound & browser notification preferences
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     try {
@@ -127,20 +145,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  // Track read notification IDs in localStorage
-  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => {
-    try {
-      const saved = localStorage.getItem(`sn_read_notifs_${currentUserId || 'guest'}`);
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-
-  // Deduplication tracking to ensure initial page load never replays sounds
-  const seenEventKeysRef = useRef<Set<string>>(new Set());
-  const isInitialLoadRef = useRef<boolean>(true);
-
   // Sync preference changes to localStorage
   useEffect(() => {
     try {
@@ -154,58 +158,52 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, [browserNotificationsEnabled]);
 
-  useEffect(() => {
-    if (!currentUserId) return;
-    try {
-      localStorage.setItem(
-        `sn_read_notifs_${currentUserId}`,
-        JSON.stringify(Array.from(readNotificationIds))
-      );
-    } catch {}
-  }, [readNotificationIds, currentUserId]);
-
   const toggleSound = () => {
     setSoundEnabled((prev) => !prev);
   };
 
   const toggleBrowserNotifications = async () => {
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      alert('Browser notifications are not supported by this browser.');
+    if (!isPushSupported()) {
+      alert('Browser notifications are not supported in this browser.');
       return;
     }
 
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      alert('Web Push is not supported in this browser environment.');
-      return;
-    }
-
-    // 1. If currently active, unsubscribe
     if (browserNotificationsEnabled) {
+      // Unsubscribe
       try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (idToken) {
+          await fetch('/api/push/fcm-unsubscribe', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+          }).catch(() => {});
+        }
+
         const reg = await navigator.serviceWorker.ready;
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
-          const idToken = await auth.currentUser?.getIdToken();
           if (idToken) {
             await fetch('/api/push/unsubscribe', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}`,
+                Authorization: `Bearer ${idToken}`,
               },
               body: JSON.stringify({ endpoint: sub.endpoint }),
-            }).catch((err) => console.warn('Unsubscribe API warning:', err));
+            }).catch(() => {});
           }
           await sub.unsubscribe().catch(() => {});
         }
       } catch (err) {
-        console.warn('Error unsubscribing device:', err);
+        console.warn('Unsubscribe device notice:', err);
       }
       setBrowserNotificationsEnabled(false);
       return;
     }
 
-    // 2. Separate handling for permission states: denied vs default vs granted
     const permission = Notification.permission;
     if (permission === 'denied') {
       alert(
@@ -215,66 +213,78 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    let granted = permission === 'granted';
-    if (!granted) {
-      const requested = await Notification.requestPermission();
-      if (requested === 'granted') {
-        granted = true;
-      } else {
-        setBrowserNotificationsEnabled(false);
-        return;
-      }
+    const requested = await requestPushPermission();
+    if (requested !== 'granted') {
+      setBrowserNotificationsEnabled(false);
+      return;
     }
 
-    // 3. Register service worker and subscribe to PushManager
     try {
-      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-      await navigator.serviceWorker.ready;
+      // 1. Fetch VAPID key
+      let vapidPublicKey = '';
+      try {
+        const vapidRes = await fetch('/api/push/vapid-public-key');
+        if (vapidRes.ok) {
+          const vapidData = await vapidRes.json();
+          vapidPublicKey = vapidData.publicKey || '';
+        }
+      } catch {}
 
-      const vapidRes = await fetch('/api/push/vapid-public-key');
-      if (!vapidRes.ok) {
-        throw new Error('Push notification service is temporarily unavailable.');
-      }
-      const { publicKey } = await vapidRes.json();
-      if (!publicKey) {
-        throw new Error('VAPID public key not found.');
-      }
-
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey),
-        });
-      }
-
+      // 2. Try FCM subscription first
+      const fcmToken = await subscribeToFCM(vapidPublicKey);
       const idToken = await auth.currentUser?.getIdToken();
-      if (idToken && sub) {
-        const subJson = sub.toJSON();
-        await fetch('/api/push/subscribe', {
+
+      if (fcmToken && idToken) {
+        await fetch('/api/push/fcm-token', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}`,
+            Authorization: `Bearer ${idToken}`,
           },
-          body: JSON.stringify({ subscription: subJson }),
-        });
+          body: JSON.stringify({ token: fcmToken }),
+        }).catch(() => {});
+      }
+
+      // 3. Register standard Web Push as well
+      const reg = await navigator.serviceWorker.ready;
+      if (vapidPublicKey && 'pushManager' in reg) {
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+          });
+        }
+        if (idToken && sub) {
+          await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({ subscription: sub.toJSON() }),
+          }).catch(() => {});
+        }
       }
 
       setBrowserNotificationsEnabled(true);
     } catch (err: any) {
-      console.error('Failed to enable browser push notifications:', err);
+      console.error('Failed to enable push notifications:', err);
       alert('Could not enable push notifications: ' + (err.message || 'Unknown error'));
       setBrowserNotificationsEnabled(false);
     }
   };
 
-  const triggerAlert = useCallback((title: string, message: string, link: string) => {
-    if (soundEnabled) {
-      playNotificationChime();
-    }
-    // OS-level notifications are dispatched directly via Web Push Service Worker
-    // to guarantee delivery when backgrounded or closed, avoiding duplicate OS banners.
+  // Foreground FCM message listener
+  useEffect(() => {
+    const unsub = onForegroundMessage((payload) => {
+      if (soundEnabled) {
+        playNotificationChime();
+      }
+    });
+    return () => {
+      if (unsub) unsub();
+    };
   }, [soundEnabled]);
 
   // Sync browser permission changes
@@ -286,305 +296,284 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, [browserNotificationsEnabled]);
 
-  // 1. Subscribe to User's Private Read Receipts: /users/{userId}/private/chat_reads
+  // --- Real-Time Firestore Notifications Listener ---
   useEffect(() => {
     if (!currentUserId) {
-      setChatReads({});
-      return;
-    }
-
-    const privateReadsDocRef = doc(db, 'users', currentUserId, 'private', 'chat_reads');
-    const unsub = onSnapshot(
-      privateReadsDocRef,
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const readsMap: Record<string, number> = {};
-          Object.entries(data).forEach(([cId, val]) => {
-            readsMap[cId] = toMillis(val);
-          });
-          setChatReads(readsMap);
-        } else {
-          setChatReads({});
-        }
-      },
-      (err) => {
-        console.warn('Private chat reads subscription note:', err);
-      }
-    );
-
-    return () => unsub();
-  }, [currentUserId]);
-
-  // 2. Subscribe to user's active chats & recent messages
-  useEffect(() => {
-    if (!currentUserId) {
+      setNotifications([]);
+      setUnreadTotal(0);
       setChatUnreadCounts({});
+      setIsLoading(false);
+      setHasMore(false);
+      lastDocRef.current = null;
+      seenIdsRef.current = new Set();
+      isInitialLoadRef.current = true;
       return;
     }
 
-    const chatsQuery = query(
-      collection(db, 'chats'),
-      where('participants', 'array-contains', currentUserId),
-      limit(25)
+    setIsLoading(true);
+
+    const notifsQuery = query(
+      collection(db, 'notifications'),
+      where('recipientUid', '==', currentUserId),
+      orderBy('createdAt', 'desc'),
+      limit(PAGE_SIZE)
     );
 
-    const messageUnsubscribes: Record<string, () => void> = {};
-    const chatMessagesMap: Record<string, any[]> = {};
+    const unsubscribe = onSnapshot(
+      notifsQuery,
+      (snapshot) => {
+        const items: AppNotification[] = [];
+        let newItemsDetected = false;
 
-    const unsubChats = onSnapshot(
-      chatsQuery,
-      (chatsSnapshot) => {
-        const activeChatIds = new Set(chatsSnapshot.docs.map((d) => d.id));
+        snapshot.docs.forEach((d) => {
+          const data = d.data();
+          const notifId = d.id;
 
-        // Clean up unneeded message listeners
-        Object.keys(messageUnsubscribes).forEach((cId) => {
-          if (!activeChatIds.has(cId)) {
-            messageUnsubscribes[cId]();
-            delete messageUnsubscribes[cId];
-            delete chatMessagesMap[cId];
+          const item: AppNotification = {
+            id: notifId,
+            notificationId: notifId,
+            recipientUid: data.recipientUid,
+            type: data.type || 'system',
+            title: data.title || 'Notification',
+            body: data.body || data.message || '',
+            message: data.body || data.message || '',
+            createdAt: data.createdAt,
+            timestamp: toIsoString(data.createdAt),
+            read: Boolean(data.read),
+            readAt: data.readAt,
+            targetType: data.targetType,
+            targetId: data.targetId,
+            actorUid: data.actorUid,
+            actorName: data.actorName,
+            eventId: data.eventId,
+            link: data.link || (data.targetType === 'chat' ? `/chat/${data.targetId}` : '/'),
+            chatId: data.chatId || (data.targetType === 'chat' ? data.targetId : undefined),
+            reservationId: data.reservationId || (data.targetType === 'reservation' ? data.targetId : undefined),
+            listingId: data.listingId || (data.targetType === 'listing' ? data.targetId : undefined),
+            requestId: data.requestId || (data.targetType === 'request' ? data.targetId : undefined),
+          };
+
+          items.push(item);
+
+          if (!seenIdsRef.current.has(notifId)) {
+            seenIdsRef.current.add(notifId);
+            if (!isInitialLoadRef.current && !item.read) {
+              newItemsDetected = true;
+            }
           }
         });
 
-        // Set up listener for each chat's recent messages
-        chatsSnapshot.docs.forEach((chatDoc) => {
-          const cId = chatDoc.id;
-          if (!messageUnsubscribes[cId]) {
-            const msgsQuery = query(
-              collection(db, 'chats', cId, 'messages'),
-              orderBy('createdAt', 'desc'),
-              limit(15)
-            );
+        // Store last document for pagination
+        if (snapshot.docs.length > 0) {
+          lastDocRef.current = snapshot.docs[snapshot.docs.length - 1];
+          setHasMore(snapshot.docs.length === PAGE_SIZE);
+        } else {
+          lastDocRef.current = null;
+          setHasMore(false);
+        }
 
-            messageUnsubscribes[cId] = onSnapshot(
-              msgsQuery,
-              (msgsSnap) => {
-                const msgs = msgsSnap.docs.map((mDoc) => ({
-                  id: mDoc.id,
-                  ...mDoc.data(),
-                }));
-                chatMessagesMap[cId] = msgs;
+        setNotifications(items);
 
-                // Recompute unread counts for this chat
-                recalculateUnreads();
-              },
-              (err) => console.warn(`Message listener notice for chat ${cId}:`, err)
-            );
+        // Derive unread counts
+        const unreadCount = items.filter((n) => !n.read).length;
+        setUnreadTotal(unreadCount);
+
+        const chatCounts: Record<string, number> = {};
+        items.forEach((n) => {
+          if (!n.read && n.type === 'chat' && n.targetId) {
+            chatCounts[n.targetId] = (chatCounts[n.targetId] || 0) + 1;
           }
         });
+        setChatUnreadCounts(chatCounts);
+
+        if (newItemsDetected && soundEnabled) {
+          playNotificationChime();
+        }
+
+        isInitialLoadRef.current = false;
+        setIsLoading(false);
       },
       (err) => {
-        console.warn('User chats subscription note:', err);
+        console.warn('Notifications real-time listener notice:', err);
+        setIsLoading(false);
       }
     );
-
-    const recalculateUnreads = () => {
-      const newCounts: Record<string, number> = {};
-      const chatNotifs: AppNotification[] = [];
-
-      Object.entries(chatMessagesMap).forEach(([cId, msgs]) => {
-        const lastRead = chatReads[cId] || 0;
-        
-        let unreadForChat = 0;
-        let newestUnreadMsg: any = null;
-
-        msgs.forEach((m) => {
-          if (m.senderId !== currentUserId) {
-            const msgMillis = toMillis(m.createdAt);
-            if (msgMillis > lastRead) {
-              unreadForChat++;
-              if (!newestUnreadMsg) newestUnreadMsg = m;
-            }
-          }
-        });
-
-        newCounts[cId] = unreadForChat;
-
-        // If there's an unread message, add to synthesized notifications
-        if (unreadForChat > 0 && newestUnreadMsg) {
-          const notifId = `chat_${cId}_${newestUnreadMsg.id}`;
-          const isRead = readNotificationIds.has(notifId);
-
-          chatNotifs.push({
-            id: notifId,
-            type: 'chat',
-            title: unreadForChat > 1 ? `New Messages (${unreadForChat})` : 'New Chat Message',
-            message: newestUnreadMsg.text || 'Sent an attachment',
-            timestamp: new Date(toMillis(newestUnreadMsg.createdAt) || Date.now()).toISOString(),
-            read: isRead,
-            link: `/chat/${cId}`,
-            chatId: cId,
-          });
-
-          // Check if this is a newly arrived message to trigger chime
-          if (!seenEventKeysRef.current.has(notifId)) {
-            seenEventKeysRef.current.add(notifId);
-            if (!isInitialLoadRef.current) {
-              triggerAlert('New Message', newestUnreadMsg.text || 'You received a new message', `/chat/${cId}`);
-            }
-          }
-        }
-      });
-
-      setChatUnreadCounts(newCounts);
-      setNotifications((prev) => {
-        const nonChat = prev.filter((n) => n.type !== 'chat');
-        return [...chatNotifs, ...nonChat].sort(
-          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-      });
-    };
 
     return () => {
-      unsubChats();
-      Object.values(messageUnsubscribes).forEach((fn) => fn());
+      unsubscribe();
     };
-  }, [currentUserId, chatReads, triggerAlert, readNotificationIds]);
+  }, [currentUserId, soundEnabled]);
 
-  // 3. Subscribe to user's reservations for trade activity alerts
-  useEffect(() => {
-    if (!currentUserId) return;
-
-    const resQuery = query(
-      collection(db, 'reservations'),
-      where('buyerId', '==', currentUserId),
-      limit(15)
-    );
-
-    const unsubRes = onSnapshot(
-      resQuery,
-      (snapshot) => {
-        const resNotifs: AppNotification[] = [];
-
-        snapshot.docs.forEach((docSnap) => {
-          const data = docSnap.data();
-          const resId = docSnap.id;
-          const status = data.status;
-
-          // Alert buyer on status change
-          if (status === 'accepted' || status === 'completed') {
-            const notifId = `res_${resId}_${status}`;
-            const isRead = readNotificationIds.has(notifId);
-            const title = status === 'accepted' ? 'Reservation Accepted! 🎉' : 'Exchange Completed! ✅';
-            const message =
-              status === 'accepted'
-                ? 'The seller accepted your reservation. Tap to view meetup details.'
-                : 'Your campus exchange was marked complete.';
-
-            resNotifs.push({
-              id: notifId,
-              type: 'reservation',
-              title,
-              message,
-              timestamp: new Date(toMillis(data.updatedAt) || Date.now()).toISOString(),
-              read: isRead,
-              link: data.chatId ? `/chat/${data.chatId}` : '/reserved',
-              reservationId: resId,
-            });
-
-            if (!seenEventKeysRef.current.has(notifId)) {
-              seenEventKeysRef.current.add(notifId);
-              if (!isInitialLoadRef.current) {
-                triggerAlert(title, message, data.chatId ? `/chat/${data.chatId}` : '/reserved');
-              }
-            }
-          }
-        });
-
-        setNotifications((prev) => {
-          const nonRes = prev.filter((n) => n.type !== 'reservation');
-          return [...nonRes, ...resNotifs].sort(
-            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
-        });
-
-        // Initial snapshot settled
-        if (isInitialLoadRef.current) {
-          setTimeout(() => {
-            isInitialLoadRef.current = false;
-          }, 1500);
-        }
-      },
-      (err) => console.warn('Reservations notification listener notice:', err)
-    );
-
-    return () => unsubRes();
-  }, [currentUserId, triggerAlert, readNotificationIds]);
-
-  // Mark single chat conversation as read in Firestore
-  const markChatAsRead = useCallback(async (chatId: string) => {
-    if (!currentUserId || !chatId) return;
+  // Pagination: fetch next batch
+  const loadMore = useCallback(async () => {
+    if (!currentUserId || !lastDocRef.current || !hasMore) return;
 
     try {
-      // 1. Write to per-chat document: /users/{uid}/private/chat_reads_{chatId}
-      const perChatDocRef = doc(db, 'users', currentUserId, 'private', `chat_reads_${chatId}`);
-      await setDoc(
-        perChatDocRef,
-        {
-          chatId,
-          lastReadAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
+      const nextQuery = query(
+        collection(db, 'notifications'),
+        where('recipientUid', '==', currentUserId),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastDocRef.current),
+        limit(PAGE_SIZE)
       );
 
-      // 2. Write to user's combined map document: /users/{uid}/private/chat_reads
-      const allReadsDocRef = doc(db, 'users', currentUserId, 'private', 'chat_reads');
-      await setDoc(
-        allReadsDocRef,
-        {
-          [chatId]: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      const snap = await getDocs(nextQuery);
+      if (snap.empty) {
+        setHasMore(false);
+        return;
+      }
 
-      // Optimistically clear unread in local state
-      setChatReads((prev) => ({ ...prev, [chatId]: Date.now() }));
-      setChatUnreadCounts((prev) => ({ ...prev, [chatId]: 0 }));
+      const additional: AppNotification[] = [];
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        const notifId = d.id;
+        seenIdsRef.current.add(notifId);
+
+        additional.push({
+          id: notifId,
+          notificationId: notifId,
+          recipientUid: data.recipientUid,
+          type: data.type || 'system',
+          title: data.title || 'Notification',
+          body: data.body || data.message || '',
+          message: data.body || data.message || '',
+          createdAt: data.createdAt,
+          timestamp: toIsoString(data.createdAt),
+          read: Boolean(data.read),
+          readAt: data.readAt,
+          targetType: data.targetType,
+          targetId: data.targetId,
+          actorUid: data.actorUid,
+          actorName: data.actorName,
+          eventId: data.eventId,
+          link: data.link || (data.targetType === 'chat' ? `/chat/${data.targetId}` : '/'),
+          chatId: data.chatId || (data.targetType === 'chat' ? data.targetId : undefined),
+          reservationId: data.reservationId || (data.targetType === 'reservation' ? data.targetId : undefined),
+          listingId: data.listingId || (data.targetType === 'listing' ? data.targetId : undefined),
+          requestId: data.requestId || (data.targetType === 'request' ? data.targetId : undefined),
+        });
+      });
+
+      lastDocRef.current = snap.docs[snap.docs.length - 1];
+      setHasMore(snap.docs.length === PAGE_SIZE);
+
+      setNotifications((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const merged = [...prev];
+        additional.forEach((item) => {
+          if (!existingIds.has(item.id)) {
+            merged.push(item);
+          }
+        });
+        return merged;
+      });
     } catch (err) {
-      console.warn('Failed to update private chat read receipt:', err);
+      console.warn('Pagination loadMore notice:', err);
     }
-  }, [currentUserId]);
+  }, [currentUserId, hasMore]);
 
-  const markNotificationAsRead = useCallback((notificationId: string) => {
-    setReadNotificationIds((prev) => {
-      const next = new Set(prev);
-      next.add(notificationId);
-      return next;
-    });
+  // Mark single notification as read
+  const markNotificationAsRead = useCallback(
+    async (notificationId: string) => {
+      // Optimistic update
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+      );
+      setUnreadTotal((prev) => Math.max(0, prev - 1));
 
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
-    );
-  }, []);
+      try {
+        await updateDoc(doc(db, 'notifications', notificationId), {
+          read: true,
+          readAt: serverTimestamp(),
+        });
+      } catch (err) {
+        console.warn('Failed to update notification read status in Firestore:', err);
+      }
+    },
+    []
+  );
 
+  // Mark all unread notifications as read
   const markAllAsRead = useCallback(async () => {
     if (!currentUserId) return;
 
-    // Mark all synthesized notifications as read
-    const allIds = new Set(notifications.map((n) => n.id));
-    setReadNotificationIds(allIds);
+    const unreadItems = notifications.filter((n) => !n.read);
+    if (unreadItems.length === 0) return;
+
+    // Optimistic update
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setUnreadTotal(0);
+    setChatUnreadCounts({});
 
-    // Mark all chats as read
     try {
-      const allReadsDocRef = doc(db, 'users', currentUserId, 'private', 'chat_reads');
-      const payload: Record<string, any> = {};
-      Object.keys(chatUnreadCounts).forEach((cId) => {
-        payload[cId] = serverTimestamp();
+      const batch = writeBatch(db);
+      unreadItems.forEach((n) => {
+        const docRef = doc(db, 'notifications', n.id);
+        batch.update(docRef, { read: true, readAt: serverTimestamp() });
       });
-      if (Object.keys(payload).length > 0) {
-        await setDoc(allReadsDocRef, payload, { merge: true });
-      }
-      setChatUnreadCounts({});
-    } catch (err) {
-      console.warn('Could not mark all chats read:', err);
-    }
-  }, [currentUserId, notifications, chatUnreadCounts]);
+      await batch.commit();
 
-  const unreadChatCount = Object.values(chatUnreadCounts).reduce((sum, count) => sum + count, 0);
-  const unreadNotifsCount = notifications.filter((n) => !n.read && n.type !== 'chat').length;
-  const unreadTotal = unreadChatCount + unreadNotifsCount;
+      // Trigger backend mark-all-read for any documents beyond the loaded batch
+      const idToken = await auth.currentUser?.getIdToken();
+      if (idToken) {
+        fetch('/api/notifications/mark-all-read', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Failed to mark all notifications as read in Firestore:', err);
+    }
+  }, [currentUserId, notifications]);
+
+  // Mark all chat notifications for a given chatId as read
+  const markChatAsRead = useCallback(
+    async (chatId: string) => {
+      if (!currentUserId || !chatId) return;
+
+      const chatNotifs = notifications.filter(
+        (n) => !n.read && (n.chatId === chatId || n.targetId === chatId)
+      );
+
+      setChatUnreadCounts((prev) => ({ ...prev, [chatId]: 0 }));
+
+      if (chatNotifs.length > 0) {
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.chatId === chatId || n.targetId === chatId ? { ...n, read: true } : n
+          )
+        );
+        setUnreadTotal((prev) => Math.max(0, prev - chatNotifs.length));
+
+        try {
+          const batch = writeBatch(db);
+          chatNotifs.forEach((n) => {
+            batch.update(doc(db, 'notifications', n.id), {
+              read: true,
+              readAt: serverTimestamp(),
+            });
+          });
+          await batch.commit();
+        } catch (err) {
+          console.warn('Failed to mark chat notifications as read:', err);
+        }
+      }
+
+      // Backward compatibility: update private chat_reads doc
+      try {
+        const privateReadsDocRef = doc(db, 'users', currentUserId, 'private', 'chat_reads');
+        await setDoc(
+          privateReadsDocRef,
+          { [chatId]: serverTimestamp() },
+          { merge: true }
+        );
+      } catch {}
+    },
+    [currentUserId, notifications]
+  );
 
   return (
     <NotificationContext.Provider
@@ -594,6 +583,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         chatUnreadCounts,
         soundEnabled,
         browserNotificationsEnabled,
+        isLoading,
+        hasMore,
+        loadMore,
         toggleSound,
         toggleBrowserNotifications,
         markChatAsRead,

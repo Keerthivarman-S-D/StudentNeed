@@ -269,17 +269,30 @@ export type ActivityLog = {
   details?: Record<string, any>;
 };
 
-export type NotificationType = 'chat' | 'reservation' | 'request' | 'system';
+export type NotificationType = 'chat' | 'reservation' | 'request' | 'listing' | 'system';
+export type NotificationTargetType = 'chat' | 'reservation' | 'listing' | 'request' | 'system';
 
 export type AppNotification = {
   id: string;
+  notificationId?: string;
+  recipientUid?: string;
   type: NotificationType;
   title: string;
-  message: string;
-  timestamp: string;
+  body: string;
+  message?: string; // alias for body for backwards compatibility
+  createdAt?: any;
+  timestamp: string; // ISO string for UI display
   read: boolean;
+  readAt?: any;
+  targetType?: NotificationTargetType;
+  targetId?: string;
+  actorUid?: string;
+  actorName?: string;
+  eventId?: string;
   link: string;
+  metadata?: Record<string, any>;
   chatId?: string;
   reservationId?: string;
   listingId?: string;
+  requestId?: string;
 };

@@ -467,14 +467,35 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
     setReservationActionLoading(res.id);
     setReservationFeedback(null);
     try {
-      await updateDoc(doc(db, 'reservations', res.id), {
-        status: 'rejected',
-        updatedAt: serverTimestamp(),
+      const idToken = await firebaseUser.getIdToken();
+      const response = await fetch(RESERVATION_ENDPOINTS.decline, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ reservationId: res.id }),
       });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        // Fallback to client update if endpoint unavailable
+        await updateDoc(doc(db, 'reservations', res.id), {
+          status: 'rejected',
+          updatedAt: serverTimestamp(),
+        });
+      }
       setReservationFeedback({ type: 'success', text: 'Reservation request declined.' });
     } catch (err: any) {
       console.error('Decline reservation error:', err);
-      setReservationFeedback({ type: 'error', text: err.message || 'Failed to decline reservation.' });
+      try {
+        await updateDoc(doc(db, 'reservations', res.id), {
+          status: 'rejected',
+          updatedAt: serverTimestamp(),
+        });
+        setReservationFeedback({ type: 'success', text: 'Reservation request declined.' });
+      } catch (clientErr: any) {
+        setReservationFeedback({ type: 'error', text: clientErr.message || err.message || 'Failed to decline reservation.' });
+      }
     } finally {
       setReservationActionLoading(null);
     }
@@ -521,6 +542,23 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
         },
         updatedAt: serverTimestamp(),
       });
+      // Notify counterparty via trusted endpoint
+      try {
+        const idToken = await firebaseUser.getIdToken();
+        const loc = typeof res.meetup.location === 'object' ? (res.meetup.location as any)?.name : res.meetup.location;
+        fetch(RESERVATION_ENDPOINTS.notifyMeetup, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            reservationId: res.id,
+            status: 'confirmed',
+            location: loc,
+          }),
+        }).catch((err) => console.warn('Meetup notification error:', err));
+      } catch {}
       setReservationFeedback({ type: 'success', text: 'Meetup location confirmed!' });
     } catch (err: any) {
       console.error('Confirm meetup error:', err);
@@ -532,8 +570,20 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
 
   return (
     <div className="min-h-screen bg-[#f7f6f2] text-[#252b27]">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
         
+        {/* Navigation backlink when in sub-views */}
+        {activeTab !== 'listings' && (
+          <button
+            type="button"
+            onClick={() => handleTabChange('listings')}
+            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#555d56] hover:text-[#204b39] transition-colors mb-4 group cursor-pointer"
+          >
+            <span className="transition-transform group-hover:-translate-x-0.5">&larr;</span>
+            <span>Back to Profile</span>
+          </button>
+        )}
+
         {/* Page Title & Subtitle */}
         <div className="mb-8">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#252b27]">
@@ -556,94 +606,8 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
           </p>
         </div>
 
-        {/* Two-Column Responsive Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] lg:grid-cols-[260px_1fr] gap-6 lg:gap-8 items-start">
-          
-          {/* Left Navigation Sidebar Card */}
-          <aside className="w-full">
-            <div className="rounded-2xl border border-[#dedcd4] bg-white p-3 shadow-xs">
-              <nav className="flex flex-col space-y-1" aria-label="Campus Corner Navigation">
-                <button
-                  type="button"
-                  onClick={() => handleTabChange('listings')}
-                  className={cn(
-                    "w-full text-left px-3.5 py-2.5 rounded-xl text-sm transition-colors flex items-center justify-between",
-                    activeTab === 'listings'
-                      ? "bg-[#edf1ec] text-[#204b39] font-semibold"
-                      : "text-[#555d56] hover:text-[#252b27] hover:bg-zinc-50 font-normal"
-                  )}
-                >
-                  <span>Profile</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleTabChange('reserved')}
-                  className={cn(
-                    "w-full text-left px-3.5 py-2.5 rounded-xl text-sm transition-colors flex items-center justify-between",
-                    activeTab === 'reserved'
-                      ? "bg-[#edf1ec] text-[#204b39] font-semibold"
-                      : "text-[#555d56] hover:text-[#252b27] hover:bg-zinc-50 font-normal"
-                  )}
-                >
-                  <span>Reservations</span>
-                  {activeReservationsCount > 0 && (
-                    <span className="rounded-full bg-[#204b39] text-white text-[11px] font-bold px-2 py-0.5">
-                      {activeReservationsCount}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleTabChange('saved')}
-                  className={cn(
-                    "w-full text-left px-3.5 py-2.5 rounded-xl text-sm transition-colors flex items-center justify-between",
-                    activeTab === 'saved'
-                      ? "bg-[#edf1ec] text-[#204b39] font-semibold"
-                      : "text-[#555d56] hover:text-[#252b27] hover:bg-zinc-50 font-normal"
-                  )}
-                >
-                  <span>Wishlist</span>
-                  {mySavedListings.length > 0 && (
-                    <span className="text-xs text-[#717870] font-medium">
-                      {mySavedListings.length}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => navigate('/chat')}
-                  className="w-full text-left px-3.5 py-2.5 rounded-xl text-sm transition-colors text-[#555d56] hover:text-[#252b27] hover:bg-zinc-50 font-normal"
-                >
-                  <span>Chat</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleTabChange('settings')}
-                  className={cn(
-                    "w-full text-left px-3.5 py-2.5 rounded-xl text-sm transition-colors flex items-center justify-between",
-                    activeTab === 'settings'
-                      ? "bg-[#edf1ec] text-[#204b39] font-semibold"
-                      : "text-[#555d56] hover:text-[#252b27] hover:bg-zinc-50 font-normal"
-                  )}
-                >
-                  <span>Account settings</span>
-                </button>
-              </nav>
-
-              <div className="mt-4 pt-3 border-t border-[#dedcd4]/80 px-3 pb-1">
-                <p className="text-[11px] text-[#717870] font-normal">
-                  MIT Campus · Anna University
-                </p>
-              </div>
-            </div>
-          </aside>
-
-          {/* Right Main Content Area */}
-          <main className="min-w-0 w-full space-y-6">
+        {/* Centered Main Content Area */}
+        <main className="w-full space-y-6">
             
             {/* VIEW 1: PROFILE / YOUR CAMPUS CORNER */}
             {activeTab === 'listings' && (
@@ -738,10 +702,15 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div
                     onClick={() => handleTabChange('reserved')}
-                    className="rounded-2xl border border-[#dedcd4] bg-white p-5 hover:border-[#204b39]/40 transition-colors cursor-pointer shadow-xs"
+                    className="rounded-2xl border border-[#dedcd4] bg-white p-5 hover:border-[#204b39]/40 transition-colors cursor-pointer shadow-xs group"
                   >
                     <div className="flex items-center justify-between text-sm font-bold text-[#252b27]">
-                      <span>Reservations &rarr;</span>
+                      <span className="group-hover:text-[#204b39] transition-colors">Reservations &rarr;</span>
+                      {activeReservationsCount > 0 && (
+                        <span className="rounded-full bg-[#204b39] text-white text-[11px] font-bold px-2 py-0.5">
+                          {activeReservationsCount}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-[#717870] mt-1.5 leading-relaxed">
                       Coordinate your upcoming handoffs
@@ -750,10 +719,15 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
 
                   <div
                     onClick={() => handleTabChange('saved')}
-                    className="rounded-2xl border border-[#dedcd4] bg-white p-5 hover:border-[#204b39]/40 transition-colors cursor-pointer shadow-xs"
+                    className="rounded-2xl border border-[#dedcd4] bg-white p-5 hover:border-[#204b39]/40 transition-colors cursor-pointer shadow-xs group"
                   >
                     <div className="flex items-center justify-between text-sm font-bold text-[#252b27]">
-                      <span>Wishlist &rarr;</span>
+                      <span className="group-hover:text-[#204b39] transition-colors">Wishlist &rarr;</span>
+                      {mySavedListings.length > 0 && (
+                        <span className="text-xs text-[#717870] font-medium">
+                          {mySavedListings.length}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-[#717870] mt-1.5 leading-relaxed">
                       Keep useful finds in one place
@@ -762,10 +736,10 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
 
                   <div
                     onClick={() => navigate('/chat')}
-                    className="rounded-2xl border border-[#dedcd4] bg-white p-5 hover:border-[#204b39]/40 transition-colors cursor-pointer shadow-xs"
+                    className="rounded-2xl border border-[#dedcd4] bg-white p-5 hover:border-[#204b39]/40 transition-colors cursor-pointer shadow-xs group"
                   >
                     <div className="flex items-center justify-between text-sm font-bold text-[#252b27]">
-                      <span>Chat &rarr;</span>
+                      <span className="group-hover:text-[#204b39] transition-colors">Chat &rarr;</span>
                     </div>
                     <p className="text-xs text-[#717870] mt-1.5 leading-relaxed">
                       Continue a campus conversation
@@ -1707,8 +1681,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
               </div>
             )}
 
-          </main>
-        </div>
+        </main>
 
         {/* Page Footer */}
         <footer className="mt-16 pt-8 border-t border-[#dedcd4]/80 text-center text-xs text-[#717870]">
