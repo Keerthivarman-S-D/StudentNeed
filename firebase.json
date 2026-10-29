@@ -14,11 +14,15 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "**/*.cjs",
+      "**/*.map",
+      "**/server.*",
+      "**/dist-server/**"
     ],
     "rewrites": [
       {
-        "source": "**",
+        "source": "!/api/**",
         "destination": "/index.html"
       }
     ],

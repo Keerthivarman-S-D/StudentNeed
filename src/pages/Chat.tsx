@@ -29,7 +29,7 @@ import {
   CampusMeetupLocation, 
   ItemRequest 
 } from '../types';
-import { RESERVATION_ENDPOINTS } from '../config/api';
+import { RESERVATION_ENDPOINTS, NOTIFICATION_ENDPOINTS } from '../config/api';
 import { cn } from '../lib/utils';
 import { 
   Send, 
@@ -495,7 +495,7 @@ export function ChatPage() {
       try {
         const idToken = await auth.currentUser?.getIdToken();
         if (idToken) {
-          fetch('/api/push/notify-message', {
+          fetch(NOTIFICATION_ENDPOINTS.notifyMessage, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -704,7 +704,7 @@ export function ChatPage() {
       const user = auth.currentUser;
       if (user) {
         const idToken = await user.getIdToken();
-        const response = await fetch('/api/reservations/complete', {
+        const response = await fetch(RESERVATION_ENDPOINTS.complete, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -770,7 +770,7 @@ export function ChatPage() {
       const user = auth.currentUser;
       if (user) {
         const idToken = await user.getIdToken();
-        const response = await fetch('/api/reservations/cancel', {
+        const response = await fetch(RESERVATION_ENDPOINTS.cancel, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

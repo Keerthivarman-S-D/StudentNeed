@@ -349,7 +349,16 @@ async function startServer() {
   const explicitProductionOrigins = new Set([
     "https://studentneed.me",
     "https://www.studentneed.me",
+    "https://kv-adk-26.web.app",
+    "https://kv-adk-26.firebaseapp.com",
   ]);
+
+  if (process.env.ALLOWED_ORIGINS) {
+    for (const origin of process.env.ALLOWED_ORIGINS.split(',')) {
+      const trimmed = origin.trim().replace(/\/$/, "");
+      if (trimmed) explicitProductionOrigins.add(trimmed);
+    }
+  }
 
   const explicitDevelopmentOrigins = new Set([
     "http://localhost:5173",
@@ -802,6 +811,9 @@ Respond to the student's question directly, and if possible provide structured J
     }
   });
 
+  // In-flight OTP verification lock to prevent concurrent TOCTOU race conditions
+  const inFlightOtpVerifications = new Set<string>();
+
   // 2. Verify OTP (Rate-limited via trusted req.ip and email target)
   app.post("/api/auth/verify-otp", async (req, res) => {
     try {
@@ -820,7 +832,14 @@ Respond to the student's question directly, and if possible provide structured J
         return res.status(429).json({ error: "Too many verification attempts for this account. Please wait 10 minutes." });
       }
       const emailDocId = crypto.createHash("sha256").update(normalizedEmail).digest("hex");
-      const data = await getOtpRecord(emailDocId);
+
+      if (inFlightOtpVerifications.has(emailDocId)) {
+        return res.status(429).json({ error: "Verification in progress. Please wait a moment." });
+      }
+      inFlightOtpVerifications.add(emailDocId);
+
+      try {
+        const data = await getOtpRecord(emailDocId);
 
       if (!data || data.used) {
         return res.status(400).json({ error: "No pending verification found or OTP expired." });
@@ -850,15 +869,18 @@ Respond to the student's question directly, and if possible provide structured J
         return res.status(400).json({ error: "Invalid verification code. Please try again." });
       }
 
-      // Mark OTP as used to prevent replay, and record verified status with 30-min window
-      await saveOtpRecord(emailDocId, {
-        ...data,
-        used: true,
-        verified: true,
-        verifiedExpiresAt: Date.now() + 30 * 60 * 1000,
-      });
+        // Mark OTP as used to prevent replay, and record verified status with 30-min window
+        await saveOtpRecord(emailDocId, {
+          ...data,
+          used: true,
+          verified: true,
+          verifiedExpiresAt: Date.now() + 30 * 60 * 1000,
+        });
 
-      res.json({ message: "Email verified successfully." });
+        res.json({ message: "Email verified successfully." });
+      } finally {
+        inFlightOtpVerifications.delete(emailDocId);
+      }
     } catch (error: any) {
       console.error("Verify OTP Error:", error);
       res.status(500).json({ error: "An unexpected error occurred. Please try again." });
@@ -1254,20 +1276,9 @@ Respond to the student's question directly, and if possible provide structured J
         return res.status(429).json({ error: "Too many upload requests. Please wait a few minutes." });
       }
 
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Authentication required for image upload." });
-      }
-      const idToken = authHeader.split(" ")[1];
-      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
-      const verifyRes = await fetch(verifyUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken })
-      });
-      const verifyData = await verifyRes.json();
-      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
-        return res.status(401).json({ error: "Invalid or expired authentication session." });
+      const caller = await verifyStudentCaller(req);
+      if (!caller) {
+        return res.status(403).json({ error: "Authentication and verified student status required for image upload." });
       }
 
       const { file, folder } = req.body;
@@ -1333,20 +1344,9 @@ Respond to the student's question directly, and if possible provide structured J
         return res.status(429).json({ error: "Too many upload requests. Please wait a few minutes." });
       }
 
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Authentication required for upload signature." });
-      }
-      const idToken = authHeader.split(" ")[1];
-      const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
-      const verifyRes = await fetch(verifyUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken })
-      });
-      const verifyData = await verifyRes.json();
-      if (!verifyRes.ok || !verifyData.users || !verifyData.users[0]) {
-        return res.status(401).json({ error: "Invalid or expired authentication session." });
+      const caller = await verifyStudentCaller(req);
+      if (!caller) {
+        return res.status(403).json({ error: "Authentication and verified student status required for upload signature." });
       }
 
       const { folder } = req.body;
@@ -3488,7 +3488,7 @@ Respond to the student's question directly, and if possible provide structured J
     }
   }
 
-  async function verifyStudentCaller(req: express.Request): Promise<{ uid: string; email: string } | null> {
+  async function verifyStudentCaller(req: express.Request): Promise<{ uid: string; email: string; isVerified?: boolean; role?: string } | null> {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return null;
@@ -3505,7 +3505,41 @@ Respond to the student's question directly, and if possible provide structured J
       const lookupData = await lookupRes.json();
       const user = lookupData.users?.[0];
       if (!user || !user.email) return null;
-      return { uid: user.localId, email: user.email.toLowerCase().trim() };
+      const email = user.email.toLowerCase().trim();
+      const rawDomain = (process.env.COLLEGE_EMAIL_DOMAIN || "student.annauniv.edu").trim().replace(/^@/, '');
+      const allowedDomain = `@${rawDomain}`;
+      const isAdmin = email === "admin@student.annauniv.edu" || email === process.env.ADMIN_EMAIL?.toLowerCase().trim();
+
+      if (!email.endsWith(allowedDomain) && !isAdmin) {
+        return null;
+      }
+
+      // Check user document in Firestore to confirm verified profile and active account status
+      const sysToken = await getServerToken();
+      if (sysToken) {
+        try {
+          const userDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${user.localId}`;
+          const uRes = await fetch(userDocUrl, {
+            headers: { Authorization: `Bearer ${sysToken}` },
+          });
+          if (uRes.ok) {
+            const uJson = await uRes.json();
+            const uData = parseFirestoreDoc(uJson);
+            if (uData.status === "suspended" || uData.status === "banned") {
+              return null;
+            }
+            if (uData.isVerified === true || uData.role === "admin" || isAdmin) {
+              return { uid: user.localId, email, isVerified: true, role: uData.role || "student" };
+            }
+            return null;
+          }
+          if (!isAdmin) return null;
+        } catch {
+          if (!isAdmin) return null;
+        }
+      }
+
+      return isAdmin ? { uid: user.localId, email, role: "admin" } : null;
     } catch {
       return null;
     }

@@ -178,7 +178,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
     setDeleteAccountError(null);
     try {
       const idToken = await firebaseUser.getIdToken();
-      const res = await fetch('/api/account/delete', {
+      const res = await fetch(AUTH_ENDPOINTS.deleteAccount, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
