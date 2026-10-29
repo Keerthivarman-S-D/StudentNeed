@@ -18,7 +18,23 @@ import {
 import { db, auth } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { AppNotification } from '../types';
-import { isPushSupported, requestPushPermission, subscribeToFCM, onForegroundMessage } from '../lib/fcm';
+import {
+  isPushSupported,
+  isIOS,
+  isStandalonePWA,
+  requestPushPermission,
+  subscribeToFCM,
+  onForegroundMessage
+} from '../lib/fcm';
+
+export interface ToastNotification {
+  id: string;
+  title: string;
+  body: string;
+  link?: string;
+  targetType?: string;
+  targetId?: string;
+}
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -39,6 +55,9 @@ interface NotificationContextType {
   browserNotificationsEnabled: boolean;
   isLoading: boolean;
   hasMore: boolean;
+  activeToast: ToastNotification | null;
+  dismissToast: () => void;
+  showToast: (toast: ToastNotification) => void;
   loadMore: () => Promise<void>;
   toggleSound: () => void;
   toggleBrowserNotifications: () => Promise<void>;
@@ -158,13 +177,48 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, [browserNotificationsEnabled]);
 
+  const [activeToast, setActiveToast] = useState<ToastNotification | null>(null);
+  const toastTimerRef = useRef<any>(null);
+
+  const dismissToast = useCallback(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setActiveToast(null);
+  }, []);
+
+  const showToast = useCallback((toast: ToastNotification) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setActiveToast(toast);
+    toastTimerRef.current = setTimeout(() => {
+      setActiveToast(null);
+      toastTimerRef.current = null;
+    }, 6000);
+  }, []);
+
   const toggleSound = () => {
     setSoundEnabled((prev) => !prev);
   };
 
   const toggleBrowserNotifications = async () => {
     if (!isPushSupported()) {
-      alert('Browser notifications are not supported in this browser.');
+      if (isIOS()) {
+        alert(
+          'Push notifications on iOS Safari require iOS 16.4+ and adding StudentNeed to your Home Screen.\n\nTo enable:\n1. Tap the Share button in Safari (bottom navigation bar)\n2. Select "Add to Home Screen"\n3. Open StudentNeed from your Home Screen to enable alerts.'
+        );
+      } else {
+        alert('Browser push notifications are not supported in this browser or environment.');
+      }
+      return;
+    }
+
+    if (isIOS() && !isStandalonePWA()) {
+      alert(
+        'To receive notifications on iOS:\n1. Tap the Share button in Safari (bottom toolbar)\n2. Tap "Add to Home Screen"\n3. Open StudentNeed from your Home Screen to enable notifications.'
+      );
       return;
     }
 
@@ -221,14 +275,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     try {
       // 1. Fetch VAPID key
-      let vapidPublicKey = '';
-      try {
-        const vapidRes = await fetch('/api/push/vapid-public-key');
-        if (vapidRes.ok) {
-          const vapidData = await vapidRes.json();
-          vapidPublicKey = vapidData.publicKey || '';
-        }
-      } catch {}
+      let vapidPublicKey =
+        ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_FIREBASE_VAPID_KEY) as string)?.trim() ||
+        ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_VAPID_PUBLIC_KEY) as string)?.trim() ||
+        '';
+
+      if (!vapidPublicKey) {
+        try {
+          const vapidRes = await fetch('/api/push/vapid-public-key');
+          if (vapidRes.ok) {
+            const vapidData = await vapidRes.json();
+            vapidPublicKey = vapidData.publicKey || '';
+          }
+        } catch {}
+      }
 
       // 2. Try FCM subscription first
       const fcmToken = await subscribeToFCM(vapidPublicKey);
@@ -278,6 +338,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // Foreground FCM message listener
   useEffect(() => {
     const unsub = onForegroundMessage((payload) => {
+      const title = payload?.notification?.title || payload?.data?.title || 'New Notification';
+      const body = payload?.notification?.body || payload?.data?.body || '';
+      const link = payload?.data?.url || payload?.fcmOptions?.link;
+      const targetType = payload?.data?.chatId ? 'chat' : payload?.data?.reservationId ? 'reservation' : undefined;
+      const targetId = payload?.data?.chatId || payload?.data?.reservationId;
+
+      showToast({
+        id: `fcm_${Date.now()}`,
+        title,
+        body,
+        link,
+        targetType,
+        targetId,
+      });
+
       if (soundEnabled) {
         playNotificationChime();
       }
@@ -285,7 +360,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => {
       if (unsub) unsub();
     };
-  }, [soundEnabled]);
+  }, [soundEnabled, showToast]);
 
   // Sync browser permission changes
   useEffect(() => {
@@ -386,8 +461,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         });
         setChatUnreadCounts(chatCounts);
 
-        if (newItemsDetected && soundEnabled) {
-          playNotificationChime();
+        if (newItemsDetected) {
+          const newest = items.find((n) => !n.read);
+          if (newest) {
+            showToast({
+              id: newest.id,
+              title: newest.title,
+              body: newest.body || newest.message,
+              link: newest.link,
+              targetType: newest.targetType,
+              targetId: newest.targetId,
+            });
+          }
+          if (soundEnabled) {
+            playNotificationChime();
+          }
         }
 
         isInitialLoadRef.current = false;
@@ -575,6 +663,45 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [currentUserId, notifications]
   );
 
+  // Silent auto-sync for users who already granted notification permission
+  useEffect(() => {
+    if (!currentUserId) return;
+    if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) return;
+
+    if (Notification.permission === 'granted' && browserNotificationsEnabled) {
+      (async () => {
+        try {
+          let vapidPublicKey =
+            ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_FIREBASE_VAPID_KEY) as string)?.trim() ||
+            ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_VAPID_PUBLIC_KEY) as string)?.trim() ||
+            '';
+
+          if (!vapidPublicKey) {
+            const vapidRes = await fetch('/api/push/vapid-public-key').catch(() => null);
+            if (vapidRes?.ok) {
+              const data = await vapidRes.json();
+              vapidPublicKey = data.publicKey || '';
+            }
+          }
+
+          const fcmToken = await subscribeToFCM(vapidPublicKey);
+          const idToken = await auth.currentUser?.getIdToken();
+
+          if (fcmToken && idToken) {
+            await fetch('/api/push/fcm-token', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+              },
+              body: JSON.stringify({ token: fcmToken }),
+            }).catch(() => {});
+          }
+        } catch {}
+      })();
+    }
+  }, [currentUserId, browserNotificationsEnabled]);
+
   return (
     <NotificationContext.Provider
       value={{
@@ -585,6 +712,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         browserNotificationsEnabled,
         isLoading,
         hasMore,
+        activeToast,
+        dismissToast,
+        showToast,
         loadMore,
         toggleSound,
         toggleBrowserNotifications,

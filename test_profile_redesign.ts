@@ -30,17 +30,25 @@ assert(profileSrc.includes('bg-[#204b39]') && profileSrc.includes('hover:bg-[#18
 assert(profileSrc.includes('border-[#dedcd4]'), 'Profile page uses subtle neutral borders (#dedcd4)');
 assert(profileSrc.includes('bg-[#edf1ec]'), 'Profile page uses soft sage surfaces and badges (#edf1ec)');
 
-// 3. Two-Column Layout & Unified Left Sidebar
+// 3. Centered Responsive Layout & Redundant Sidebar Removal
 assert(
-  profileSrc.includes('grid-cols-[240px_1fr]') || profileSrc.includes('grid-cols-[260px_1fr]'),
-  'Profile page uses a two-column layout with sidebar'
+  !profileSrc.includes('grid-cols-[240px_1fr]') && !profileSrc.includes('grid-cols-[260px_1fr]') && !profileSrc.includes('<aside'),
+  'Profile page removes redundant left sidebar to eliminate duplicate navigation'
 );
-assert(profileSrc.includes('Profile') && profileSrc.includes('Account settings'), 'Sidebar provides Profile and Account Settings navigation');
-assert(profileSrc.includes('Reservations') && profileSrc.includes('Wishlist') && profileSrc.includes('Chat'), 'Sidebar provides Reservations, Wishlist, and Chat navigation');
-assert(profileSrc.includes('MIT Campus · Anna University'), 'Sidebar renders campus affiliation footer');
 assert(
-  profileSrc.includes('bg-[#edf1ec] text-[#204b39]'),
-  'Sidebar highlights active tab with soft sage surface and forest-green text'
+  profileSrc.includes('max-w-5xl') && profileSrc.includes('mx-auto'),
+  'Profile page uses an expanded, centered responsive layout'
+);
+assert(profileSrc.includes('Edit profile') && profileSrc.includes('Account settings'), 'Provides Edit profile action linking to Account Settings');
+assert(profileSrc.includes('Reservations') && profileSrc.includes('Wishlist') && profileSrc.includes('Chat'), 'Provides Reservations, Wishlist, and Chat shortcut cards');
+assert(profileSrc.includes('MIT Campus, Anna University') || profileSrc.includes('MIT Campus · Anna University'), 'Profile card renders campus affiliation');
+assert(
+  profileSrc.includes('bg-[#edf1ec]') && profileSrc.includes('text-[#204b39]'),
+  'Uses soft sage surface and forest-green text tokens'
+);
+assert(
+  profileSrc.includes('grid-cols-1 sm:grid-cols-3'),
+  'Shortcut cards stack vertically on mobile and horizontally on desktop'
 );
 
 // 4. Profile Page ("Your campus corner.") Layout

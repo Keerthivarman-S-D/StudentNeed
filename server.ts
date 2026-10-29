@@ -19,18 +19,33 @@ const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "fire
 const { projectId, firestoreDatabaseId, apiKey } = firebaseConfig;
 
 // Configure persistent Web Push VAPID credentials
-const vapidPublicKey = process.env.VAPID_PUBLIC_KEY?.trim() || "";
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY?.trim() || "";
-const vapidSubject = process.env.VAPID_SUBJECT?.trim() || "mailto:admin@student.annauniv.edu";
+const vapidPublicKey = (
+  process.env.VAPID_PUBLIC_KEY ||
+  process.env.VITE_FIREBASE_VAPID_KEY ||
+  process.env.FIREBASE_VAPID_KEY ||
+  ""
+).trim();
+
+const vapidPrivateKey = (
+  process.env.VAPID_PRIVATE_KEY ||
+  process.env.FIREBASE_VAPID_PRIVATE_KEY ||
+  ""
+).trim();
+
+const vapidSubject = (
+  process.env.VAPID_SUBJECT ||
+  "mailto:admin@student.annauniv.edu"
+).trim();
 
 if (vapidPublicKey && vapidPrivateKey) {
   try {
     webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    console.log("[WebPush] VAPID credentials successfully initialized.");
   } catch (err: any) {
     console.warn("[WebPush] Failed to initialize VAPID credentials:", err?.message);
   }
 } else {
-  console.warn("[WebPush] VAPID keys not configured in environment.");
+  console.warn("[WebPush] VAPID keys not configured in environment (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY).");
 }
 
 // Server-side persistent token caching for internal system account
@@ -2505,11 +2520,189 @@ Respond to the student's question directly, and if possible provide structured J
   // In-memory development fallback store for push subscriptions when system token is not configured
   const devPushStore = new Map<string, Record<string, PushSubscriptionDevice>>();
 
-  async function sendPushToUser(
+  // FCM v1 REST API Dispatch
+  async function sendFcmToUser(
     userId: string,
     payload: { title: string; body: string; url?: string; tag?: string; data?: any }
   ): Promise<{ sent: number; failed: number; pruned: number }> {
-    if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    let sent = 0;
+    let failed = 0;
+    let pruned = 0;
+
+    try {
+      const systemToken = await getServerToken();
+      const fcmDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${userId}/private/fcm_tokens`;
+
+      const fcmDocRes = await fetch(fcmDocUrl, {
+        headers: systemToken ? { Authorization: `Bearer ${systemToken}` } : {},
+      });
+
+      if (!fcmDocRes.ok) {
+        return { sent: 0, failed: 0, pruned: 0 };
+      }
+
+      const fcmDocJson = await fcmDocRes.json();
+      const fields = fcmDocJson.fields || {};
+
+      const tokens: string[] = [];
+      if (fields.token?.stringValue) {
+        tokens.push(fields.token.stringValue);
+      }
+      if (fields.tokens?.arrayValue?.values) {
+        for (const val of fields.tokens.arrayValue.values) {
+          if (val.stringValue && !tokens.includes(val.stringValue)) {
+            tokens.push(val.stringValue);
+          }
+        }
+      }
+      if (fields.tokensJson?.stringValue) {
+        try {
+          const parsed = JSON.parse(fields.tokensJson.stringValue);
+          if (Array.isArray(parsed)) {
+            for (const t of parsed) {
+              if (typeof t === "string" && !tokens.includes(t)) tokens.push(t);
+            }
+          }
+        } catch {}
+      }
+
+      if (tokens.length === 0) {
+        return { sent: 0, failed: 0, pruned: 0 };
+      }
+
+      let fcmAccessToken: string | null = null;
+      try {
+        const fcmAuth = new GoogleAuth({
+          scopes: ["https://www.googleapis.com/auth/firebase.messaging"],
+        });
+        const client = await fcmAuth.getClient();
+        const tokenRes = await client.getAccessToken();
+        fcmAccessToken = tokenRes?.token || null;
+      } catch (authErr: any) {
+        console.warn("[FCM] GoogleAuth credential acquisition notice:", authErr?.message || authErr);
+      }
+
+      if (!fcmAccessToken) {
+        console.warn("[FCM] Access token not available for FCM v1 send. If testing locally, ensure Google ADC or service account is configured.");
+        return { sent: 0, failed: 0, pruned: 0 };
+      }
+
+      const fcmSendUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
+      const tokensToKeep: string[] = [];
+
+      for (const token of tokens) {
+        try {
+          const fcmMessage = {
+            message: {
+              token,
+              notification: {
+                title: payload.title,
+                body: payload.body,
+              },
+              webpush: {
+                headers: {
+                  Urgency: "high",
+                },
+                notification: {
+                  title: payload.title,
+                  body: payload.body,
+                  icon: "/studentneed-monogram.png",
+                  badge: "/favicon.png",
+                  tag: payload.tag || "studentneed_fcm",
+                },
+                fcm_options: {
+                  link: payload.url || "/",
+                },
+              },
+              data: {
+                url: payload.url || "/",
+                title: payload.title,
+                body: payload.body,
+                tag: payload.tag || "studentneed_fcm",
+                chatId: String(payload.data?.chatId || ""),
+                reservationId: String(payload.data?.reservationId || ""),
+                requestId: String(payload.data?.requestId || ""),
+              },
+            },
+          };
+
+          const res = await fetch(fcmSendUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${fcmAccessToken}`,
+            },
+            body: JSON.stringify(fcmMessage),
+          });
+
+          if (res.ok) {
+            sent++;
+            tokensToKeep.push(token);
+          } else {
+            failed++;
+            const errData: any = await res.json().catch(() => ({}));
+            const errorCode = errData?.error?.details?.[0]?.errorCode || errData?.error?.status || "";
+            if (
+              res.status === 404 ||
+              res.status === 410 ||
+              errorCode === "UNREGISTERED" ||
+              errorCode === "INVALID_ARGUMENT"
+            ) {
+              pruned++;
+              console.log(`[FCM] Token expired or unregistered for user ${userId}, pruning.`);
+            } else {
+              tokensToKeep.push(token);
+              console.warn(`[FCM] Dispatch error (${res.status}):`, errData?.error?.message || errData);
+            }
+          }
+        } catch (sendErr: any) {
+          failed++;
+          tokensToKeep.push(token);
+          console.warn("[FCM] Network error sending to token:", sendErr?.message || sendErr);
+        }
+      }
+
+      if (pruned > 0 && systemToken) {
+        if (tokensToKeep.length === 0) {
+          await fetch(fcmDocUrl, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          }).catch(() => {});
+        } else {
+          await fetch(fcmDocUrl, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${systemToken}`,
+            },
+            body: JSON.stringify({
+              fields: {
+                token: { stringValue: tokensToKeep[0] },
+                tokens: {
+                  arrayValue: {
+                    values: tokensToKeep.map((t) => ({ stringValue: t })),
+                  },
+                },
+                tokensJson: { stringValue: JSON.stringify(tokensToKeep) },
+                updatedAt: { timestampValue: new Date().toISOString() },
+              },
+            }),
+          }).catch(() => {});
+        }
+      }
+    } catch (err: any) {
+      console.error("[FCM] sendFcmToUser unexpected error:", err);
+    }
+
+    return { sent, failed, pruned };
+  }
+
+  // Web Push VAPID Dispatch
+  async function sendWebPushToUser(
+    userId: string,
+    payload: { title: string; body: string; url?: string; tag?: string; data?: any }
+  ): Promise<{ sent: number; failed: number; pruned: number }> {
+    if (!vapidPublicKey || !vapidPrivateKey) {
       return { sent: 0, failed: 0, pruned: 0 };
     }
 
@@ -2622,11 +2815,28 @@ Respond to the student's question directly, and if possible provide structured J
     return { sent, failed, pruned };
   }
 
+  // Combined Push Dispatch (FCM + Web Push)
+  async function sendPushToUser(
+    userId: string,
+    payload: { title: string; body: string; url?: string; tag?: string; data?: any }
+  ): Promise<{ sent: number; failed: number; pruned: number }> {
+    const [fcmResult, webPushResult] = await Promise.all([
+      sendFcmToUser(userId, payload),
+      sendWebPushToUser(userId, payload),
+    ]);
+
+    return {
+      sent: fcmResult.sent + webPushResult.sent,
+      failed: fcmResult.failed + webPushResult.failed,
+      pruned: fcmResult.pruned + webPushResult.pruned,
+    };
+  }
+
   // 8a. Retrieve Public VAPID Key
   app.get("/api/push/vapid-public-key", (req, res) => {
-    const key = process.env.VAPID_PUBLIC_KEY?.trim() || "";
+    const key = vapidPublicKey;
     if (!key) {
-      return res.status(503).json({ error: "Web Push is not configured on this server." });
+      return res.status(503).json({ error: "Web Push VAPID public key is not configured on this server." });
     }
     return res.json({ publicKey: key });
   });
@@ -2841,6 +3051,47 @@ Respond to the student's question directly, and if possible provide structured J
       const effectiveToken = systemToken || idToken;
 
       const fcmDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${callerUid}/private/fcm_tokens`;
+
+      // Read existing tokens to support multi-device push
+      let existingTokens: string[] = [];
+      try {
+        const getRes = await fetch(fcmDocUrl, {
+          headers: { Authorization: `Bearer ${effectiveToken}` },
+        });
+        if (getRes.ok) {
+          const docJson = await getRes.json();
+          const f = docJson.fields || {};
+          if (f.token?.stringValue) existingTokens.push(f.token.stringValue);
+          if (f.tokens?.arrayValue?.values) {
+            for (const v of f.tokens.arrayValue.values) {
+              if (v.stringValue && !existingTokens.includes(v.stringValue)) {
+                existingTokens.push(v.stringValue);
+              }
+            }
+          }
+          if (f.tokensJson?.stringValue) {
+            try {
+              const parsed = JSON.parse(f.tokensJson.stringValue);
+              if (Array.isArray(parsed)) {
+                for (const t of parsed) {
+                  if (typeof t === "string" && !existingTokens.includes(t)) {
+                    existingTokens.push(t);
+                  }
+                }
+              }
+            } catch {}
+          }
+        }
+      } catch {}
+
+      // Add new token if not present, keep latest 10 devices
+      if (!existingTokens.includes(token)) {
+        existingTokens.push(token);
+      }
+      if (existingTokens.length > 10) {
+        existingTokens = existingTokens.slice(-10);
+      }
+
       await fetch(fcmDocUrl, {
         method: "PATCH",
         headers: {
@@ -2850,12 +3101,18 @@ Respond to the student's question directly, and if possible provide structured J
         body: JSON.stringify({
           fields: {
             token: { stringValue: token },
+            tokens: {
+              arrayValue: {
+                values: existingTokens.map((t) => ({ stringValue: t })),
+              },
+            },
+            tokensJson: { stringValue: JSON.stringify(existingTokens) },
             updatedAt: { timestampValue: new Date().toISOString() },
           },
         }),
       });
 
-      return res.json({ success: true, message: "FCM token registered." });
+      return res.json({ success: true, message: "FCM token registered.", deviceCount: existingTokens.length });
     } catch (err: any) {
       console.error("fcm-token error:", err);
       return res.status(500).json({ error: "Failed to register FCM token." });
@@ -2881,11 +3138,59 @@ Respond to the student's question directly, and if possible provide structured J
         return res.status(401).json({ error: "Invalid authentication session." });
       }
       const callerUid = verifyData.users[0].localId;
+      const { token } = req.body || {};
 
       const systemToken = await getServerToken();
       const effectiveToken = systemToken || idToken;
 
       const fcmDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${callerUid}/private/fcm_tokens`;
+
+      if (token && typeof token === "string") {
+        try {
+          const getRes = await fetch(fcmDocUrl, {
+            headers: { Authorization: `Bearer ${effectiveToken}` },
+          });
+          if (getRes.ok) {
+            const docJson = await getRes.json();
+            const f = docJson.fields || {};
+            let remainingTokens: string[] = [];
+            if (f.tokens?.arrayValue?.values) {
+              for (const v of f.tokens.arrayValue.values) {
+                if (v.stringValue && v.stringValue !== token && !remainingTokens.includes(v.stringValue)) {
+                  remainingTokens.push(v.stringValue);
+                }
+              }
+            }
+            if (remainingTokens.length === 0 && f.token?.stringValue && f.token.stringValue !== token) {
+              remainingTokens.push(f.token.stringValue);
+            }
+
+            if (remainingTokens.length > 0) {
+              await fetch(fcmDocUrl, {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${effectiveToken}`,
+                },
+                body: JSON.stringify({
+                  fields: {
+                    token: { stringValue: remainingTokens[remainingTokens.length - 1] },
+                    tokens: {
+                      arrayValue: {
+                        values: remainingTokens.map((t) => ({ stringValue: t })),
+                      },
+                    },
+                    tokensJson: { stringValue: JSON.stringify(remainingTokens) },
+                    updatedAt: { timestampValue: new Date().toISOString() },
+                  },
+                }),
+              });
+              return res.json({ success: true, message: "FCM device token unregistered.", remainingDevices: remainingTokens.length });
+            }
+          }
+        } catch {}
+      }
+
       await fetch(fcmDocUrl, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${effectiveToken}` },
@@ -5328,6 +5633,16 @@ Respond to the student's question directly, and if possible provide structured J
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    // Serve service worker scripts with strict no-cache and root Service-Worker-Allowed header
+    app.use((req, res, next) => {
+      if (req.path === '/firebase-messaging-sw.js' || req.path === '/sw.js') {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Service-Worker-Allowed', '/');
+      }
+      next();
+    });
     app.use(express.static(distPath));
     app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

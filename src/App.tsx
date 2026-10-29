@@ -4,6 +4,7 @@ import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { Navbar } from './components/Navbar';
+import { NotificationToast } from './components/NotificationToast';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { StudentNeedChatbot } from './components/StudentNeedChatbot';
 import { StudentNeedIcon } from './components/StudentNeedLogo';
@@ -62,6 +63,7 @@ function AppContent() {
 
   return (
     <div className={`flex min-h-screen flex-col ${isWarmBgPage ? 'bg-[#f7f6f2]' : 'bg-brand-bg'} ${hideAppNavbar ? '' : 'pb-16 md:pb-0'}`}>
+      <NotificationToast />
       {!hideAppNavbar && <Navbar />}
       <main className="flex-1">
         <Suspense fallback={<PageLoadingFallback />}>

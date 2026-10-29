@@ -18,11 +18,20 @@ export async function getFCMInstance() {
 
 export function isPushSupported(): boolean {
   if (typeof window === 'undefined') return false;
-  return 'Notification' in window && 'serviceWorker' in navigator;
+  return 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
 }
 
 export const isFcmSupported = isPushSupported;
 
+export function isIOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+}
+
+export function isStandalonePWA(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
+}
 
 export async function requestPushPermission(): Promise<NotificationPermission> {
   if (!isPushSupported()) return 'denied';
@@ -37,7 +46,7 @@ export async function subscribeToFCM(vapidPublicKey?: string): Promise<string | 
     const permission = await requestPushPermission();
     if (permission !== 'granted') return null;
 
-    // Register service worker with scope /
+    // Register canonical service worker under root scope
     let reg: ServiceWorkerRegistration;
     try {
       reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
@@ -51,9 +60,15 @@ export async function subscribeToFCM(vapidPublicKey?: string): Promise<string | 
     const messaging = await getFCMInstance();
     if (!messaging) return null;
 
+    // Resolve VAPID key priority: parameter -> Vite build environment variable
+    const envVapidKey =
+      ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_FIREBASE_VAPID_KEY) as string)?.trim() ||
+      ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_VAPID_PUBLIC_KEY) as string)?.trim();
+    const effectiveVapidKey = vapidPublicKey?.trim() || envVapidKey || undefined;
+
     const token = await getToken(messaging, {
       serviceWorkerRegistration: reg,
-      vapidKey: vapidPublicKey || undefined,
+      vapidKey: effectiveVapidKey,
     });
 
     return token || null;
