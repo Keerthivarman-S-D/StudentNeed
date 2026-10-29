@@ -1054,7 +1054,7 @@ Respond to the student's question directly, and if possible provide structured J
     }
   });
 
-  // 4. Forgot Password (Rate-limited, dispatches via Resend with verified StudentNeed domain)
+  // 4. Forgot Password (Rate-limited, dispatches via Firebase Authentication native password reset email)
   app.post("/api/auth/forgot-password", async (req, res) => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
@@ -1082,42 +1082,7 @@ Respond to the student's question directly, and if possible provide structured J
         return res.status(429).json({ error: "Please wait 60 seconds before requesting another reset email." });
       }
 
-      // 1. Attempt to generate secure OOB reset link via GoogleAuth / Service Account (works on GCP Cloud Run)
-      let resetLink: string | null = null;
-      try {
-        const googleAuth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/identitytoolkit'] });
-        const client = await googleAuth.getClient();
-        const tokenResponse = await client.getAccessToken();
-        if (tokenResponse?.token) {
-          const oobUrl = `https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:sendOobCode`;
-          const oobRes = await fetch(oobUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${tokenResponse.token}`,
-            },
-            body: JSON.stringify({
-              requestType: "PASSWORD_RESET",
-              email: normalizedEmail,
-              returnOobLink: true,
-            }),
-          });
-          if (oobRes.ok) {
-            const oobData = await oobRes.json();
-            if (oobData.oobLink) {
-              resetLink = oobData.oobLink;
-            }
-          } else {
-            const errText = await oobRes.text();
-            console.warn("[Password Reset] Elevated OOB link generation notice:", errText);
-          }
-        }
-      } catch (authErr: any) {
-        // Fallback for environments without direct GCP service account access
-        console.warn("[Password Reset] Service account credentials unavailable:", authErr?.message);
-      }
-
-      // 2. Trigger Firebase Auth password reset action via standard REST API
+      // Trigger Firebase Auth native password reset email via standard Identity Toolkit REST API
       const fbUrl = `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`;
       const fbRes = await fetch(fbUrl, {
         method: "POST",
@@ -1156,69 +1121,8 @@ Respond to the student's question directly, and if possible provide structured J
         verified: false,
       });
 
-      // 3. Dispatch email via Resend with verified StudentNeed domain
-      const resend = getResendClient();
-      const sender = (process.env.EMAIL_FROM || "StudentNeed <auth@studentneed.me>").trim();
-
-      if (!resend) {
-        if (process.env.NODE_ENV !== "production") {
-          console.info(`[DEV MODE] Password reset dispatched for ${normalizedEmail}. Reset link: ${resetLink || `https://${firebaseConfig.authDomain}/__/auth/action?mode=resetPassword`}`);
-        }
-        return res.json({ message: "Password reset email sent." });
-      }
-
-      const actionUrl = resetLink || `https://${firebaseConfig.authDomain}/__/auth/action?mode=resetPassword`;
-
-      try {
-        const { data: resendData, error: resendError } = await resend.emails.send({
-          from: sender,
-          to: normalizedEmail,
-          subject: "Reset your StudentNeed password",
-          text: `Hello,\n\nA password reset request was received for your StudentNeed account (${normalizedEmail}).\n\nPlease use the link below to set a new password:\n${actionUrl}\n\nIf you did not request this, you can safely ignore this email. Your password will remain unchanged.`,
-          html: `
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; border: 1px solid #e4e4e7; border-radius: 12px; background-color: #ffffff;">
-              <div style="text-align: center; margin-bottom: 24px;">
-                <div style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 50%; background-color: #e0e7ff; color: #4338ca; margin-bottom: 12px; font-size: 22px;">
-                  🔒
-                </div>
-                <h2 style="color: #18181b; margin: 0; font-size: 22px; font-weight: 700;">Reset Your Password</h2>
-                <p style="color: #71717a; font-size: 14px; margin-top: 6px;">StudentNeed Campus Marketplace</p>
-              </div>
-              <p style="color: #3f3f46; font-size: 15px; line-height: 1.5;">
-                We received a request to reset the password associated with your verified student email address (<strong>${normalizedEmail}</strong>).
-              </p>
-              <div style="text-align: center; margin: 28px 0;">
-                <a href="${actionUrl}" style="background-color: #18181b; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block;">
-                  Reset Password
-                </a>
-              </div>
-              <p style="color: #71717a; font-size: 13px; line-height: 1.4;">
-                If the button above doesn't work, copy and paste this link into your browser:<br/>
-                <a href="${actionUrl}" style="color: #4f46e5; word-break: break-all; font-size: 12px;">${actionUrl}</a>
-              </p>
-              <hr style="border: none; border-top: 1px solid #e4e4e7; margin: 24px 0;" />
-              <p style="color: #a1a1aa; font-size: 12px; margin: 0; text-align: center;">
-                If you did not make this request, you can safely ignore this email. Your account remains secure.
-              </p>
-            </div>
-          `,
-        });
-
-        if (resendError) {
-          console.error("[Resend Password Reset Error]:", resendError.message || JSON.stringify(resendError));
-          return res.status(500).json({ error: "Unable to send password reset email. Please try again." });
-        }
-
-        console.info(`[Password Reset] Dispatched successfully via Resend to ${normalizedEmail} (ID: ${resendData?.id})`);
-        return res.json({ message: "Password reset email sent." });
-      } catch (sendErr: any) {
-        console.error("[Resend Exception]:", sendErr?.message || sendErr);
-        if (process.env.NODE_ENV !== "production") {
-          console.info(`[DEV FALLBACK] Password reset dispatched for ${normalizedEmail}.`);
-          return res.json({ message: "Password reset email sent." });
-        }
-        return res.status(500).json({ error: "Unable to send password reset email. Please try again." });
-      }
+      console.info("[Password Reset] Dispatched native Firebase password reset email.");
+      return res.json({ message: "Password reset email sent." });
     } catch (error: any) {
       console.error("Forgot Password Error:", error?.message || error);
       res.status(500).json({ error: "Unable to send password reset email. Please try again." });

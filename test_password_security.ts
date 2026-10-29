@@ -326,6 +326,16 @@ async function runTests() {
     assert(serverSrc.includes('app.post("/api/auth/forgot-password"'), 'server.ts preserves /api/auth/forgot-password');
     assert(serverSrc.includes('if (fbErr.includes("EMAIL_NOT_FOUND"))'), 'server.ts mitigates account enumeration in forgot-password');
     assert(serverSrc.includes('const rawDomain = (process.env.COLLEGE_EMAIL_DOMAIN || "student.annauniv.edu").trim().replace(/^@/, \'\');'), 'server.ts enforces strict @ domain prefix in finalize-account');
+
+    // Regression prevention: Option 1 - Use Firebase native password reset exclusively, no duplicate Resend email
+    const forgotPwHandler = serverSrc.slice(
+      serverSrc.indexOf('app.post("/api/auth/forgot-password"'),
+      serverSrc.indexOf('app.post("/api/auth/change-password"')
+    );
+    assert(!forgotPwHandler.includes('resend.emails.send'), 'forgot-password endpoint does not dispatch duplicate custom Resend emails');
+    assert(!forgotPwHandler.includes('Reset Your Password'), 'forgot-password endpoint removes duplicate custom HTML template');
+    assert(forgotPwHandler.includes('https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}'), 'forgot-password triggers Firebase native password reset email');
+    assert(serverSrc.includes('resend.emails.send'), 'server.ts preserves Resend email dispatch for student OTP verification');
   }
 
   // Test 14: Special characters completeness & constraints
