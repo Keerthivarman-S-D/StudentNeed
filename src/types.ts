@@ -1,6 +1,6 @@
 export type Role = 'student' | 'admin';
 export type ListingStatus = 'available' | 'active' | 'reserved' | 'completed' | 'cancelled' | 'expired' | 'hidden' | 'removed';
-export type RequestStatus = 'open' | 'active' | 'matched' | 'accepted' | 'completed' | 'cancelled' | 'removed';
+export type RequestStatus = 'open' | 'active' | 'matched' | 'accepted' | 'completed' | 'cancelled' | 'expired' | 'removed';
 export type ReservationStatus = 'pending' | 'accepted' | 'rejected' | 'completed' | 'cancelled';
 
 export type UserStatus = 'active' | 'suspended' | 'banned';
@@ -98,6 +98,10 @@ export type ItemRequest = {
   requesterId: string;
   createdAt: string;
   updatedAt: string;
+  expiresAt?: string;
+  deleteAt?: string;
+  renewedAt?: string;
+  renewalCount?: number;
   moderationReason?: string;
   moderatedAt?: string;
   moderatedBy?: string;

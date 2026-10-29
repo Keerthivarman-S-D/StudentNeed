@@ -160,6 +160,20 @@ service cloud.firestore {
              (!('expirationDays' in reqData) || reqData.expirationDays in [7, 15, 30]);
     }
 
+    function isValidRequestExpiration(reqData) {
+      return ('expiresAt' in reqData) &&
+             reqData.expiresAt is timestamp &&
+             reqData.expiresAt > request.time - duration.value(5, 'm') &&
+             reqData.expiresAt <= request.time + duration.value(25, 'h');
+    }
+
+    function isValidRequestDeleteAt(reqData) {
+      return !('deleteAt' in reqData) ||
+             (reqData.deleteAt is timestamp &&
+              reqData.deleteAt > request.time &&
+              reqData.deleteAt <= request.time + duration.value(32, 'd'));
+    }
+
     match /listings/{listingId} {
       allow read: if isAuthorizedStudent();
 
@@ -211,28 +225,55 @@ service cloud.firestore {
     match /requests/{requestId} {
       allow read: if isAuthorizedStudent();
 
-      // Only authenticated Anna Univ students can create requests with requesterId matching their UID
+      // Only authenticated Anna Univ students can create requests with requesterId matching their UID,
+      // with a 24-hour expiration and 30-day retention window
       allow create: if isAnnaUnivStudent() &&
                        isUserActive() &&
                        request.resource.data.requesterId == request.auth.uid &&
-                       request.resource.data.status in ['open', 'active'];
+                       request.resource.data.status in ['open', 'active'] &&
+                       isValidRequestExpiration(request.resource.data) &&
+                       isValidRequestDeleteAt(request.resource.data) &&
+                       (!('renewalCount' in request.resource.data) || request.resource.data.renewalCount == 0);
 
       // Updates:
       // - Cannot transition if already cancelled or completed
-      // - Only owner can update or cancel request
+      // - Only owner, admin, or internal system can update request
+      // - Arbitrary non-owner tampering is strictly forbidden
+      // - Creation date and requesterId are strictly immutable
+      // - Renewal allows owner to extend expiration by 24h, advancing renewalCount and renewedAt
+      // - Non-renewal edits preserve expiration and deletion deadlines
       allow update: if isAuthorizedStudent() && (
         (
+          isUserActive() &&
           resource.data.status != 'cancelled' &&
           resource.data.status != 'completed' &&
           resource.data.requesterId == request.auth.uid &&
           request.resource.data.requesterId == resource.data.requesterId &&
-          request.resource.data.status in ['open', 'active', 'matched', 'accepted', 'completed', 'cancelled']
+          (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+          (
+            // Case A: Owner renewal transition (extends expiration by 24h)
+            (
+              request.resource.data.expiresAt != resource.data.expiresAt &&
+              resource.data.status in ['open', 'active', 'expired'] &&
+              request.resource.data.status in ['open', 'active'] &&
+              isValidRequestExpiration(request.resource.data) &&
+              isValidRequestDeleteAt(request.resource.data) &&
+              request.resource.data.renewalCount == (('renewalCount' in resource.data) ? resource.data.renewalCount + 1 : 1)
+            ) ||
+            // Case B: Regular owner edit or cancellation (expiration and retention remain immutable)
+            (
+              (!('expiresAt' in resource.data) || !('expiresAt' in request.resource.data) || request.resource.data.expiresAt == resource.data.expiresAt) &&
+              (!('deleteAt' in resource.data) || !('deleteAt' in request.resource.data) || request.resource.data.deleteAt == resource.data.deleteAt) &&
+              (!('renewalCount' in resource.data) || !('renewalCount' in request.resource.data) || request.resource.data.renewalCount == resource.data.renewalCount) &&
+              request.resource.data.status in ['open', 'active', 'matched', 'accepted', 'completed', 'cancelled', 'expired']
+            )
+          )
         ) ||
         isAdmin() ||
         isInternalSystem()
       );
 
-      // Preserve request records for history; only admins may permanently remove
+      // Preserve request records for history/retention; only admins and server cleanup may permanently remove
       allow delete: if isAdmin() || isInternalSystem();
     }
 
@@ -415,7 +456,18 @@ service cloud.firestore {
                        request.resource.data.participants.size() == 2 &&
                        request.resource.data.participants[0] != request.resource.data.participants[1] &&
                        (!('listingId' in request.resource.data) || request.resource.data.listingId is string) &&
-                       (!('requestId' in request.resource.data) || request.resource.data.requestId is string);
+                       (!('requestId' in request.resource.data) || request.resource.data.requestId is string) &&
+                       (
+                         !('requestId' in request.resource.data) ||
+                         (
+                           !exists(/databases/$(database)/documents/requests/$(request.resource.data.requestId)) ||
+                           (
+                             (!('expiresAt' in get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data) ||
+                              get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.expiresAt > request.time) &&
+                             get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.status in ['open', 'active']
+                           )
+                         )
+                       );
       allow delete: if false;
 
       match /messages/{messageId} {

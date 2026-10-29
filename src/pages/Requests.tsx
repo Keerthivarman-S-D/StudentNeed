@@ -12,7 +12,9 @@ import {
   Inbox, 
   X,
   ChevronDown,
-  RotateCcw
+  RotateCcw,
+  RotateCw,
+  CheckCircle2
 } from 'lucide-react';
 import { collection, doc, getDoc, setDoc, query, where, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -23,15 +25,56 @@ import { cn } from '../lib/utils';
 import { ItemRequest, Chat, Category } from '../types';
 import { NOTIFICATION_ENDPOINTS } from '../config/api';
 
+/**
+ * Checks whether an item request has expired based on trusted expiresAt
+ * or terminal expired status.
+ */
+export function isRequestExpired(r: ItemRequest): boolean {
+  if (r.status === 'expired') return true;
+  if (r.expiresAt) {
+    const expiresMs = new Date(r.expiresAt).getTime();
+    if (!isNaN(expiresMs)) {
+      return expiresMs <= Date.now();
+    }
+  }
+  return false;
+}
+
+/**
+ * Calculates human-readable time remaining or expiration elapsed for a request.
+ */
+export function getRequestTimeRemaining(r: ItemRequest): { expired: boolean; label: string; isUrgent: boolean } {
+  if (r.status === 'expired') {
+    return { expired: true, label: 'Expired', isUrgent: true };
+  }
+  if (!r.expiresAt) {
+    return { expired: false, label: 'Active (Legacy)', isUrgent: false };
+  }
+  const diff = new Date(r.expiresAt).getTime() - Date.now();
+  if (diff <= 0) {
+    const elapsed = Math.abs(diff);
+    const hours = Math.floor(elapsed / (1000 * 60 * 60));
+    const mins = Math.floor((elapsed % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours < 1) return { expired: true, label: `Expired ${mins}m ago`, isUrgent: true };
+    if (hours < 24) return { expired: true, label: `Expired ${hours}h ago`, isUrgent: true };
+    return { expired: true, label: `Expired ${Math.floor(hours / 24)}d ago`, isUrgent: true };
+  }
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const isUrgent = diff <= 2 * 60 * 60 * 1000; // Under 2 hours left
+  if (hours < 1) return { expired: false, label: `${mins}m left`, isUrgent: true };
+  return { expired: false, label: `${hours}h ${mins}m left`, isUrgent };
+}
 
 export function Requests() {
   const navigate = useNavigate();
-  const { requests, requestsLoading, requestsError, hasMoreRequests, loadMoreRequests, updateRequestStatus, cancelRequest, users } = useAppContext();
+  const { requests, requestsLoading, requestsError, hasMoreRequests, loadMoreRequests, updateRequestStatus, cancelRequest, renewRequest, users } = useAppContext();
   const { currentUser, firebaseUser } = useAuth();
   const { chatUnreadCounts } = useNotifications();
   const currentUserId = firebaseUser?.uid || currentUser?.id;
   
   const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
+  const [myFilter, setMyFilter] = useState<'all' | 'active' | 'expired'>('all');
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'budget_high' | 'needed_soon'>('newest');
@@ -39,6 +82,8 @@ export function Requests() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+  const [renewingId, setRenewingId] = useState<string | null>(null);
+  const [renewSuccessId, setRenewSuccessId] = useState<string | null>(null);
   const [startingChatId, setStartingChatId] = useState<string | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
   const [userChats, setUserChats] = useState<Chat[]>([]);
@@ -88,8 +133,13 @@ export function Requests() {
   // Filter and sort requests without mutating state
   const filteredRequests = useMemo(() => {
     let result = activeTab === 'all'
-      ? requests.filter(r => r.status === 'open')
-      : requests.filter(r => r.requesterId === currentUserId);
+      ? requests.filter(r => r.status === 'open' && !isRequestExpired(r))
+      : requests.filter(r => {
+          if (r.requesterId !== currentUserId) return false;
+          if (myFilter === 'active') return r.status === 'open' && !isRequestExpired(r);
+          if (myFilter === 'expired') return r.status === 'expired' || isRequestExpired(r);
+          return true;
+        });
 
     if (search.trim()) {
       const q = search.toLowerCase().trim();
@@ -123,7 +173,7 @@ export function Requests() {
     }
 
     return sorted;
-  }, [requests, activeTab, currentUserId, search, selectedCategory, sortBy]);
+  }, [requests, activeTab, myFilter, currentUserId, search, selectedCategory, sortBy]);
 
   const handleStartChat = async (request: ItemRequest) => {
     setChatError(null);
@@ -133,6 +183,12 @@ export function Requests() {
     }
 
     if (currentUserId === request.requesterId) {
+      return;
+    }
+
+    // Expiry check: Expired requests must not accept new responses
+    if (isRequestExpired(request) || request.status === 'expired') {
+      setChatError('This request has expired and is no longer accepting new responses.');
       return;
     }
 
@@ -242,7 +298,41 @@ export function Requests() {
     }
   };
 
-  const myRequestsCount = requests.filter(r => r.requesterId === currentUserId).length;
+  const handleRenewRequest = async (requestId: string) => {
+    setRenewingId(requestId);
+    setChatError(null);
+    try {
+      await renewRequest(requestId);
+      setRenewSuccessId(requestId);
+      setTimeout(() => setRenewSuccessId(null), 4000);
+    } catch (err: any) {
+      console.error('Failed to renew request:', err);
+      setChatError(err?.message || 'Could not renew request. Please try again.');
+    } finally {
+      setRenewingId(null);
+    }
+  };
+
+  const handleRepostRequest = (request: ItemRequest) => {
+    navigate('/create-request', {
+      state: {
+        repostFrom: {
+          title: request.title,
+          description: request.description,
+          category: request.category,
+          budget: request.budget,
+          location: request.location,
+          neededBy: request.neededBy,
+          originalRequestId: request.id,
+        },
+      },
+    });
+  };
+
+  const myRequests = useMemo(() => requests.filter(r => r.requesterId === currentUserId), [requests, currentUserId]);
+  const myRequestsCount = myRequests.length;
+  const myActiveCount = useMemo(() => myRequests.filter(r => r.status === 'open' && !isRequestExpired(r)).length, [myRequests]);
+  const myExpiredCount = useMemo(() => myRequests.filter(r => r.status === 'expired' || isRequestExpired(r)).length, [myRequests]);
   const hasActiveFilters = Boolean(search.trim() || selectedCategory !== 'All');
 
   const handleClearAllFilters = () => {
@@ -365,6 +455,67 @@ export function Requests() {
             </button>
           )}
         </div>
+
+        {/* Owner's Request Management: Active vs Expired Sub-tabs */}
+        {activeTab === 'my' && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 bg-white p-3 sm:p-4 rounded-2xl border border-[#dedcd4]">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-[#555d56] mr-1 hidden sm:inline">Status:</span>
+              <button
+                type="button"
+                onClick={() => setMyFilter('all')}
+                className={cn(
+                  "rounded-xl px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
+                  myFilter === 'all'
+                    ? "bg-[#204b39] text-white shadow-2xs"
+                    : "bg-[#edf1ec] text-[#555d56] hover:text-[#252b27]"
+                )}
+              >
+                All ({myRequestsCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setMyFilter('active')}
+                className={cn(
+                  "rounded-xl px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1",
+                  myFilter === 'active'
+                    ? "bg-[#204b39] text-white shadow-2xs"
+                    : "bg-[#edf1ec] text-[#555d56] hover:text-[#252b27]"
+                )}
+              >
+                <span>Active</span>
+                <span className={cn(
+                  "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                  myFilter === 'active' ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"
+                )}>
+                  {myActiveCount}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMyFilter('expired')}
+                className={cn(
+                  "rounded-xl px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1",
+                  myFilter === 'expired'
+                    ? "bg-[#204b39] text-white shadow-2xs"
+                    : "bg-[#edf1ec] text-[#555d56] hover:text-[#252b27]"
+                )}
+              >
+                <span>Expired</span>
+                <span className={cn(
+                  "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                  myFilter === 'expired' ? "bg-white/20 text-white" : "bg-amber-100 text-amber-800"
+                )}>
+                  {myExpiredCount}
+                </span>
+              </button>
+            </div>
+            <div className="text-xs text-[#717870] flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5 text-[#204b39]" />
+              <span>Requests stay active 24h. Expired requests can be renewed within 30 days.</span>
+            </div>
+          </div>
+        )}
 
         {/* Search Field & Sort Control */}
         <div className="mb-6 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 items-end">
@@ -513,6 +664,29 @@ export function Requests() {
                           {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
                         </span>
                       )}
+                      {/* 24-Hour Expiry / Time Remaining Pill */}
+                      {(() => {
+                        const timeInfo = getRequestTimeRemaining(request);
+                        if (timeInfo.expired) {
+                          return (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+                              <Clock className="h-3 w-3 text-amber-700" />
+                              <span>{timeInfo.label}</span>
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                            timeInfo.isUrgent
+                              ? "bg-amber-100 text-amber-900 border border-amber-300"
+                              : "bg-emerald-50 text-[#204b39] border border-[#204b39]/20"
+                          )}>
+                            <Clock className="h-3 w-3" />
+                            <span>{timeInfo.label}</span>
+                          </span>
+                        );
+                      })()}
                     </div>
 
                     <span className="text-xs text-[#717870] flex items-center gap-1">
@@ -539,6 +713,15 @@ export function Requests() {
                     </span>
                     <span>•</span>
                     <span>Posted {formatTimeAgo(request.createdAt)}</span>
+                    {Boolean(request.renewalCount && request.renewalCount > 0) && (
+                      <>
+                        <span>•</span>
+                        <span className="inline-flex items-center gap-1 text-[#204b39] font-semibold">
+                          <RotateCw className="h-3 w-3" />
+                          <span>Renewed ({request.renewalCount}x)</span>
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   {/* Bottom Divider: Requester identity on left, Actions on right */}
@@ -566,76 +749,149 @@ export function Requests() {
                     </div>
 
                     {/* Action buttons */}
-                    <div className="flex items-center gap-2">
-                      {!isOwner && request.status === 'open' ? (
-                        <button
-                          type="button"
-                          disabled={startingChatId === request.id}
-                          onClick={() => handleStartChat(request)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#204b39] hover:bg-[#183a2c] text-white font-semibold text-xs h-9 px-4 shadow-xs transition-colors cursor-pointer"
-                        >
-                          {startingChatId === request.id ? (
-                            <>
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              <span>Opening Chat...</span>
-                            </>
-                          ) : existingChat ? (
-                            <>
-                              <MessageSquare className="h-3.5 w-3.5" />
-                              <span>Continue Chat</span>
-                              {Boolean(chatUnreadCounts[existingChat.id]) && (
-                                <span className="ml-1 rounded-full bg-white text-[#204b39] px-1.5 py-0.5 text-[10px] font-bold">
-                                  {chatUnreadCounts[existingChat.id]}
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              <MessageSquare className="h-3.5 w-3.5" />
-                              <span>I Have This / Contact</span>
-                            </>
-                          )}
-                        </button>
-                      ) : isOwner && request.status === 'open' ? (
-                        <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {renewSuccessId === request.id && (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                          <span>Renewed for 24h!</span>
+                        </span>
+                      )}
+
+                      {!isOwner ? (
+                        isRequestExpired(request) || request.status === 'expired' ? (
+                          <div className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-100 text-zinc-500 font-medium text-xs h-9 px-3.5 border border-zinc-200 cursor-not-allowed">
+                            <AlertCircle className="h-3.5 w-3.5 text-zinc-400" />
+                            <span>Request Expired</span>
+                          </div>
+                        ) : request.status === 'open' ? (
                           <button
                             type="button"
-                            disabled={updatingId === request.id || cancellingId === request.id}
-                            onClick={() => handleMarkAsFound(request.id)}
-                            className="rounded-xl border border-[#dedcd4] bg-white hover:bg-[#edf1ec] text-[#204b39] font-semibold text-xs h-9 px-3.5 transition-colors cursor-pointer"
+                            disabled={startingChatId === request.id}
+                            onClick={() => handleStartChat(request)}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#204b39] hover:bg-[#183a2c] text-white font-semibold text-xs h-9 px-4 shadow-xs transition-colors cursor-pointer"
                           >
-                            {updatingId === request.id ? 'Updating...' : 'Mark as Found'}
+                            {startingChatId === request.id ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                <span>Opening Chat...</span>
+                              </>
+                            ) : existingChat ? (
+                              <>
+                                <MessageSquare className="h-3.5 w-3.5" />
+                                <span>Continue Chat</span>
+                                {Boolean(chatUnreadCounts[existingChat.id]) && (
+                                  <span className="ml-1 rounded-full bg-white text-[#204b39] px-1.5 py-0.5 text-[10px] font-bold">
+                                    {chatUnreadCounts[existingChat.id]}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <MessageSquare className="h-3.5 w-3.5" />
+                                <span>I Have This / Contact</span>
+                              </>
+                            )}
                           </button>
-                          {confirmCancelId === request.id ? (
-                            <div className="flex items-center gap-1.5 bg-red-50 p-1 rounded-xl border border-red-200">
-                              <span className="text-[11px] font-bold text-red-800 px-1">Cancel?</span>
+                        ) : null
+                      ) : isOwner ? (
+                        isRequestExpired(request) || request.status === 'expired' ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              disabled={renewingId === request.id}
+                              onClick={() => handleRenewRequest(request.id)}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#204b39] hover:bg-[#183a2c] text-white font-semibold text-xs h-9 px-3.5 shadow-xs transition-colors cursor-pointer"
+                            >
+                              {renewingId === request.id ? (
+                                <>
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  <span>Renewing...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <RotateCw className="h-3.5 w-3.5" />
+                                  <span>Renew (+24h)</span>
+                                </>
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRepostRequest(request)}
+                              className="rounded-xl border border-[#dedcd4] bg-white hover:bg-[#edf1ec] text-[#252b27] font-semibold text-xs h-9 px-3.5 transition-colors cursor-pointer"
+                            >
+                              Repost
+                            </button>
+                            {confirmCancelId === request.id ? (
+                              <div className="flex items-center gap-1.5 bg-red-50 p-1 rounded-xl border border-red-200">
+                                <span className="text-[11px] font-bold text-red-800 px-1">Cancel?</span>
+                                <button
+                                  type="button"
+                                  disabled={cancellingId === request.id}
+                                  onClick={() => handleConfirmCancelRequest(request.id)}
+                                  className="h-7 px-2.5 text-xs bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg cursor-pointer"
+                                >
+                                  {cancellingId === request.id ? '...' : 'Yes'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmCancelId(null)}
+                                  className="h-7 px-2 text-xs text-[#555d56] hover:text-[#252b27] cursor-pointer"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
                               <button
                                 type="button"
-                                disabled={cancellingId === request.id}
-                                onClick={() => handleConfirmCancelRequest(request.id)}
-                                className="h-7 px-2.5 text-xs bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg cursor-pointer"
+                                disabled={updatingId === request.id || cancellingId === request.id}
+                                onClick={() => setConfirmCancelId(request.id)}
+                                className="rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-600 font-semibold text-xs h-9 px-3 transition-colors cursor-pointer"
                               >
-                                {cancellingId === request.id ? '...' : 'Yes'}
+                                Cancel
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmCancelId(null)}
-                                className="h-7 px-2 text-xs text-[#555d56] hover:text-[#252b27] cursor-pointer"
-                              >
-                                No
-                              </button>
-                            </div>
-                          ) : (
+                            )}
+                          </div>
+                        ) : request.status === 'open' ? (
+                          <div className="flex items-center gap-2">
                             <button
                               type="button"
                               disabled={updatingId === request.id || cancellingId === request.id}
-                              onClick={() => setConfirmCancelId(request.id)}
-                              className="rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-600 font-semibold text-xs h-9 px-3.5 transition-colors cursor-pointer"
+                              onClick={() => handleMarkAsFound(request.id)}
+                              className="rounded-xl border border-[#dedcd4] bg-white hover:bg-[#edf1ec] text-[#204b39] font-semibold text-xs h-9 px-3.5 transition-colors cursor-pointer"
                             >
-                              Cancel Request
+                              {updatingId === request.id ? 'Updating...' : 'Mark as Found'}
                             </button>
-                          )}
-                        </div>
+                            {confirmCancelId === request.id ? (
+                              <div className="flex items-center gap-1.5 bg-red-50 p-1 rounded-xl border border-red-200">
+                                <span className="text-[11px] font-bold text-red-800 px-1">Cancel?</span>
+                                <button
+                                  type="button"
+                                  disabled={cancellingId === request.id}
+                                  onClick={() => handleConfirmCancelRequest(request.id)}
+                                  className="h-7 px-2.5 text-xs bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg cursor-pointer"
+                                >
+                                  {cancellingId === request.id ? '...' : 'Yes'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmCancelId(null)}
+                                  className="h-7 px-2 text-xs text-[#555d56] hover:text-[#252b27] cursor-pointer"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={updatingId === request.id || cancellingId === request.id}
+                                onClick={() => setConfirmCancelId(request.id)}
+                                className="rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-600 font-semibold text-xs h-9 px-3.5 transition-colors cursor-pointer"
+                              >
+                                Cancel Request
+                              </button>
+                            )}
+                          </div>
+                        ) : null
                       ) : null}
                     </div>
                   </div>

@@ -2351,12 +2351,34 @@ Respond to the student's question directly, and if possible provide structured J
       const systemToken = await getServerToken();
       const effectiveToken = systemToken || idToken;
 
-      const reqDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/item_requests/${requestId}`;
-      const reqRes = await fetch(reqDocUrl, { headers: { Authorization: `Bearer ${effectiveToken}` } });
+      // Check requests collection first, fallback to item_requests
+      let reqDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/requests/${requestId}`;
+      let reqRes = await fetch(reqDocUrl, { headers: { Authorization: `Bearer ${effectiveToken}` } });
+      if (!reqRes.ok) {
+        reqDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/item_requests/${requestId}`;
+        reqRes = await fetch(reqDocUrl, { headers: { Authorization: `Bearer ${effectiveToken}` } });
+      }
       if (!reqRes.ok) return res.status(404).json({ error: "Request not found." });
       const reqJson = await reqRes.json();
       const requesterId = reqJson.fields?.requesterId?.stringValue;
       const requestTitle = reqJson.fields?.title?.stringValue || "campus item";
+
+      // Server-side expiry validation: Expired requests must not accept new responses
+      let expiresAtMs: number | null = null;
+      if (reqJson.fields?.expiresAt?.timestampValue) {
+        expiresAtMs = Date.parse(reqJson.fields.expiresAt.timestampValue);
+      } else if (reqJson.fields?.expiresAt?.stringValue) {
+        expiresAtMs = Date.parse(reqJson.fields.expiresAt.stringValue);
+      }
+
+      const reqStatus = reqJson.fields?.status?.stringValue;
+      if (reqStatus === "expired" || (expiresAtMs !== null && !isNaN(expiresAtMs) && expiresAtMs <= Date.now())) {
+        return res.status(400).json({ error: "This request has expired and is no longer accepting new responses." });
+      }
+
+      if (reqStatus === "cancelled" || reqStatus === "completed") {
+        return res.status(400).json({ error: "This request is no longer active." });
+      }
 
       if (callerUid === requesterId) {
         return res.status(400).json({ error: "Cannot notify self on own request." });
@@ -3686,6 +3708,310 @@ Respond to the student's question directly, and if possible provide structured J
       });
     } catch (err: any) {
       console.error("Backfill migration error:", err);
+      return res.status(500).json({ error: "Internal server error running backfill migration." });
+    }
+  });
+
+  // Scheduled retention cleanup for expired requests past their 30-day retention window
+  async function runExpiredRequestsCleanup(): Promise<{ processed: number; deleted: number }> {
+    let processed = 0;
+    let deleted = 0;
+
+    try {
+      const systemToken = await getServerToken();
+      if (!systemToken) {
+        console.warn("[Requests Cleanup Job] System token unavailable, skipping expired requests cleanup.");
+        return { processed: 0, deleted: 0 };
+      }
+
+      const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents:runQuery`;
+      const res = await fetch(queryUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: "requests" }],
+            limit: 300,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        console.warn(`[Requests Cleanup Query] Returned HTTP ${res.status}`);
+        return { processed: 0, deleted: 0 };
+      }
+
+      const results = await res.json();
+      if (!Array.isArray(results)) return { processed: 0, deleted: 0 };
+
+      const documents = results
+        .filter((item: any) => Boolean(item.document))
+        .map((item: any) => item.document);
+
+      processed = documents.length;
+      const now = Date.now();
+
+      for (const doc of documents) {
+        const docName = doc.name;
+        const requestId = docName.split("/").pop();
+        const fields = doc.fields || {};
+
+        let deleteAtMs: number | null = null;
+        if (fields.deleteAt?.timestampValue) {
+          deleteAtMs = Date.parse(fields.deleteAt.timestampValue);
+        } else if (fields.deleteAt?.stringValue) {
+          deleteAtMs = Date.parse(fields.deleteAt.stringValue);
+        }
+
+        let shouldDelete = false;
+        if (deleteAtMs !== null && !isNaN(deleteAtMs)) {
+          // Retention period expired (30 days post-expiry)
+          if (deleteAtMs <= now) {
+            shouldDelete = true;
+          }
+        } else {
+          // Legacy request without deleteAt: check if createdAt is older than 31 days and status is expired/cancelled
+          let createdAtMs: number | null = null;
+          if (fields.createdAt?.timestampValue) {
+            createdAtMs = Date.parse(fields.createdAt.timestampValue);
+          } else if (fields.createdAt?.stringValue) {
+            createdAtMs = Date.parse(fields.createdAt.stringValue);
+          }
+          const status = fields.status?.stringValue;
+          if (createdAtMs !== null && !isNaN(createdAtMs) && now - createdAtMs > 31 * 24 * 60 * 60 * 1000) {
+            if (status === "expired" || status === "cancelled") {
+              shouldDelete = true;
+            }
+          }
+        }
+
+        if (shouldDelete && requestId) {
+          // Permanently remove request doc while preserving conversations and notifications for student history
+          const delUrl = `https://firestore.googleapis.com/v1/${docName}`;
+          const delRes = await fetch(delUrl, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          });
+
+          if (delRes.ok) {
+            deleted++;
+          }
+        }
+      }
+
+      console.log(`[Requests Cleanup Job] Processed ${processed} requests, purged ${deleted} requests past retention window.`);
+    } catch (err) {
+      console.error("[Requests Cleanup Job] Error running cleanup:", err);
+    }
+
+    return { processed, deleted };
+  }
+
+  // Request Renewal Endpoint: Extends request by 24h, advances renewalCount, and preserves original ID/history
+  app.post("/api/requests/renew", async (req, res) => {
+    try {
+      const student = await verifyStudentCaller(req);
+      if (!student) {
+        return res.status(401).json({ error: "Authentication required to renew request." });
+      }
+
+      const { requestId } = req.body || {};
+      if (!requestId || typeof requestId !== "string") {
+        return res.status(400).json({ error: "requestId is required." });
+      }
+
+      const systemToken = await getServerToken();
+      if (!systemToken) {
+        return res.status(503).json({ error: "System authentication service unavailable." });
+      }
+
+      // Fetch request document
+      const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/requests/${requestId}`;
+      const docRes = await fetch(docUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+
+      if (!docRes.ok) {
+        return res.status(404).json({ error: "Request not found." });
+      }
+
+      const docJson = await docRes.json();
+      const fields = docJson.fields || {};
+      const requesterId = fields.requesterId?.stringValue;
+
+      // Ownership enforcement: Only authenticated owner may renew
+      if (requesterId !== student.uid) {
+        return res.status(403).json({ error: "Unauthorized: only the requester can renew this request." });
+      }
+
+      const status = fields.status?.stringValue;
+      if (status === "cancelled" || status === "completed") {
+        return res.status(400).json({ error: "Cancelled or completed requests cannot be renewed." });
+      }
+
+      const currentRenewalCount = fields.renewalCount?.integerValue
+        ? parseInt(fields.renewalCount.integerValue, 10)
+        : fields.renewalCount?.doubleValue
+        ? Math.floor(fields.renewalCount.doubleValue)
+        : 0;
+      const newRenewalCount = currentRenewalCount + 1;
+
+      const now = Date.now();
+      const newExpiresAt = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+      const newDeleteAt = new Date(now + 31 * 24 * 60 * 60 * 1000).toISOString(); // 30-day retention after 24h expiry
+      const renewedAt = new Date(now).toISOString();
+
+      const patchUrl = `${docUrl}?updateMask.fieldPaths=status&updateMask.fieldPaths=expiresAt&updateMask.fieldPaths=deleteAt&updateMask.fieldPaths=renewedAt&updateMask.fieldPaths=renewalCount&updateMask.fieldPaths=updatedAt`;
+
+      const patchRes = await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          fields: {
+            ...fields,
+            status: { stringValue: "open" },
+            expiresAt: { timestampValue: newExpiresAt },
+            deleteAt: { timestampValue: newDeleteAt },
+            renewedAt: { timestampValue: renewedAt },
+            renewalCount: { integerValue: String(newRenewalCount) },
+            updatedAt: { timestampValue: renewedAt },
+          },
+        }),
+      });
+
+      if (!patchRes.ok) {
+        const patchErr = await patchRes.text();
+        console.error("Failed to patch renewed request:", patchErr);
+        return res.status(500).json({ error: "Failed to renew request." });
+      }
+
+      return res.json({
+        success: true,
+        message: "Request renewed successfully for another 24 hours.",
+        requestId,
+        expiresAt: newExpiresAt,
+        deleteAt: newDeleteAt,
+        renewalCount: newRenewalCount,
+        renewedAt,
+      });
+    } catch (err: any) {
+      console.error("Renewal endpoint error:", err);
+      return res.status(500).json({ error: "Internal server error renewing request." });
+    }
+  });
+
+  // Trigger manual or scheduler-driven cleanup of expired requests past retention period
+  app.post("/api/requests/cleanup-expired", async (req, res) => {
+    try {
+      const isAdmin = await verifyAdminOrSystem(req);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+      const result = await runExpiredRequestsCleanup();
+      return res.json({
+        message: "Expired requests retention cleanup complete.",
+        ...result,
+      });
+    } catch (err: any) {
+      console.error("Requests cleanup endpoint error:", err);
+      return res.status(500).json({ error: "Internal server error running requests cleanup." });
+    }
+  });
+
+  // One-time backfill migration for legacy requests missing expiresAt
+  app.post("/api/requests/backfill-expiration", async (req, res) => {
+    try {
+      const isAdmin = await verifyAdminOrSystem(req);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = await getServerToken();
+      if (!systemToken) {
+        return res.status(503).json({ error: "System authentication service unavailable." });
+      }
+
+      const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents:runQuery`;
+      const qRes = await fetch(queryUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${systemToken}`,
+        },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: "requests" }],
+            limit: 300,
+          },
+        }),
+      });
+
+      if (!qRes.ok) {
+        return res.status(500).json({ error: "Failed to query requests for backfill." });
+      }
+
+      const results = await qRes.json();
+      const documents = Array.isArray(results)
+        ? results.filter((item: any) => Boolean(item.document)).map((item: any) => item.document)
+        : [];
+
+      let backfilledCount = 0;
+      const now = Date.now();
+
+      for (const doc of documents) {
+        const fields = doc.fields || {};
+        if (!fields.expiresAt) {
+          let createdAtMs = now;
+          if (fields.createdAt?.timestampValue) {
+            createdAtMs = Date.parse(fields.createdAt.timestampValue);
+          } else if (fields.createdAt?.stringValue) {
+            createdAtMs = Date.parse(fields.createdAt.stringValue);
+          }
+
+          const status = fields.status?.stringValue || "open";
+          // If active, grant 24h grace period from now so active legacy requests are not abruptly hidden;
+          // otherwise set to createdAt + 24h
+          let expiresAtIso: string;
+          if (status === "open" || status === "active") {
+            expiresAtIso = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+          } else {
+            expiresAtIso = new Date(createdAtMs + 24 * 60 * 60 * 1000).toISOString();
+          }
+          const deleteAtIso = new Date(Date.parse(expiresAtIso) + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+          const patchUrl = `https://firestore.googleapis.com/v1/${doc.name}?updateMask.fieldPaths=expiresAt&updateMask.fieldPaths=deleteAt&updateMask.fieldPaths=renewalCount`;
+          await fetch(patchUrl, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${systemToken}`,
+            },
+            body: JSON.stringify({
+              fields: {
+                ...fields,
+                expiresAt: { timestampValue: expiresAtIso },
+                deleteAt: { timestampValue: deleteAtIso },
+                renewalCount: { integerValue: "0" },
+              },
+            }),
+          });
+          backfilledCount++;
+        }
+      }
+
+      return res.json({
+        message: "Legacy requests backfill migration complete.",
+        totalInspected: documents.length,
+        backfilledCount,
+      });
+    } catch (err: any) {
+      console.error("Requests backfill error:", err);
       return res.status(500).json({ error: "Internal server error running backfill migration." });
     }
   });
@@ -5595,13 +5921,15 @@ Respond to the student's question directly, and if possible provide structured J
     }
   });
 
-  // Run cleanup job 5 seconds after server start, then every 15 minutes
+  // Run cleanup jobs 5 seconds after server start, then every 15 minutes
   setTimeout(() => {
     runExpiredListingsCleanup().catch((err) => console.warn("Initial cleanup notice:", err));
+    runExpiredRequestsCleanup().catch((err) => console.warn("Initial requests cleanup notice:", err));
   }, 5000).unref();
 
   setInterval(() => {
     runExpiredListingsCleanup().catch((err) => console.warn("Interval cleanup notice:", err));
+    runExpiredRequestsCleanup().catch((err) => console.warn("Interval requests cleanup notice:", err));
   }, 15 * 60 * 1000).unref();
 
   // Graceful PayloadTooLargeError and body parser error handling for API routes

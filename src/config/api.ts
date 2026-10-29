@@ -150,3 +150,15 @@ export const NOTIFICATION_ENDPOINTS = {
   },
 };
 
+export const REQUEST_ENDPOINTS = {
+  get renew() {
+    return `${getApiBaseUrl()}/api/requests/renew`;
+  },
+  get cleanupExpired() {
+    return `${getApiBaseUrl()}/api/requests/cleanup-expired`;
+  },
+  get backfillExpiration() {
+    return `${getApiBaseUrl()}/api/requests/backfill-expiration`;
+  },
+};
+
