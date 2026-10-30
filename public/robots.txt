@@ -9,4 +9,4 @@ Disallow: /reserved
 Disallow: /onboarding
 
 Sitemap: https://studentneed.me/sitemap.xml
-Agentmap: https://studentneed.me/.well-known/ai-catalog.json
+# Agentmap: https://studentneed.me/.well-known/ai-catalog.json

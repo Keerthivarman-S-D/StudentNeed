@@ -42,7 +42,7 @@ assert(!allSource.toLowerCase().includes('#717870'), 'Legacy low-contrast muted 
 assert(contrastRatio('#555d56', '#f7f6f2') >= 4.5, `Muted text contrast passes WCAG AA (${contrastRatio('#555d56', '#f7f6f2').toFixed(2)}:1)`);
 assert(contrastRatio('#0b7355', '#f7f6f2') >= 4.5, `Logo accent contrast passes WCAG AA (${contrastRatio('#0b7355', '#f7f6f2').toFixed(2)}:1)`);
 assert(logo.includes('text-[#0b7355]'), 'StudentNeed logo uses the accessible dark teal accent');
-assert(html.includes("heroPreload.as = 'image'") && html.includes("heroPreload.setAttribute('fetchpriority', 'high')"), 'Landing/auth hero image is preloaded with high fetch priority before React mounts');
+assert((html.includes('rel="preload"') && html.includes('as="image"') && html.includes('fetchpriority="high"')) || (html.includes("heroPreload.as = 'image'") && html.includes("heroPreload.setAttribute('fetchpriority', 'high')")), 'Landing/auth hero image is preloaded with high fetch priority before React mounts');
 assert(launch.includes('fetchPriority="high"') && launch.includes('loading="eager"'), 'LCP hero image is eager-loaded with high fetch priority');
 assert(launch.includes('width={1200}') && launch.includes('height={896}'), 'LCP hero image declares intrinsic dimensions to prevent layout shift');
 assert(fs.existsSync(webpPath), 'Optimized WebP hero image exists');
