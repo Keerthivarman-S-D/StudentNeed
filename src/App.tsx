@@ -74,15 +74,12 @@ function AppContent() {
   const isLaunchExplicit = location.pathname === '/launch';
   const isRootLaunch = location.pathname === '/' && !firebaseUser;
   const isLaunchActive = isLaunchExplicit || isRootLaunch;
-  const isAuthPage = ['/login', '/register', '/verify-email'].includes(location.pathname);
+  const isAuthPage = ['/login', '/register', '/verify-email', '/terms', '/privacy'].includes(location.pathname);
   const isWarmBgPage = isAuthPage || location.pathname === '/' || location.pathname === '/launch' || location.pathname === '/marketplace' || location.pathname.startsWith('/listing/') || location.pathname === '/requests' || location.pathname === '/create-request' || location.pathname === '/create-listing' || location.pathname.startsWith('/chat') || location.pathname === '/profile' || location.pathname === '/reserved' || location.pathname === '/onboarding' || location.pathname === '/admin' || location.pathname === '/terms' || location.pathname === '/privacy' || location.pathname === '/genui';
   const hideAppNavbar = isLaunchActive || isAuthPage;
 
   return (
     <div className={`flex min-h-screen flex-col ${isWarmBgPage ? 'bg-[#f7f6f2]' : 'bg-brand-bg'} ${hideAppNavbar ? '' : 'pb-16 md:pb-0'}`}>
-      <Suspense fallback={null}>
-        <NotificationToast />
-      </Suspense>
       {!hideAppNavbar && (
         <Suspense fallback={null}>
           <Navbar />
@@ -198,6 +195,9 @@ function AppShell() {
   return (
     <Suspense fallback={<PageLoadingFallback />}>
       <MarketplaceProviders>
+        <Suspense fallback={null}>
+          <NotificationToast />
+        </Suspense>
         <AppContent />
       </MarketplaceProviders>
     </Suspense>

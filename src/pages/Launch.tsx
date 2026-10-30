@@ -19,11 +19,13 @@ import {
   Mail,
   Globe
 } from 'lucide-react';
+import { lazy, Suspense } from 'react';
 import { LaunchHeader } from '../components/LaunchHeader';
 import { LaunchFooter } from '../components/LaunchFooter';
 
+const LiveShowcaseSection = lazy(() => import('../components/LiveShowcaseSection'));
 
-interface SampleItem {
+export interface SampleItem {
   id: string;
   title: string;
   category: string;
@@ -57,8 +59,6 @@ export function Launch() {
       [id]: !prev[id]
     }));
   };
-
-
 
   // Exact 4 featured items matching the reference screenshot
   const sampleItems: SampleItem[] = [
@@ -401,66 +401,22 @@ export function Launch() {
               </p>
             </div>
 
-            {/* Exact 4 campus showcase items rendered instantly without loading pulse */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {sampleItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="group flex flex-col overflow-hidden rounded-2xl border border-[#dedcd4] bg-white shadow-2xs hover:shadow-md hover:border-[#204b39]/40 transition-all"
-                >
-                  {/* Item Image */}
-                  <div className="relative aspect-4/3 overflow-hidden bg-zinc-100">
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      width={600}
-                      height={450}
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      loading="lazy"
-                      decoding="async"
-                    />
-
-                    {/* Top Left Badge */}
-                    <span className="absolute left-3 top-3 inline-block rounded-md bg-[#edf1ec] border border-[#dedcd4] px-2 py-0.5 text-[10px] font-bold text-[#204b39] shadow-2xs">
-                      {item.type}
-                    </span>
-
-                    {/* Top Right Wishlist Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => toggleSampleWishlist(item.id, e)}
-                      className="absolute right-3 top-3 rounded-full bg-white/90 p-1.5 text-zinc-400 backdrop-blur-xs transition-colors hover:text-red-500 hover:bg-white cursor-pointer shadow-xs"
-                      aria-label={`Wishlist ${item.title}`}
-                    >
-                      <Heart
-                        className={`h-4 w-4 ${sampleWishlist[item.id] ? 'fill-red-500 text-red-500' : 'text-zinc-400'}`}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Item Details */}
-                  <div className="flex flex-1 flex-col p-4 justify-between space-y-3">
-                    <div>
-                      <h3 className="line-clamp-2 text-sm font-bold text-[#252b27] group-hover:text-[#204b39] transition-colors leading-snug">
-                        {item.title}
-                      </h3>
-                      <p className="text-xs text-[#555d56] mt-1">
-                        {item.category} • {item.condition}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-[#dedcd4]/60 pt-2.5">
-                      <span className="text-sm font-bold text-[#252b27]">
-                        {item.price}
-                      </span>
-                      <span className="text-xs text-[#555d56]">
-                        {item.campusInfo}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {/* Live marketplace listings or curated campus showcase items */}
+            <Suspense
+              fallback={
+                <SampleItemsGrid
+                  sampleItems={sampleItems}
+                  sampleWishlist={sampleWishlist}
+                  toggleSampleWishlist={toggleSampleWishlist}
+                />
+              }
+            >
+              <LiveShowcaseSection
+                sampleItems={sampleItems}
+                sampleWishlist={sampleWishlist}
+                toggleSampleWishlist={toggleSampleWishlist}
+              />
+            </Suspense>
 
             {/* Bottom link to marketplace */}
             <div className="mt-8 text-center sm:text-left">
@@ -744,6 +700,66 @@ export function Launch() {
 
       {/* 11. Footer */}
       <LaunchFooter />
+    </div>
+  );
+}
+
+function SampleItemsGrid({
+  sampleItems,
+  sampleWishlist,
+  toggleSampleWishlist,
+}: {
+  sampleItems: SampleItem[];
+  sampleWishlist: Record<string, boolean>;
+  toggleSampleWishlist: (id: string, e: React.MouseEvent) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {sampleItems.map((item) => (
+        <div
+          key={item.id}
+          className="group flex flex-col overflow-hidden rounded-2xl border border-[#dedcd4] bg-white shadow-2xs hover:shadow-md hover:border-[#204b39]/40 transition-all"
+        >
+          <div className="relative aspect-4/3 overflow-hidden bg-zinc-100">
+            <img
+              src={item.image}
+              alt={item.title}
+              width={600}
+              height={450}
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              loading="lazy"
+              decoding="async"
+            />
+            <span className="absolute left-3 top-3 inline-block rounded-md bg-[#edf1ec] border border-[#dedcd4] px-2 py-0.5 text-[10px] font-bold text-[#204b39] shadow-2xs">
+              {item.type}
+            </span>
+            <button
+              type="button"
+              onClick={(e) => toggleSampleWishlist(item.id, e)}
+              className="absolute right-3 top-3 rounded-full bg-white/90 p-1.5 text-zinc-400 backdrop-blur-xs transition-colors hover:text-red-500 hover:bg-white cursor-pointer shadow-xs"
+              aria-label={`Wishlist ${item.title}`}
+            >
+              <Heart
+                className={`h-4 w-4 ${sampleWishlist[item.id] ? 'fill-red-500 text-red-500' : 'text-zinc-400'}`}
+              />
+            </button>
+          </div>
+          <div className="flex flex-1 flex-col p-4 justify-between space-y-3">
+            <div>
+              <h3 className="line-clamp-2 text-sm font-bold text-[#252b27] group-hover:text-[#204b39] transition-colors leading-snug">
+                {item.title}
+              </h3>
+              <p className="text-xs text-[#555d56] mt-1">
+                {item.category} • {item.condition}
+              </p>
+            </div>
+            <div className="flex items-center justify-between border-t border-[#dedcd4]/60 pt-2.5">
+              <span className="text-sm font-bold text-[#252b27]">{item.price}</span>
+              <span className="text-xs text-[#555d56]">{item.campusInfo}</span>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
