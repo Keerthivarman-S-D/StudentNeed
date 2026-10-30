@@ -24,7 +24,7 @@ console.log('\n--- Running StudentNeed Authentication UI Redesign Verification T
   assert(layoutSrc.includes('MIT Campus · Anna University'), 'AuthLayout displays campus badge');
   assert(layoutSrc.includes('Useful things. Closer connections.'), 'AuthLayout displays headline');
   assert(layoutSrc.includes("A campus-only space to find what you need") && (layoutSrc.includes("don't") || layoutSrc.includes("don&apos;t")), 'AuthLayout displays subheading');
-  assert(layoutSrc.includes('/images/landing/hero-handoff.jpg'), 'AuthLayout includes campus handoff image');
+  assert(layoutSrc.includes('/images/landing/hero-handoff.webp'), 'AuthLayout includes campus handoff image');
   assert(layoutSrc.includes('Find → Connect → Meet. No shipping. Just your campus.'), 'AuthLayout includes caption');
   assert(layoutSrc.includes('StudentNeed · Privacy Policy · Terms of Service'), 'AuthLayout displays footer notice');
   assert(layoutSrc.includes('bg-[#f7f6f2]') || layoutSrc.includes('bg-[#faf9f5]'), 'AuthLayout uses warm off-white background');

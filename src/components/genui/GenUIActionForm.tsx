@@ -196,7 +196,7 @@ export function GenUIActionForm({ spec, onSuccess }: GenUIActionFormProps) {
                   onChange={(e) => handleInputChange(field.name, e.target.value)}
                   placeholder={field.placeholder}
                   disabled={isSubmitting}
-                  className={`w-full rounded-lg border px-2.5 py-1.5 text-xs text-[#252b27] placeholder:text-[#717870] focus:outline-hidden focus:ring-2 focus:ring-[#204b39] transition ${
+                  className={`w-full rounded-lg border px-2.5 py-1.5 text-xs text-[#252b27] placeholder:text-[#555d56] focus:outline-hidden focus:ring-2 focus:ring-[#204b39] transition ${
                     hasError ? 'border-red-400 bg-red-50/20' : 'border-[#dedcd4] bg-white'
                   }`}
                 />
@@ -226,7 +226,7 @@ export function GenUIActionForm({ spec, onSuccess }: GenUIActionFormProps) {
                   disabled={isSubmitting}
                   min={field.min}
                   max={field.max}
-                  className={`w-full rounded-lg border px-2.5 py-1.5 text-xs text-[#252b27] placeholder:text-[#717870] focus:outline-hidden focus:ring-2 focus:ring-[#204b39] transition ${
+                  className={`w-full rounded-lg border px-2.5 py-1.5 text-xs text-[#252b27] placeholder:text-[#555d56] focus:outline-hidden focus:ring-2 focus:ring-[#204b39] transition ${
                     hasError ? 'border-red-400 bg-red-50/20' : 'border-[#dedcd4] bg-white'
                   }`}
                 />
@@ -238,7 +238,7 @@ export function GenUIActionForm({ spec, onSuccess }: GenUIActionFormProps) {
                   {errors[field.name]}
                 </p>
               ) : field.helpText ? (
-                <p className="text-[10px] text-[#717870]">{field.helpText}</p>
+                <p className="text-[10px] text-[#555d56]">{field.helpText}</p>
               ) : null}
             </div>
           );

@@ -62,7 +62,7 @@ export function NotificationToast() {
             e.stopPropagation();
             dismissToast();
           }}
-          className="rounded-lg p-1 text-[#717870] hover:text-[#252b27] hover:bg-zinc-100 transition-colors cursor-pointer shrink-0"
+          className="rounded-lg p-1 text-[#555d56] hover:text-[#252b27] hover:bg-zinc-100 transition-colors cursor-pointer shrink-0"
           aria-label="Dismiss notification"
         >
           <X className="h-4 w-4" />

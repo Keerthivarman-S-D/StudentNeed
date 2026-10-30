@@ -291,7 +291,7 @@ export function Login({ initialMode = 'login' }: { initialMode?: 'login' | 'regi
           </div>
 
           {/* Terms & Privacy Footnote */}
-          <p className="text-[11px] sm:text-xs text-[#717870] text-center pt-1 leading-relaxed">
+          <p className="text-[11px] sm:text-xs text-[#555d56] text-center pt-1 leading-relaxed">
             By continuing, you agree to the Terms of Service and Privacy Policy.
           </p>
         </form>

@@ -2,13 +2,13 @@
 
 @theme {
   --color-brand-charcoal: #111827;
-  --color-brand-teal: #19bf96;
-  --color-brand-teal-hover: #14a07d;
+  --color-brand-teal: #0b7355;
+  --color-brand-teal-hover: #075a43;
   --color-brand-teal-light: #ecfdf5;
   --color-brand-teal-border: #a7f3d0;
   --color-brand-bg: #f8fafc;
   --color-brand-border: #e5e7eb;
-  --color-brand-muted: #6b7280;
+  --color-brand-muted: #555d56;
 
   /* Forest Green and Warm Off-White Landing Redesign Tokens */
   --color-brand-forest: #204b39;

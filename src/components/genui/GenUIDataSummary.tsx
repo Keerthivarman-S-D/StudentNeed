@@ -46,7 +46,7 @@ export function GenUIDataSummary({ spec }: GenUIDataSummaryProps) {
             </div>
 
             {metric.subtext && (
-              <span className="text-[9px] text-[#717870] mt-0.5">{metric.subtext}</span>
+              <span className="text-[9px] text-[#555d56] mt-0.5">{metric.subtext}</span>
             )}
             {metric.change && (
               <span className="text-[9px] font-semibold text-emerald-700 mt-0.5 flex items-center gap-0.5">

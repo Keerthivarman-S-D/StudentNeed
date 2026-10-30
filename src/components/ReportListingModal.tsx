@@ -101,7 +101,7 @@ export function ReportListingModal({
             </div>
             <div>
               <h3 className="font-bold text-base leading-tight">Report Listing</h3>
-              <p className="text-xs text-[#717870] line-clamp-1 max-w-[280px]">
+              <p className="text-xs text-[#555d56] line-clamp-1 max-w-[280px]">
                 {listingTitle}
               </p>
             </div>
@@ -109,7 +109,7 @@ export function ReportListingModal({
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="rounded-lg p-1.5 text-[#717870] hover:bg-[#edf1ec] hover:text-[#204b39] transition-colors"
+            className="rounded-lg p-1.5 text-[#555d56] hover:bg-[#edf1ec] hover:text-[#204b39] transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -121,7 +121,7 @@ export function ReportListingModal({
               <CheckCircle2 className="h-6 w-6" />
             </div>
             <h4 className="font-semibold text-[#252b27]">Report Submitted</h4>
-            <p className="text-xs text-[#717870] max-w-xs mx-auto">
+            <p className="text-xs text-[#555d56] max-w-xs mx-auto">
               Thank you for keeping StudentNeed safe. Campus moderators have been notified and will review this listing shortly.
             </p>
           </div>
@@ -184,7 +184,7 @@ export function ReportListingModal({
                 placeholder="Provide any specific context or details to help moderators review..."
                 className="w-full rounded-xl border border-[#dedcd4] bg-[#faf9f5] p-3 text-xs outline-none focus:border-[#204b39] focus:bg-white focus:ring-2 focus:ring-[#204b39]/20 transition-all resize-none text-[#252b27]"
               />
-              <p className="text-[10px] text-[#717870] text-right mt-1">
+              <p className="text-[10px] text-[#555d56] text-right mt-1">
                 {description.length}/400
               </p>
             </div>

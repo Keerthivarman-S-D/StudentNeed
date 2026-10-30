@@ -1064,7 +1064,7 @@ export function ChatPage() {
 
               {/* Search Bar */}
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#717870]" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#555d56]" />
                 <input
                   type="text"
                   value={searchFilter}
@@ -1076,7 +1076,7 @@ export function ChatPage() {
                   <button
                     type="button"
                     onClick={() => setSearchFilter('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-[#717870] hover:text-[#252b27]"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-[#555d56] hover:text-[#252b27]"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -1159,7 +1159,7 @@ export function ChatPage() {
                           <span className="text-xs font-bold text-[#252b27] truncate">
                             {participant?.name || 'Campus Student'}
                           </span>
-                          <span className="text-[10px] text-[#717870] shrink-0 font-medium">
+                          <span className="text-[10px] text-[#555d56] shrink-0 font-medium">
                             {formatRelativeTime(preview?.createdAt || c.updatedAt || c.createdAt)}
                           </span>
                         </div>
@@ -1284,7 +1284,7 @@ export function ChatPage() {
                             Verified
                           </span>
                         </div>
-                        <p className="text-xs text-[#717870]">
+                        <p className="text-xs text-[#555d56]">
                           {otherUser?.department ? `${otherUser.department} · ` : ''}Anna University
                         </p>
                       </div>
@@ -1302,7 +1302,7 @@ export function ChatPage() {
                       {listing.price !== undefined && (
                         <span className="font-bold text-[#252b27]">₹{listing.price}</span>
                       )}
-                      <ExternalLink className="h-3 w-3 text-[#717870] shrink-0" />
+                      <ExternalLink className="h-3 w-3 text-[#555d56] shrink-0" />
                     </Link>
                   )}
 
@@ -1313,7 +1313,7 @@ export function ChatPage() {
                     >
                       <MessageSquare className="h-3.5 w-3.5 text-[#204b39] shrink-0" />
                       <span className="max-w-[160px] truncate">Request: {itemRequest.title}</span>
-                      <ExternalLink className="h-3 w-3 text-[#717870] shrink-0" />
+                      <ExternalLink className="h-3 w-3 text-[#555d56] shrink-0" />
                     </Link>
                   )}
                 </div>
@@ -1348,7 +1348,7 @@ export function ChatPage() {
                             )}
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-[#717870] mt-0.5 font-medium">
+                          <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-[#555d56] mt-0.5 font-medium">
                             {itemRequest.location && (
                               <span className="flex items-center gap-1">
                                 <MapPin className="h-3 w-3 text-[#204b39]" />
@@ -1357,7 +1357,7 @@ export function ChatPage() {
                             )}
                             {itemRequest.neededBy && (
                               <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3 text-[#717870]" />
+                                <Clock className="h-3 w-3 text-[#555d56]" />
                                 Needed by: {itemRequest.neededBy}
                               </span>
                             )}
@@ -1715,7 +1715,7 @@ export function ChatPage() {
 
                       {/* Quick Starters */}
                       <div className="pt-1 flex flex-col items-center gap-1.5 w-full">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-[#717870]">Quick Starters</span>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-[#555d56]">Quick Starters</span>
                         <div className="flex flex-wrap justify-center gap-1.5">
                           {quickStarters.map((starter, i) => (
                             <button
@@ -1762,7 +1762,7 @@ export function ChatPage() {
                             >
                               <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
                             </div>
-                            <span className="mt-1 px-1 text-[10px] text-[#717870]">
+                            <span className="mt-1 px-1 text-[10px] text-[#555d56]">
                               {formatTime(msg.createdAt)}
                             </span>
                           </div>
@@ -1803,7 +1803,7 @@ export function ChatPage() {
                       autoFocus
                     />
                     {inputText.length > 1800 && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#717870] font-mono">
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#555d56] font-mono">
                         {inputText.length}/2000
                       </span>
                     )}
@@ -1818,13 +1818,13 @@ export function ChatPage() {
                         ? "bg-[#204b39] hover:bg-[#183a2c] text-white shadow-xs cursor-pointer active:scale-[0.98]"
                         : isSending
                         ? "bg-[#204b39]/80 text-white cursor-wait opacity-90"
-                        : "bg-[#dedcd4] text-[#717870] cursor-not-allowed shadow-none"
+                        : "bg-[#dedcd4] text-[#555d56] cursor-not-allowed shadow-none"
                     )}
                   >
                     {isSending ? (
                       <Loader2 className="h-4 w-4 animate-spin text-white" />
                     ) : (
-                      <Send className={cn("h-4 w-4", inputText.trim() ? "text-white" : "text-[#717870]")} />
+                      <Send className={cn("h-4 w-4", inputText.trim() ? "text-white" : "text-[#555d56]")} />
                     )}
                     <span className="hidden sm:inline">{isSending ? 'Sending' : 'Send'}</span>
                   </button>

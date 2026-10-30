@@ -67,7 +67,7 @@ export function Privacy() {
           <p className="mt-2 text-sm sm:text-base text-[#555d56] leading-relaxed max-w-2xl">
             How StudentNeed collects, handles, stores, and protects your information as an Anna University campus marketplace member.
           </p>
-          <div className="mt-4 flex items-center gap-1.5 text-xs text-[#717870]">
+          <div className="mt-4 flex items-center gap-1.5 text-xs text-[#555d56]">
             <Clock className="h-3.5 w-3.5" />
             <span>Last updated: October 2026 • Madras Institute of Technology (Anna University)</span>
           </div>

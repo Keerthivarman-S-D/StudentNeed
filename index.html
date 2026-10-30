@@ -7,11 +7,23 @@
     <meta name="description" content="StudentNeed connects students with items available on their campus. Find, connect and meet with other students." />
     <meta property="og:title" content="StudentNeed — Your Campus Marketplace" />
     <meta property="og:description" content="StudentNeed connects students with items available on their campus. Find, connect and meet with other students." />
+    <script>
+      // Preload the above-the-fold campus photo before the React bundle mounts.
+      // Avoid downloading it on routes that do not render the photo.
+      if (/^\/(|login|register|verify-email)\/?$/.test(window.location.pathname)) {
+        const heroPreload = document.createElement('link');
+        heroPreload.rel = 'preload';
+        heroPreload.as = 'image';
+        heroPreload.href = '/images/landing/hero-handoff.webp';
+        heroPreload.setAttribute('fetchpriority', 'high');
+        document.head.appendChild(heroPreload);
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/favicon.png" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#19BF96" />
+    <meta name="theme-color" content="#0b7355" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://studentneed.me" />
   </head>

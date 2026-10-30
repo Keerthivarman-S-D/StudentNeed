@@ -178,7 +178,7 @@ export function CreateRequest() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-[#252b27] uppercase tracking-wider">Budget (₹)</label>
-              <span className="text-[11px] text-[#717870]">Optional</span>
+              <span className="text-[11px] text-[#555d56]">Optional</span>
             </div>
             <Input 
               type="number" 
@@ -199,7 +199,7 @@ export function CreateRequest() {
             required
             rows={4}
             placeholder="Provide any specific details (model, edition, condition required, course/department)..."
-            className="w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2.5 text-sm text-[#252b27] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs placeholder:text-[#717870]"
+            className="w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2.5 text-sm text-[#252b27] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs placeholder:text-[#555d56]"
             value={description}
             onChange={e => setDescription(e.target.value)}
           />

@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /profile
+Disallow: /chat
+Disallow: /create-listing
+Disallow: /create-request
+Disallow: /reserved
+Disallow: /onboarding
+
+Sitemap: https://studentneed.me/sitemap.xml
+Agentmap: https://studentneed.me/.well-known/ai-catalog.json

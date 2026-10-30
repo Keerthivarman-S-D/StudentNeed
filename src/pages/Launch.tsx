@@ -236,7 +236,7 @@ export function Launch() {
                 </div>
 
                 {/* Footnote */}
-                <p className="text-xs text-[#717870] pt-0.5">
+                <p className="text-xs text-[#555d56] pt-0.5">
                   Campus-verified students only • Safe meetups on campus
                 </p>
               </div>
@@ -247,10 +247,14 @@ export function Launch() {
                   {/* Hero photograph container */}
                   <div className="overflow-hidden rounded-3xl border border-[#dedcd4] bg-zinc-100 shadow-md aspect-[4/3] relative">
                     <img
-                      src="/images/landing/hero-handoff.jpg"
+                      src="/images/landing/hero-handoff.webp"
                       alt="Students exchanging study materials on campus"
                       className="h-full w-full object-cover"
                       loading="eager"
+                      fetchPriority="high"
+                      decoding="async"
+                      width={1200}
+                      height={896}
                     />
                   </div>
 
@@ -277,7 +281,7 @@ export function Launch() {
                       <h2 className="text-base sm:text-lg font-bold text-[#252b27] leading-snug">
                         Casio Scientific Calculator
                       </h2>
-                      <p className="text-xs text-[#717870]">fx-991EX • Electronics</p>
+                      <p className="text-xs text-[#555d56]">fx-991EX • Electronics</p>
                     </div>
 
                     <div className="flex items-center justify-between pt-2 border-t border-[#dedcd4]/60 text-xs">
@@ -301,7 +305,7 @@ export function Launch() {
         <section id="how-it-works" className="py-16 sm:py-20 bg-white border-b border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="text-left space-y-2 mb-12">
-              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#555d56]">
                 Simple Three-Step Process
               </span>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
@@ -353,7 +357,7 @@ export function Launch() {
         <section id="campus-exchange" className="py-16 sm:py-20 bg-[#f7f6f2] border-b border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="text-left space-y-2 mb-10">
-              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#555d56]">
                 Flexible Campus Exchanges
               </span>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
@@ -383,7 +387,7 @@ export function Launch() {
               ))}
             </div>
 
-            <p className="text-xs text-[#717870] mt-6 text-left">
+            <p className="text-xs text-[#555d56] mt-6 text-left">
               * Borrow listings are currently informational and handled through student agreement.
             </p>
           </div>
@@ -393,7 +397,7 @@ export function Launch() {
         <section id="featured-items" className="py-16 sm:py-20 bg-white border-b border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="text-left space-y-2 mb-10">
-              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#555d56]">
                 Campus Marketplace
               </span>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
@@ -457,7 +461,7 @@ export function Launch() {
                         <h3 className="line-clamp-2 text-sm font-bold text-[#252b27] group-hover:text-[#204b39] transition-colors leading-snug">
                           {item.title}
                         </h3>
-                        <p className="text-xs text-[#717870] mt-1">
+                        <p className="text-xs text-[#555d56] mt-1">
                           {item.category} • {item.condition}
                         </p>
                       </div>
@@ -466,7 +470,7 @@ export function Launch() {
                         <span className="text-sm font-bold text-[#252b27]">
                           {item.price}
                         </span>
-                        <span className="text-xs text-[#717870]">
+                        <span className="text-xs text-[#555d56]">
                           {item.campusInfo}
                         </span>
                       </div>
@@ -497,7 +501,7 @@ export function Launch() {
               {/* Left Column: Campus benefits */}
               <div className="lg:col-span-6 space-y-6">
                 <div className="space-y-2">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+                  <span className="text-xs font-semibold tracking-wider uppercase text-[#555d56]">
                     Campus Meetups
                   </span>
                   <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
@@ -513,7 +517,7 @@ export function Launch() {
                     <CheckCircle2 className="h-5 w-5 text-[#204b39] shrink-0 mt-0.5" />
                     <div>
                       <h3 className="text-sm font-bold text-[#252b27]">Meet at designated, well-lit campus spots</h3>
-                      <p className="text-xs text-[#717870] mt-0.5">
+                      <p className="text-xs text-[#555d56] mt-0.5">
                         Libraries, canteens, and department foyers provide safe environments.
                       </p>
                     </div>
@@ -523,7 +527,7 @@ export function Launch() {
                     <CheckCircle2 className="h-5 w-5 text-[#204b39] shrink-0 mt-0.5" />
                     <div>
                       <h3 className="text-sm font-bold text-[#252b27]">Inspect items before completing exchange</h3>
-                      <p className="text-xs text-[#717870] mt-0.5">
+                      <p className="text-xs text-[#555d56] mt-0.5">
                         Verify condition, working state, and completeness on the spot.
                       </p>
                     </div>
@@ -533,7 +537,7 @@ export function Launch() {
                     <CheckCircle2 className="h-5 w-5 text-[#204b39] shrink-0 mt-0.5" />
                     <div>
                       <h3 className="text-sm font-bold text-[#252b27]">Zero platform commission or hidden fees</h3>
-                      <p className="text-xs text-[#717870] mt-0.5">
+                      <p className="text-xs text-[#555d56] mt-0.5">
                         100% student-to-student. You keep the full value of your items.
                       </p>
                     </div>
@@ -548,7 +552,7 @@ export function Launch() {
                     <h3 className="text-base sm:text-lg font-bold text-[#252b27]">
                       Choose a familiar campus spot
                     </h3>
-                    <p className="text-xs text-[#717870] mt-0.5">
+                    <p className="text-xs text-[#555d56] mt-0.5">
                       Select an example campus meetup location:
                     </p>
                   </div>
@@ -585,7 +589,7 @@ export function Launch() {
                     </p>
                   </div>
 
-                  <p className="text-xs text-[#717870]">
+                  <p className="text-xs text-[#555d56]">
                     Students agree on convenient meetup spots within Anna University MIT campus grounds for quick, safe handoffs.
                   </p>
                 </div>
@@ -602,7 +606,7 @@ export function Launch() {
 
               {/* Left pitch */}
               <div className="lg:col-span-7 space-y-4">
-                <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+                <span className="text-xs font-semibold tracking-wider uppercase text-[#555d56]">
                   Student Requests
                 </span>
                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
@@ -629,7 +633,7 @@ export function Launch() {
                       <span className="h-1.5 w-1.5 rounded-full bg-[#204b39]" />
                       Active Request
                     </span>
-                    <span className="text-[11px] text-[#717870]">Sample request</span>
+                    <span className="text-[11px] text-[#555d56]">Sample request</span>
                   </div>
 
                   <div>
@@ -645,7 +649,7 @@ export function Launch() {
                     Willing to pay ₹300–₹400
                   </div>
 
-                  <div className="flex items-center gap-1.5 text-xs text-[#717870]">
+                  <div className="flex items-center gap-1.5 text-xs text-[#555d56]">
                     <MapPin className="h-3.5 w-3.5 text-[#204b39]" />
                     <span>Hostel 2 • 2nd Year ECE</span>
                   </div>
@@ -667,7 +671,7 @@ export function Launch() {
         <section id="about" className="py-16 sm:py-20 bg-[#f7f6f2] border-b border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="text-left space-y-2 mb-10">
-              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870]">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#555d56]">
                 Student Community
               </span>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
@@ -724,7 +728,7 @@ export function Launch() {
         <section id="contact" className="py-16 sm:py-20 lg:py-24 bg-[#f7f6f2] border-t border-[#dedcd4]">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col items-center">
             <div className="text-center space-y-2 mb-8 sm:mb-10 max-w-2xl mx-auto">
-              <span className="text-xs font-semibold tracking-wider uppercase text-[#717870] block">
+              <span className="text-xs font-semibold tracking-wider uppercase text-[#555d56] block">
                 Contact
               </span>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
@@ -748,7 +752,7 @@ export function Launch() {
               <p className="text-sm sm:text-base text-[#555d56]">
                 <strong className="text-[#252b27] font-semibold">Student moderators:</strong> Active daily
               </p>
-              <p className="text-xs sm:text-sm text-[#717870] pt-4 border-t border-[#dedcd4]/60">
+              <p className="text-xs sm:text-sm text-[#555d56] pt-4 border-t border-[#dedcd4]/60">
                 Notice: StudentNeed is an independent student platform built for campus exchanges.
               </p>
             </div>

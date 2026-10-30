@@ -143,7 +143,7 @@ export function GenUIDemo() {
 
         {/* 7 Intent Presets Grid */}
         <div className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#717870]">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[#555d56]">
             7 Intent-to-UI Specification Rules (Click to test):
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
@@ -176,7 +176,7 @@ export function GenUIDemo() {
                     <h3 className="text-xs font-bold text-[#252b27] leading-tight">
                       {preset.title}
                     </h3>
-                    <p className="text-[11px] text-[#717870] line-clamp-2">
+                    <p className="text-[11px] text-[#555d56] line-clamp-2">
                       {preset.description}
                     </p>
                   </div>
@@ -195,7 +195,7 @@ export function GenUIDemo() {
         <div className="rounded-2xl border border-[#dedcd4] bg-white p-4 shadow-xs space-y-3">
           <form onSubmit={handleRunCustomPrompt} className="flex flex-col sm:flex-row items-center gap-2">
             <div className="relative flex-1 w-full">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#717870]" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#555d56]" />
               <input
                 type="text"
                 value={customPrompt}
@@ -260,11 +260,11 @@ export function GenUIDemo() {
         {/* Live Generative UI Rendering Output */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#717870] flex items-center gap-1.5">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-[#555d56] flex items-center gap-1.5">
               <Layers className="h-3.5 w-3.5 text-[#204b39]" />
               Live Component Rendering (Trusted Registry):
             </h2>
-            <span className="text-[10px] text-[#717870]">
+            <span className="text-[10px] text-[#555d56]">
               Interactive & Connected to App State
             </span>
           </div>

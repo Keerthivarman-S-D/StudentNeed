@@ -9,7 +9,7 @@ export function AppFooter() {
           {/* Brand */}
           <div className="col-span-2 md:col-span-1 space-y-2">
             <StudentNeedLogo size="sm" />
-            <p className="text-xs text-[#717870]">
+            <p className="text-xs text-[#555d56]">
               Campus marketplace for Anna University students.
             </p>
           </div>
@@ -38,7 +38,7 @@ export function AppFooter() {
           {/* Legal */}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-[#252b27] uppercase tracking-wider">Legal</p>
-            <ul className="space-y-1.5 text-xs text-[#717870]">
+            <ul className="space-y-1.5 text-xs text-[#555d56]">
               <li><Link to="/privacy" className="hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:underline">Privacy Policy</Link></li>
               <li><Link to="/terms" className="hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:underline">Terms of Service</Link></li>
               <li className="text-[#555d56] font-medium pt-1">studentneed.me</li>
@@ -46,7 +46,7 @@ export function AppFooter() {
           </div>
         </div>
 
-        <div className="mt-6 border-t border-[#dedcd4] pt-4 flex flex-col sm:flex-row items-center justify-between text-xs text-[#717870] gap-2">
+        <div className="mt-6 border-t border-[#dedcd4] pt-4 flex flex-col sm:flex-row items-center justify-between text-xs text-[#555d56] gap-2">
           <span>© 2026 StudentNeed. All rights reserved.</span>
           <span>MIT Campus • Anna University</span>
         </div>

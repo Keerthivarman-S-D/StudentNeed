@@ -46,7 +46,7 @@ export function GenUISearchFilter({ spec, onApplyFilters }: GenUISearchFilterPro
         <button
           type="button"
           onClick={handleReset}
-          className="text-[10px] text-[#717870] hover:text-[#252b27] flex items-center gap-0.5"
+          className="text-[10px] text-[#555d56] hover:text-[#252b27] flex items-center gap-0.5"
         >
           <RotateCcw className="h-2.5 w-2.5" />
           <span>Reset</span>
@@ -55,13 +55,13 @@ export function GenUISearchFilter({ spec, onApplyFilters }: GenUISearchFilterPro
 
       {/* Search Input */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#717870]" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#555d56]" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search textbooks, calculators, drafters..."
-          className="w-full rounded-lg border border-[#dedcd4] bg-[#faf9f5] pl-8 pr-3 py-1.5 text-xs text-[#252b27] placeholder:text-[#717870] focus:outline-hidden focus:ring-2 focus:ring-[#204b39] focus:bg-white transition"
+          className="w-full rounded-lg border border-[#dedcd4] bg-[#faf9f5] pl-8 pr-3 py-1.5 text-xs text-[#252b27] placeholder:text-[#555d56] focus:outline-hidden focus:ring-2 focus:ring-[#204b39] focus:bg-white transition"
         />
       </div>
 

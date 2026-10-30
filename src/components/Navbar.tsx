@@ -113,14 +113,14 @@ export function Navbar() {
           <div className="flex items-center gap-3">
             {/* Functional Desktop Search Form */}
             <form onSubmit={handleSearchSubmit} className="relative hidden lg:block w-48 xl:w-56">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#717870]" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#555d56]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 aria-label="Search campus items"
                 placeholder="Search campus..."
-                className="h-9 w-full rounded-full border border-[#dedcd4] bg-[#f4f3ee] pl-8.5 pr-3 text-xs text-[#252b27] outline-none transition-all placeholder:text-[#717870] focus:border-[#204b39] focus:bg-white focus:ring-1 focus:ring-[#204b39]"
+                className="h-9 w-full rounded-full border border-[#dedcd4] bg-[#f4f3ee] pl-8.5 pr-3 text-xs text-[#252b27] outline-none transition-all placeholder:text-[#555d56] focus:border-[#204b39] focus:bg-white focus:ring-1 focus:ring-[#204b39]"
               />
             </form>
 

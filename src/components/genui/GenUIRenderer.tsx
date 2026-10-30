@@ -36,7 +36,7 @@ class GenUIErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryStat
       return (
         <div className="rounded-xl border border-[#dedcd4] bg-white p-3.5 text-xs text-[#252b27] space-y-1.5">
           <p className="leading-relaxed whitespace-pre-wrap">{this.props.fallbackText}</p>
-          <span className="text-[10px] text-[#717870] italic">
+          <span className="text-[10px] text-[#555d56] italic">
             (Structured view unavailable; displayed verified text fallback)
           </span>
         </div>

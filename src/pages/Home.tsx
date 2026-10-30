@@ -339,13 +339,13 @@ export function Home() {
             className="mx-auto max-w-2xl w-full"
           >
             <div className="relative flex items-center rounded-2xl bg-white p-2 sm:p-2.5 shadow-xl border border-white/20 transition-all focus-within:ring-2 focus-within:ring-[#55e6b4]/70">
-              <Search className="ml-3 sm:ml-4 h-5 w-5 text-[#717870] shrink-0" />
+              <Search className="ml-3 sm:ml-4 h-5 w-5 text-[#555d56] shrink-0" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search textbooks, calculators, lab coats, components..."
-                className="w-full bg-transparent px-3 py-2 text-sm sm:text-base text-[#252b27] placeholder:text-[#717870] outline-none"
+                className="w-full bg-transparent px-3 py-2 text-sm sm:text-base text-[#252b27] placeholder:text-[#555d56] outline-none"
                 aria-label="Search campus marketplace items"
               />
               <button
@@ -419,7 +419,7 @@ export function Home() {
               <h3 className="text-sm font-bold text-[#252b27] group-hover:text-[#204b39] transition-colors line-clamp-1">
                 {category.name}
               </h3>
-              <p className="mt-1 text-xs text-[#717870] leading-snug line-clamp-2">
+              <p className="mt-1 text-xs text-[#555d56] leading-snug line-clamp-2">
                 {category.description}
               </p>
             </Link>

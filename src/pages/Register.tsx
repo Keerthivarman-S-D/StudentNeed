@@ -263,7 +263,7 @@ export function Register() {
                 <option value="4th Year">4th Year</option>
                 <option value="Postgraduate">Postgraduate</option>
               </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[#717870]">
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[#555d56]">
                 <ChevronDown className="h-4 w-4" />
               </div>
             </div>

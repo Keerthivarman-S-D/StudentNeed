@@ -68,7 +68,7 @@ export function Terms() {
           <p className="mt-2 text-sm sm:text-base text-[#555d56] leading-relaxed max-w-2xl">
             Guidelines and responsibilities for buying, donating, borrowing, and exchanging college essentials within the MIT campus community.
           </p>
-          <div className="mt-4 flex items-center gap-1.5 text-xs text-[#717870]">
+          <div className="mt-4 flex items-center gap-1.5 text-xs text-[#555d56]">
             <Clock className="h-3.5 w-3.5" />
             <span>Last updated: October 2026 • Madras Institute of Technology (Anna University)</span>
           </div>

@@ -130,7 +130,7 @@ export function GenUIConfirmationDialog({ spec, onDismiss, onConfirmed }: GenUIC
             {spec.itemDetails.currentStatus}
           </span>
         </div>
-        <p className="text-[10px] text-[#717870]">Reference ID: {spec.itemDetails.id}</p>
+        <p className="text-[10px] text-[#555d56]">Reference ID: {spec.itemDetails.id}</p>
       </div>
 
       {/* Reason Selector */}

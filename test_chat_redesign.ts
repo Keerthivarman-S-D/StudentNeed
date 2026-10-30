@@ -28,8 +28,8 @@ assert(
   'Chat page uses secondary charcoal text (#555d56)'
 );
 assert(
-  chatSrc.includes('text-[#717870]'),
-  'Chat page uses muted neutral text (#717870)'
+  chatSrc.includes('text-[#555d56]'),
+  'Chat page uses accessible muted text (#555d56)'
 );
 assert(
   chatSrc.includes('bg-[#204b39]') && chatSrc.includes('hover:bg-[#183a2c]'),

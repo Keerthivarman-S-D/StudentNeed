@@ -366,7 +366,7 @@ export function CreateListing() {
                   </span>
                   <span className={cn(
                     "text-[11px] mt-0.5 font-medium",
-                    isSelected ? "text-emerald-100" : "text-[#717870]"
+                    isSelected ? "text-emerald-100" : "text-[#555d56]"
                   )}>
                     {t === 'Sale' ? 'Set price (₹)' : t === 'Donate' ? 'Free giveaway' : 'Trade item'}
                   </span>
@@ -392,7 +392,7 @@ export function CreateListing() {
                 </label>
                 <span className={cn(
                   "text-[11px] font-mono",
-                  title.length >= 3 && title.length <= 50 ? "text-[#717870]" : "text-amber-700 font-semibold"
+                  title.length >= 3 && title.length <= 50 ? "text-[#555d56]" : "text-amber-700 font-semibold"
                 )}>
                   {title.length} / 50
                 </span>
@@ -447,7 +447,7 @@ export function CreateListing() {
                   <label className="block text-xs font-semibold text-[#252b27] uppercase tracking-wider">
                     Price (₹) <span className="text-red-500">*</span>
                   </label>
-                  <span className="text-[11px] text-[#717870]">Between ₹1 and ₹10,000</span>
+                  <span className="text-[11px] text-[#555d56]">Between ₹1 and ₹10,000</span>
                 </div>
                 <Input 
                   required 
@@ -486,7 +486,7 @@ export function CreateListing() {
                   onChange={e => setWantedItem(e.target.value)}
                   className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
                 />
-                <p className="mt-1 text-xs text-[#717870]">Specify the item or equipment you wish to trade for.</p>
+                <p className="mt-1 text-xs text-[#555d56]">Specify the item or equipment you wish to trade for.</p>
               </div>
             )}
 
@@ -498,7 +498,7 @@ export function CreateListing() {
                 </label>
                 <span className={cn(
                   "text-[11px] font-mono",
-                  description.length >= 10 && description.length <= 100 ? "text-[#717870]" : "text-amber-700 font-semibold"
+                  description.length >= 10 && description.length <= 100 ? "text-[#555d56]" : "text-amber-700 font-semibold"
                 )}>
                   {description.length} / 100
                 </span>
@@ -508,7 +508,7 @@ export function CreateListing() {
                 rows={4}
                 maxLength={100}
                 placeholder="Describe the item, condition, defects, or reasons for giving away..."
-                className="w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2.5 text-sm text-[#252b27] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs placeholder:text-[#717870]"
+                className="w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2.5 text-sm text-[#252b27] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs placeholder:text-[#555d56]"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
               />
@@ -516,7 +516,7 @@ export function CreateListing() {
                 {description.length > 0 && description.trim().length < 10 ? (
                   <span className="text-red-600 font-medium">Description must be at least 10 characters.</span>
                 ) : (
-                  <span className="text-[#717870]">Must be between 10 and 100 characters.</span>
+                  <span className="text-[#555d56]">Must be between 10 and 100 characters.</span>
                 )}
               </div>
             </div>
@@ -553,7 +553,7 @@ export function CreateListing() {
             </span>
           </div>
 
-          <p className="text-xs text-[#717870] leading-relaxed">
+          <p className="text-xs text-[#555d56] leading-relaxed">
             Choose how long you want your item to be available. After this period, the listing will automatically expire.
           </p>
 
@@ -580,7 +580,7 @@ export function CreateListing() {
                     <span className="text-[10px] font-bold bg-[#204b39] text-white px-2 py-0.5 rounded-full">Active</span>
                   )}
                 </div>
-                <span className="text-xs text-[#717870]">
+                <span className="text-xs text-[#555d56]">
                   {opt.desc}
                 </span>
               </button>
@@ -609,7 +609,7 @@ export function CreateListing() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-[#252b27]">Photos (Optional)</h2>
-              <p className="text-xs text-[#717870]">Up to 3 photos (up to 5MB each)</p>
+              <p className="text-xs text-[#555d56]">Up to 3 photos (up to 5MB each)</p>
             </div>
             <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[#edf1ec] text-[#204b39] border border-[#dedcd4]">
               {uploadedImages.length} / {MAX_IMAGES}
@@ -654,7 +654,7 @@ export function CreateListing() {
                 Uploading photo… {uploadProgress > 0 ? `${uploadProgress}%` : ''}
               </p>
               {uploadingFileName && (
-                <p className="text-xs text-[#717870] truncate max-w-xs">{uploadingFileName}</p>
+                <p className="text-xs text-[#555d56] truncate max-w-xs">{uploadingFileName}</p>
               )}
               {uploadProgress > 0 && (
                 <div className="w-56 bg-[#dedcd4] rounded-full h-2 overflow-hidden">
@@ -688,9 +688,9 @@ export function CreateListing() {
                 className="sr-only" 
                 disabled={isSubmitting || isUploading} 
               />
-              <ImagePlus className="h-7 w-7 text-[#717870] mb-1" />
+              <ImagePlus className="h-7 w-7 text-[#555d56] mb-1" />
               <span className="text-xs sm:text-sm font-semibold text-[#252b27]">Click to upload photo ({uploadedImages.length}/3)</span>
-              <span className="text-[11px] text-[#717870] mt-0.5">JPG, JPEG, PNG, or WEBP up to 5MB</span>
+              <span className="text-[11px] text-[#555d56] mt-0.5">JPG, JPEG, PNG, or WEBP up to 5MB</span>
             </label>
           )}
         </section>

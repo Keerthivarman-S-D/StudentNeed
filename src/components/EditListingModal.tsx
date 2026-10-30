@@ -199,14 +199,14 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         <div className="flex items-center justify-between pb-3 border-b border-[#dedcd4]">
           <div>
             <h2 id="edit-listing-title" className="text-xl font-bold text-[#252b27]">Edit Listing</h2>
-            <p className="text-xs text-[#717870] mt-0.5">
+            <p className="text-xs text-[#555d56] mt-0.5">
               Update listing details while preserving security immutability guarantees
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-[#717870] hover:bg-[#edf1ec] hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39]"
+            className="rounded-full p-2 text-[#555d56] hover:bg-[#edf1ec] hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39]"
             aria-label="Close edit listing modal"
           >
             <X className="h-5 w-5" />
@@ -468,12 +468,12 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 ))}
 
                 {images.length < MAX_IMAGES && (
-                  <label className="h-20 w-20 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#dedcd4] hover:border-[#204b39] hover:bg-[#edf1ec]/40 bg-[#faf9f5] cursor-pointer text-[#717870] hover:text-[#204b39] transition-all focus-within:ring-2 focus-within:ring-[#204b39]">
+                  <label className="h-20 w-20 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#dedcd4] hover:border-[#204b39] hover:bg-[#edf1ec]/40 bg-[#faf9f5] cursor-pointer text-[#555d56] hover:text-[#204b39] transition-all focus-within:ring-2 focus-within:ring-[#204b39]">
                     {isUploading ? (
                       <Loader2 className="h-5 w-5 animate-spin text-[#204b39]" />
                     ) : (
                       <>
-                        <ImagePlus className="h-5 w-5 mb-1 text-[#717870]" />
+                        <ImagePlus className="h-5 w-5 mb-1 text-[#555d56]" />
                         <span className="text-[10px] font-bold">Add photo</span>
                       </>
                     )}
@@ -499,10 +499,10 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
             {/* Security Notice on Protected Fields */}
             <div className="rounded-2xl bg-[#faf9f5] border border-[#dedcd4] p-4 text-xs text-[#555d56] space-y-1.5">
               <div className="font-bold text-[#252b27] flex items-center gap-1.5">
-                <ShieldAlert className="h-4 w-4 text-[#717870]" />
+                <ShieldAlert className="h-4 w-4 text-[#555d56]" />
                 Protected Security Attributes (Immutable)
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs pt-0.5 text-[#717870]">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs pt-0.5 text-[#555d56]">
                 <div>
                   <span className="font-semibold text-[#252b27]">Listing Owner:</span> {listing.sellerId.substring(0, 10)}...
                 </div>

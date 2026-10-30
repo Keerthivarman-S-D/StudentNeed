@@ -1,0 +1,18 @@
+# StudentNeed
+
+> StudentNeed is a campus-only marketplace for students to find, sell, lend, donate, exchange, or request college-essential items within their campus community.
+
+StudentNeed initially focuses on MIT Campus, Anna University. Its core flow is **Find -> Connect -> Meet**: students browse listings, contact an owner, and arrange an in-person campus meetup. The platform is designed around local campus exchange rather than shipping.
+
+## Main pages
+
+- [StudentNeed homepage](https://studentneed.me/): Overview of the campus marketplace.
+- [Marketplace](https://studentneed.me/marketplace): Browse available campus listings.
+- [Terms of Service](https://studentneed.me/terms): Platform terms.
+- [Privacy Policy](https://studentneed.me/privacy): Privacy information.
+
+## Important notes
+
+- StudentNeed is intended for verified students in the supported campus community.
+- Listing availability and platform features may change.
+- Do not assume online payments, delivery, or other features are available unless the current website explicitly offers them.

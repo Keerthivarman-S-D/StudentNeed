@@ -29,8 +29,8 @@ assert(
   'Requests page uses secondary text (#555d56)'
 );
 assert(
-  requestsSrc.includes('text-[#717870]'),
-  'Requests page uses muted text (#717870)'
+  requestsSrc.includes('text-[#555d56]'),
+  'Requests page uses accessible muted text (#555d56)'
 );
 assert(
   requestsSrc.includes('bg-[#204b39]') && requestsSrc.includes('hover:bg-[#183a2c]'),

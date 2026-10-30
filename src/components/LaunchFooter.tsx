@@ -18,7 +18,7 @@ export function LaunchFooter() {
             <Link to="/" className="flex items-center">
               <StudentNeedLogo size="md" />
             </Link>
-            <p className="max-w-sm text-sm text-[#717870] leading-relaxed">
+            <p className="max-w-sm text-sm text-[#555d56] leading-relaxed">
               Student-to-student campus marketplace. Buy, sell, borrow, and donate essentials within your college community.
             </p>
             <div className="pt-1">
@@ -112,7 +112,7 @@ export function LaunchFooter() {
             <p className="text-sm text-[#252b27] font-medium">
               Madras Institute of Technology
             </p>
-            <p className="text-xs text-[#717870] leading-relaxed">
+            <p className="text-xs text-[#555d56] leading-relaxed">
               Anna University, Chromepet, Chennai 600044.
             </p>
             <div className="pt-1">
@@ -127,7 +127,7 @@ export function LaunchFooter() {
         </div>
 
         {/* Bottom Bar */}
-        <div className="mt-12 border-t border-[#dedcd4] pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#717870]">
+        <div className="mt-12 border-t border-[#dedcd4] pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#555d56]">
           <p>© 2026 StudentNeed. All rights reserved. Built for students, by students.</p>
           <p>Exclusively for Anna University & MIT Campus students</p>
         </div>

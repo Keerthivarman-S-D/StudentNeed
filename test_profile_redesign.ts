@@ -25,7 +25,7 @@ assert(
 assert(profileSrc.includes('bg-[#f7f6f2]'), 'Profile page uses warm off-white background (#f7f6f2)');
 assert(profileSrc.includes('text-[#252b27]'), 'Profile page uses dark charcoal typography (#252b27)');
 assert(profileSrc.includes('text-[#555d56]'), 'Profile page uses secondary charcoal text (#555d56)');
-assert(profileSrc.includes('text-[#717870]'), 'Profile page uses muted neutral text (#717870)');
+assert(profileSrc.includes('text-[#555d56]'), 'Profile page uses accessible muted text (#555d56)');
 assert(profileSrc.includes('bg-[#204b39]') && profileSrc.includes('hover:bg-[#183a2c]'), 'Profile page uses deep forest green (#204b39) and hover (#183a2c) for primary actions');
 assert(profileSrc.includes('border-[#dedcd4]'), 'Profile page uses subtle neutral borders (#dedcd4)');
 assert(profileSrc.includes('bg-[#edf1ec]'), 'Profile page uses soft sage surfaces and badges (#edf1ec)');

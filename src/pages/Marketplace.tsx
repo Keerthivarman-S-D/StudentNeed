@@ -259,7 +259,7 @@ export function Marketplace() {
                 <button
                   type="button"
                   onClick={handleClearSearch}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#717870] hover:text-[#252b27] hover:bg-zinc-100 transition-colors cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#555d56] hover:text-[#252b27] hover:bg-zinc-100 transition-colors cursor-pointer"
                   aria-label="Clear search"
                 >
                   <X className="h-4 w-4" />
@@ -285,7 +285,7 @@ export function Marketplace() {
                 <option value="price_low">Price: Low to High</option>
                 <option value="price_high">Price: High to Low</option>
               </select>
-              <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#717870]" />
+              <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#555d56]" />
             </div>
           </div>
         </div>
@@ -344,7 +344,7 @@ export function Marketplace() {
 
             {/* Listing Type Filter */}
             <div className="mb-6">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#717870] mb-2.5">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#555d56] mb-2.5">
                 LISTING TYPE
               </h3>
               <div className="flex flex-col gap-2">
@@ -373,7 +373,7 @@ export function Marketplace() {
 
             {/* Category Filter */}
             <div>
-              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#717870] mb-2.5">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#555d56] mb-2.5">
                 CATEGORY
               </h3>
               <div className="flex flex-col gap-2">
@@ -490,7 +490,7 @@ export function Marketplace() {
         </div>
 
         {/* Footer */}
-        <footer className="mt-16 pt-8 pb-12 text-xs text-[#717870]">
+        <footer className="mt-16 pt-8 pb-12 text-xs text-[#555d56]">
           StudentNeed · MIT Campus, Anna University · Campus meetups only
         </footer>
 
@@ -523,7 +523,7 @@ export function Marketplace() {
                 ref={mobileDrawerCloseRef}
                 type="button"
                 onClick={handleCloseMobileFilters}
-                className="rounded-full p-1.5 text-[#717870] hover:text-[#252b27] hover:bg-zinc-100 transition-colors cursor-pointer"
+                className="rounded-full p-1.5 text-[#555d56] hover:text-[#252b27] hover:bg-zinc-100 transition-colors cursor-pointer"
                 aria-label="Close filters"
               >
                 <X className="h-5 w-5" />
@@ -534,7 +534,7 @@ export function Marketplace() {
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
               {/* Type Filter */}
               <div>
-                <h4 className="font-bold text-xs text-[#717870] uppercase tracking-wider mb-3">
+                <h4 className="font-bold text-xs text-[#555d56] uppercase tracking-wider mb-3">
                   Listing Type
                 </h4>
                 <div className="flex flex-wrap gap-2">
@@ -562,7 +562,7 @@ export function Marketplace() {
 
               {/* Category Filter */}
               <div>
-                <h4 className="font-bold text-xs text-[#717870] uppercase tracking-wider mb-3">
+                <h4 className="font-bold text-xs text-[#555d56] uppercase tracking-wider mb-3">
                   Category
                 </h4>
                 <div className="flex flex-wrap gap-2">

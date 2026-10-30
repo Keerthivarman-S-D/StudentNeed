@@ -26,7 +26,7 @@ export function GenUIListingCards({ spec, onSelectListing }: GenUIListingCardsPr
   if (!spec.items || spec.items.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-[#dedcd4] bg-[#faf9f5] p-5 text-center">
-        <Package className="h-8 w-8 text-[#717870] mx-auto mb-2 opacity-60" />
+        <Package className="h-8 w-8 text-[#555d56] mx-auto mb-2 opacity-60" />
         <p className="text-xs font-semibold text-[#252b27]">{spec.title || 'No Items Found'}</p>
         <p className="text-[11px] text-[#555d56] mt-1 mb-3">
           {spec.emptyFallbackText || 'No listings currently match your query.'}
@@ -85,7 +85,7 @@ export function GenUIListingCards({ spec, onSelectListing }: GenUIListingCardsPr
                     loading="lazy"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-[#edf1ec] text-[#717870]">
+                  <div className="flex h-full w-full items-center justify-center bg-[#edf1ec] text-[#555d56]">
                     <span className="text-[11px] font-medium">{item.category}</span>
                   </div>
                 )}
@@ -131,7 +131,7 @@ export function GenUIListingCards({ spec, onSelectListing }: GenUIListingCardsPr
                     )}
                   </div>
                   {item.condition && (
-                    <span className="text-[10px] text-[#717870] font-medium">
+                    <span className="text-[10px] text-[#555d56] font-medium">
                       {item.condition}
                     </span>
                   )}

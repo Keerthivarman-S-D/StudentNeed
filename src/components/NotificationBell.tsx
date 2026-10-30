@@ -201,7 +201,7 @@ export function NotificationBell() {
                     {unreadTotal} new
                   </span>
                 ) : (
-                  <span className="rounded-full bg-zinc-100 text-[#717870] px-2 py-0.5 text-[10px] font-medium">
+                  <span className="rounded-full bg-zinc-100 text-[#555d56] px-2 py-0.5 text-[10px] font-medium">
                     All caught up
                   </span>
                 )}
@@ -222,7 +222,7 @@ export function NotificationBell() {
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
-                  className="rounded-lg p-1 text-[#717870] hover:text-[#252b27] hover:bg-zinc-100 transition-colors cursor-pointer"
+                  className="rounded-lg p-1 text-[#555d56] hover:text-[#252b27] hover:bg-zinc-100 transition-colors cursor-pointer"
                   aria-label="Close notifications"
                 >
                   <X className="h-4 w-4" />
@@ -270,19 +270,19 @@ export function NotificationBell() {
           {/* List of Notifications */}
           <div className="max-h-[380px] overflow-y-auto divide-y divide-[#dedcd4]/50 overscroll-contain">
             {isLoading && notifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-8 text-center text-[#717870]">
+              <div className="flex flex-col items-center justify-center p-8 text-center text-[#555d56]">
                 <Loader2 className="h-6 w-6 animate-spin text-[#204b39] mb-2" />
                 <p className="text-xs font-medium">Loading notifications...</p>
               </div>
             ) : filteredNotifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-8 text-center text-[#717870]">
+              <div className="flex flex-col items-center justify-center p-8 text-center text-[#555d56]">
                 <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-[#edf1ec] text-[#204b39]">
                   <Sparkles className="h-5 w-5" />
                 </div>
                 <p className="text-sm font-bold text-[#252b27]">
                   {filter === 'unread' ? 'No unread notifications' : 'All caught up!'}
                 </p>
-                <p className="text-xs text-[#717870] mt-0.5 max-w-[240px]">
+                <p className="text-xs text-[#555d56] mt-0.5 max-w-[240px]">
                   {filter === 'unread'
                     ? 'You have read all your campus trade and chat alerts.'
                     : 'Activity on your listings, reservations, and chats will appear here.'}
@@ -334,7 +334,7 @@ export function NotificationBell() {
                       )}>
                         {notif.title}
                       </p>
-                      <span className="flex items-center gap-0.5 text-[10px] text-[#717870] shrink-0 font-medium">
+                      <span className="flex items-center gap-0.5 text-[10px] text-[#555d56] shrink-0 font-medium">
                         <Clock className="h-3 w-3" />
                         {formatRelativeTime(notif.timestamp)}
                       </span>
@@ -350,7 +350,7 @@ export function NotificationBell() {
                       <button
                         type="button"
                         onClick={(e) => handleSingleMarkRead(e, notif.id)}
-                        className="rounded-full p-1 text-[#717870] hover:text-[#204b39] hover:bg-[#edf1ec] transition-colors cursor-pointer"
+                        className="rounded-full p-1 text-[#555d56] hover:text-[#204b39] hover:bg-[#edf1ec] transition-colors cursor-pointer"
                         title="Mark as read"
                         aria-label="Mark notification as read"
                       >
@@ -390,7 +390,7 @@ export function NotificationBell() {
           </div>
 
           {/* Preferences & Quick View Footer */}
-          <div className="flex items-center justify-between border-t border-[#dedcd4] bg-[#faf9f5] px-4 py-2.5 text-xs text-[#717870]">
+          <div className="flex items-center justify-between border-t border-[#dedcd4] bg-[#faf9f5] px-4 py-2.5 text-xs text-[#555d56]">
             <div className="flex items-center gap-3">
               {/* Sound Toggle */}
               <button
@@ -400,14 +400,14 @@ export function NotificationBell() {
                   "flex items-center gap-1.5 transition-colors rounded px-1.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39] cursor-pointer",
                   soundEnabled
                     ? "text-[#252b27] hover:text-[#204b39]"
-                    : "text-[#717870] hover:text-[#252b27]"
+                    : "text-[#555d56] hover:text-[#252b27]"
                 )}
                 title={soundEnabled ? 'Chime sound is active' : 'Chime sound is muted'}
               >
                 {soundEnabled ? (
                   <Volume2 className="h-3.5 w-3.5 text-[#204b39]" />
                 ) : (
-                  <VolumeX className="h-3.5 w-3.5 text-[#717870]" />
+                  <VolumeX className="h-3.5 w-3.5 text-[#555d56]" />
                 )}
                 <span className="text-[11px] font-medium">
                   {soundEnabled ? 'Sound ON' : 'Muted'}
@@ -422,14 +422,14 @@ export function NotificationBell() {
                   "flex items-center gap-1.5 transition-colors rounded px-1.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39] cursor-pointer",
                   browserNotificationsEnabled
                     ? "text-[#252b27] hover:text-[#204b39]"
-                    : "text-[#717870] hover:text-[#252b27]"
+                    : "text-[#555d56] hover:text-[#252b27]"
                 )}
                 title="Toggle browser push notifications"
               >
                 <Globe
                   className={cn(
                     "h-3.5 w-3.5",
-                    browserNotificationsEnabled ? "text-[#204b39]" : "text-[#717870]"
+                    browserNotificationsEnabled ? "text-[#204b39]" : "text-[#555d56]"
                   )}
                 />
                 <span className="text-[11px] font-medium">

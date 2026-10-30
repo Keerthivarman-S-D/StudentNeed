@@ -93,7 +93,7 @@ export function StudentNeedLogo({
         )}
       >
         <span>Student</span>
-        <span className="text-[#19bf96]">Need</span>
+        <span className="text-[#0b7355]">Need</span>
       </span>
     </div>
   );

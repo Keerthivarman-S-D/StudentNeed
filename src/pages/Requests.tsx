@@ -510,7 +510,7 @@ export function Requests() {
                 </span>
               </button>
             </div>
-            <div className="text-xs text-[#717870] flex items-center gap-1.5">
+            <div className="text-xs text-[#555d56] flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5 text-[#204b39]" />
               <span>Requests stay active 24h. Expired requests can be renewed within 30 days.</span>
             </div>
@@ -538,7 +538,7 @@ export function Requests() {
                 <button
                   type="button"
                   onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#717870] hover:text-[#252b27] hover:bg-zinc-100 transition-colors cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#555d56] hover:text-[#252b27] hover:bg-zinc-100 transition-colors cursor-pointer"
                   aria-label="Clear search"
                 >
                   <X className="h-4 w-4" />
@@ -565,7 +565,7 @@ export function Requests() {
                 <option value="budget_high">Highest budget</option>
                 <option value="needed_soon">Needed soonest</option>
               </select>
-              <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#717870]" />
+              <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#555d56]" />
             </div>
           </div>
         </div>
@@ -689,8 +689,8 @@ export function Requests() {
                       })()}
                     </div>
 
-                    <span className="text-xs text-[#717870] flex items-center gap-1">
-                      <Clock className="h-3.5 w-3.5 text-[#717870]" />
+                    <span className="text-xs text-[#555d56] flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5 text-[#555d56]" />
                       <span>Needed by: <strong>{request.neededBy}</strong></span>
                     </span>
                   </div>
@@ -706,7 +706,7 @@ export function Requests() {
                   </p>
 
                   {/* Metadata Row */}
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-[#717870] font-medium mb-4">
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-[#555d56] font-medium mb-4">
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5 text-[#204b39]" />
                       <span>{request.location}</span>
@@ -742,7 +742,7 @@ export function Requests() {
                         <span className="text-xs sm:text-sm font-semibold text-[#252b27]">
                           {requester?.name || (isOwner ? 'You' : 'Campus Student')}
                         </span>
-                        <span className="text-xs text-[#717870] ml-1.5 hidden sm:inline">
+                        <span className="text-xs text-[#555d56] ml-1.5 hidden sm:inline">
                           · MIT Campus
                         </span>
                       </div>
@@ -904,7 +904,7 @@ export function Requests() {
                           <MessageSquare className="h-3.5 w-3.5 text-[#204b39]" />
                           Student Responses ({requestInquiries.length})
                         </span>
-                        <span className="text-[11px] text-[#717870] hidden sm:inline">
+                        <span className="text-[11px] text-[#555d56] hidden sm:inline">
                           Tap to open conversation
                         </span>
                       </div>
@@ -991,7 +991,7 @@ export function Requests() {
         )}
 
         {/* Footer */}
-        <footer className="mt-16 pt-8 pb-12 text-xs text-[#717870]">
+        <footer className="mt-16 pt-8 pb-12 text-xs text-[#555d56]">
           StudentNeed · MIT Campus, Anna University · Campus meetups only
         </footer>
 

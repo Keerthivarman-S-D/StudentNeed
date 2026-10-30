@@ -120,13 +120,13 @@ export const ListingCard = memo(function ListingCard({ listing }: { listing: Lis
               e.stopPropagation();
               toggleSaveListing(listing.id);
             }}
-            className="rounded-full p-1 text-[#717870] hover:text-red-500 hover:bg-zinc-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39] cursor-pointer"
+            className="rounded-full p-1 text-[#555d56] hover:text-red-500 hover:bg-zinc-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39] cursor-pointer"
             aria-label={isSaved ? `Remove ${listing.title} from saved` : `Save ${listing.title}`}
           >
             <Heart
               className={cn(
                 "h-4.5 w-4.5 transition-colors stroke-[1.75]",
-                isSaved ? "fill-red-500 text-red-500" : "text-[#717870]"
+                isSaved ? "fill-red-500 text-red-500" : "text-[#555d56]"
               )}
             />
           </button>
@@ -140,12 +140,12 @@ export const ListingCard = memo(function ListingCard({ listing }: { listing: Lis
         {/* Condition · Category */}
         <div className="mb-2">
           {listing.condition && (
-            <p className="line-clamp-1 text-xs text-[#717870]">
+            <p className="line-clamp-1 text-xs text-[#555d56]">
               {listing.condition} · {listing.category}
             </p>
           )}
           {!listing.condition && (
-            <p className="line-clamp-1 text-xs text-[#717870]">
+            <p className="line-clamp-1 text-xs text-[#555d56]">
               {listing.category}
             </p>
           )}
@@ -158,7 +158,7 @@ export const ListingCard = memo(function ListingCard({ listing }: { listing: Lis
           </div>
 
           {/* Meetup Info */}
-          <div className="mt-1.5 text-[11px] sm:text-xs text-[#717870] flex items-center gap-1 line-clamp-1">
+          <div className="mt-1.5 text-[11px] sm:text-xs text-[#555d56] flex items-center gap-1 line-clamp-1">
             <span className="truncate">{meetupLocation}</span>
           </div>
         </div>

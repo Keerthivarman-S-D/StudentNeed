@@ -170,7 +170,7 @@ export function Onboarding() {
 
               <div>
                 <label className="block text-xs font-semibold text-[#252b27] uppercase tracking-wider mb-1.5">
-                  Profile picture <span className="text-[#717870] font-normal lowercase">(optional)</span>
+                  Profile picture <span className="text-[#555d56] font-normal lowercase">(optional)</span>
                 </label>
 
                 <div className="mt-2 flex items-center gap-4">
@@ -182,7 +182,7 @@ export function Onboarding() {
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <UserCircle2 className="h-8 w-8 text-[#717870]" />
+                      <UserCircle2 className="h-8 w-8 text-[#555d56]" />
                     )}
                   </div>
 
@@ -210,7 +210,7 @@ export function Onboarding() {
                         </button>
                       )}
                     </div>
-                    <p className="text-[11px] text-[#717870]">
+                    <p className="text-[11px] text-[#555d56]">
                       JPG, PNG, or WEBP up to 5MB.
                     </p>
                   </div>

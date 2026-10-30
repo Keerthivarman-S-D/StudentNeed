@@ -323,7 +323,7 @@ export function StudentNeedChatbot() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1 text-[10px] text-[#717870] mt-1 px-1">
+                  <div className="flex items-center gap-1 text-[10px] text-[#555d56] mt-1 px-1">
                     <span>{msg.timestamp}</span>
                     {!isUser && msg.source === 'knowledge_base' && (
                       <span className="text-[9px] text-[#204b39] font-medium">• Verified</span>
@@ -340,7 +340,7 @@ export function StudentNeedChatbot() {
 
             {/* In-Flight Typing Indicator */}
             {isLoading && (
-              <div className="mr-auto flex items-center gap-2 rounded-2xl rounded-tl-xs bg-white border border-[#dedcd4] px-4 py-2.5 text-sm text-[#717870] shadow-2xs">
+              <div className="mr-auto flex items-center gap-2 rounded-2xl rounded-tl-xs bg-white border border-[#dedcd4] px-4 py-2.5 text-sm text-[#555d56] shadow-2xs">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-[#204b39]" />
                 <span className="text-xs">Generating interface components...</span>
               </div>
@@ -378,11 +378,11 @@ export function StudentNeedChatbot() {
           {!isLoading && (
             <div className="border-t border-[#dedcd4] bg-white px-3 py-2">
               <div className="flex items-center justify-between mb-1 px-0.5">
-                <p className="text-[10px] font-bold text-[#717870] uppercase tracking-wider flex items-center gap-1">
+                <p className="text-[10px] font-bold text-[#555d56] uppercase tracking-wider flex items-center gap-1">
                   <Sparkles className="h-2.5 w-2.5 text-[#204b39]" />
                   Intent Suggestions
                 </p>
-                <span className="text-[9px] text-[#717870]">1-click prompt</span>
+                <span className="text-[9px] text-[#555d56]">1-click prompt</span>
               </div>
               <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                 {activeSuggestions.map((q, idx) => (
@@ -418,7 +418,7 @@ export function StudentNeedChatbot() {
                   onKeyDown={handleKeyDown}
                   disabled={isLoading}
                   maxLength={600}
-                  className="w-full rounded-full border border-[#dedcd4] bg-[#faf9f5] px-4 py-2 text-xs text-[#252b27] placeholder:text-[#717870] focus:border-[#204b39] focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-[#204b39] disabled:opacity-60 transition"
+                  className="w-full rounded-full border border-[#dedcd4] bg-[#faf9f5] px-4 py-2 text-xs text-[#252b27] placeholder:text-[#555d56] focus:border-[#204b39] focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-[#204b39] disabled:opacity-60 transition"
                 />
               </div>
 
@@ -436,7 +436,7 @@ export function StudentNeedChatbot() {
                 )}
               </Button>
             </form>
-            <div className="mt-1.5 flex items-center justify-between px-2 text-[10px] text-[#717870]">
+            <div className="mt-1.5 flex items-center justify-between px-2 text-[10px] text-[#555d56]">
               <span className="flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3 text-[#204b39]" />
                 Strict Schema Validated & Grounded

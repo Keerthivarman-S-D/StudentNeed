@@ -119,8 +119,8 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
   if (!currentUser) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center px-4 bg-[#f7f6f2] min-h-[70vh]">
-        <div className="h-16 w-16 rounded-3xl bg-white border border-[#dedcd4] flex items-center justify-center text-[#717870] mb-4 shadow-xs">
-          <UserCircle2 className="h-9 w-9 text-[#717870]" />
+        <div className="h-16 w-16 rounded-3xl bg-white border border-[#dedcd4] flex items-center justify-center text-[#555d56] mb-4 shadow-xs">
+          <UserCircle2 className="h-9 w-9 text-[#555d56]" />
         </div>
         <h2 className="text-xl font-bold text-[#252b27] mb-2">Not signed in</h2>
         <p className="text-[#555d56] mb-6 max-w-sm text-sm">
@@ -595,7 +595,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
               ? 'Good finds, saved for later.' 
               : 'Your campus corner.'}
           </h1>
-          <p className="mt-1 text-sm text-[#717870]">
+          <p className="mt-1 text-sm text-[#555d56]">
             {activeTab === 'settings'
               ? 'Keep your campus profile and sign-in details up to date.'
               : activeTab === 'reserved'
@@ -628,7 +628,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                           />
                         ) : (
                           <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-[#edf1ec] text-[#204b39] flex items-center justify-center text-3xl font-bold border border-[#dedcd4]">
-                            {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <UserCircle2 className="h-10 w-10 text-[#717870]" />}
+                            {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <UserCircle2 className="h-10 w-10 text-[#555d56]" />}
                           </div>
                         )}
                         <label 
@@ -662,10 +662,10 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-[#717870] mt-0.5">
+                        <p className="text-sm text-[#555d56] mt-0.5">
                           {currentUser.yearOfStudy || '2nd Year'} · {currentUser.campus || 'MIT Campus, Anna University'}
                         </p>
-                        <p className="text-xs text-[#717870] mt-0.5">
+                        <p className="text-xs text-[#555d56] mt-0.5">
                           {currentUser.email}
                         </p>
                         <p className="text-sm text-[#555d56] mt-3 leading-relaxed max-w-xl">
@@ -712,7 +712,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-[#717870] mt-1.5 leading-relaxed">
+                    <p className="text-xs text-[#555d56] mt-1.5 leading-relaxed">
                       Coordinate your upcoming handoffs
                     </p>
                   </div>
@@ -724,12 +724,12 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                     <div className="flex items-center justify-between text-sm font-bold text-[#252b27]">
                       <span className="group-hover:text-[#204b39] transition-colors">Wishlist &rarr;</span>
                       {mySavedListings.length > 0 && (
-                        <span className="text-xs text-[#717870] font-medium">
+                        <span className="text-xs text-[#555d56] font-medium">
                           {mySavedListings.length}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-[#717870] mt-1.5 leading-relaxed">
+                    <p className="text-xs text-[#555d56] mt-1.5 leading-relaxed">
                       Keep useful finds in one place
                     </p>
                   </div>
@@ -741,7 +741,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                     <div className="flex items-center justify-between text-sm font-bold text-[#252b27]">
                       <span className="group-hover:text-[#204b39] transition-colors">Chat &rarr;</span>
                     </div>
-                    <p className="text-xs text-[#717870] mt-1.5 leading-relaxed">
+                    <p className="text-xs text-[#555d56] mt-1.5 leading-relaxed">
                       Continue a campus conversation
                     </p>
                   </div>
@@ -778,7 +778,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                       </button>
                     ))}
                     {listingFilter === 'all' && (
-                      <span className="text-xs text-[#717870] font-medium ml-1">Showing all listings ({myListings.length})</span>
+                      <span className="text-xs text-[#555d56] font-medium ml-1">Showing all listings ({myListings.length})</span>
                     )}
                   </div>
 
@@ -817,13 +817,13 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                           <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
                             <div>
                               <h4 className="font-semibold text-base text-[#252b27] line-clamp-1">{item.title}</h4>
-                              <p className="text-xs text-[#717870] mt-1">
+                              <p className="text-xs text-[#555d56] mt-1">
                                 {item.condition || 'Lightly used'} · {item.category}
                               </p>
                               <p className="text-lg font-bold text-[#252b27] mt-2">
                                 {item.type === 'Donate' ? 'Free' : formatCurrency(item.price || 0)}
                               </p>
-                              <p className="text-xs text-[#717870] mt-1">
+                              <p className="text-xs text-[#555d56] mt-1">
                                 {item.location || 'MIT Campus · Student-chosen meetup'}
                               </p>
                             </div>
@@ -860,9 +860,9 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-[#dedcd4] bg-white p-12 text-center">
-                      <Package className="h-10 w-10 text-[#717870] mx-auto mb-3" />
+                      <Package className="h-10 w-10 text-[#555d56] mx-auto mb-3" />
                       <p className="text-sm font-semibold text-[#252b27]">No listings found</p>
-                      <p className="text-xs text-[#717870] mt-1 mb-4">
+                      <p className="text-xs text-[#555d56] mt-1 mb-4">
                         {listingFilter === 'active'
                           ? "You don't have any active items listed on campus right now."
                           : "No items match the selected status filter."}
@@ -935,7 +935,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                         value={editBio}
                         onChange={(e) => setEditBio(e.target.value)}
                         placeholder="Engineering student. Passing on essentials I no longer use."
-                        className="w-full rounded-xl border border-[#dedcd4] bg-white p-3.5 text-sm text-[#252b27] placeholder:text-[#717870] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs resize-none"
+                        className="w-full rounded-xl border border-[#dedcd4] bg-white p-3.5 text-sm text-[#252b27] placeholder:text-[#555d56] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs resize-none"
                       />
                     </div>
 
@@ -963,10 +963,10 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                       disabled
                       className="h-11 rounded-xl border-[#dedcd4] bg-zinc-50 text-sm text-[#555d56] cursor-not-allowed"
                     />
-                    <p className="mt-1.5 text-xs text-[#717870]">
+                    <p className="mt-1.5 text-xs text-[#555d56]">
                       Your campus email is used for sign-in and access to StudentNeed.
                     </p>
-                    <p className="text-xs text-[#717870] mt-0.5">
+                    <p className="text-xs text-[#555d56] mt-0.5">
                       Madras Institute of Technology · Anna University
                     </p>
                   </div>
@@ -1014,7 +1014,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                         <button
                           type="button"
                           onClick={() => setShowCurrentPassword((prev) => !prev)}
-                          className="absolute right-0 flex h-full items-center justify-center px-3 text-[#717870] hover:text-[#252b27]"
+                          className="absolute right-0 flex h-full items-center justify-center px-3 text-[#555d56] hover:text-[#252b27]"
                           aria-label={showCurrentPassword ? "Hide password" : "Show password"}
                         >
                           {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1037,7 +1037,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                           <button
                             type="button"
                             onClick={() => setShowNewPassword((prev) => !prev)}
-                            className="absolute right-0 flex h-full items-center justify-center px-3 text-[#717870] hover:text-[#252b27]"
+                            className="absolute right-0 flex h-full items-center justify-center px-3 text-[#555d56] hover:text-[#252b27]"
                             aria-label={showNewPassword ? "Hide password" : "Show password"}
                           >
                             {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1059,7 +1059,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                           <button
                             type="button"
                             onClick={() => setShowConfirmNewPassword((prev) => !prev)}
-                            className="absolute right-0 flex h-full items-center justify-center px-3 text-[#717870] hover:text-[#252b27]"
+                            className="absolute right-0 flex h-full items-center justify-center px-3 text-[#555d56] hover:text-[#252b27]"
                             aria-label={showConfirmNewPassword ? "Hide password" : "Show password"}
                           >
                             {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1252,7 +1252,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                             ? 'No incoming requests yet' 
                             : 'No past exchanges yet'}
                         </h3>
-                        <p className="text-xs text-[#717870] mt-1 mb-4 max-w-md leading-relaxed">
+                        <p className="text-xs text-[#555d56] mt-1 mb-4 max-w-md leading-relaxed">
                           {reservedSubView === 'outgoing'
                             ? 'When you request to hold or trade an item with another student, it will appear here.'
                             : reservedSubView === 'incoming'
@@ -1371,7 +1371,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                                   Proposed
                                 </span>
                               ) : (
-                                <span className="ml-auto text-[10px] text-[#717870]">
+                                <span className="ml-auto text-[10px] text-[#555d56]">
                                   Coordinate in chat
                                 </span>
                               )}
@@ -1409,7 +1409,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
 
                               {/* Outgoing pending requests: Cancel option */}
                               {isOutgoing && res.status === 'pending' && (
-                                <div className="flex items-center justify-between text-xs px-1 text-[#717870]">
+                                <div className="flex items-center justify-between text-xs px-1 text-[#555d56]">
                                   <span>Awaiting seller response</span>
                                   <button
                                     type="button"
@@ -1558,7 +1558,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                       <Bookmark className="h-6 w-6 text-[#204b39]" />
                     </div>
                     <h3 className="text-base font-bold text-[#252b27]">No saved items yet</h3>
-                    <p className="text-xs text-[#717870] mt-1 mb-5 max-w-sm mx-auto leading-relaxed">
+                    <p className="text-xs text-[#555d56] mt-1 mb-5 max-w-sm mx-auto leading-relaxed">
                       Items you bookmark while exploring the campus marketplace will appear here for easy access later.
                     </p>
                     <button
@@ -1576,7 +1576,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                       <Bookmark className="h-6 w-6 text-[#204b39]" />
                     </div>
                     <h3 className="text-base font-bold text-[#252b27]">No {savedListingTypeFilter === 'Sale' ? 'For Sale' : savedListingTypeFilter} items saved</h3>
-                    <p className="text-xs text-[#717870] mt-1 mb-5 max-w-sm mx-auto leading-relaxed">
+                    <p className="text-xs text-[#555d56] mt-1 mb-5 max-w-sm mx-auto leading-relaxed">
                       None of your saved campus items match the selected filter.
                     </p>
                     <div className="flex items-center justify-center gap-3">
@@ -1645,13 +1645,13 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                             <h3 className="font-semibold text-base text-[#252b27] line-clamp-1" title={item.title}>
                               {item.title}
                             </h3>
-                            <p className="text-xs text-[#717870] mt-1">
+                            <p className="text-xs text-[#555d56] mt-1">
                               {item.condition || 'Lightly used'} · {item.category}
                             </p>
                             <p className="text-lg font-bold text-[#252b27] mt-2">
                               {item.type === 'Donate' ? 'Free' : item.price != null ? formatCurrency(item.price) : 'Exchange'}
                             </p>
-                            <p className="text-xs text-[#717870] mt-1">
+                            <p className="text-xs text-[#555d56] mt-1">
                               {item.location || 'MIT Campus · Student-chosen meetup'}
                             </p>
                           </div>
@@ -1684,7 +1684,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
         </main>
 
         {/* Page Footer */}
-        <footer className="mt-16 pt-8 border-t border-[#dedcd4]/80 text-center text-xs text-[#717870]">
+        <footer className="mt-16 pt-8 border-t border-[#dedcd4]/80 text-center text-xs text-[#555d56]">
           StudentNeed · MIT Campus, Anna University · Campus meetups only
         </footer>
 
@@ -1703,7 +1703,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                 </div>
                 <div>
                   <h3 id="cancel-listing-title" className="text-lg font-bold text-[#252b27]">Cancel Listing?</h3>
-                  <p className="text-xs text-[#717870]">Item will be withdrawn from marketplace</p>
+                  <p className="text-xs text-[#555d56]">Item will be withdrawn from marketplace</p>
                 </div>
               </div>
               
@@ -1773,7 +1773,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                 </div>
                 <div>
                   <h3 id="delete-account-title" className="text-lg font-bold text-[#252b27]">Delete Account?</h3>
-                  <p className="text-xs text-[#717870]">This action cannot be undone</p>
+                  <p className="text-xs text-[#555d56]">This action cannot be undone</p>
                 </div>
               </div>
 

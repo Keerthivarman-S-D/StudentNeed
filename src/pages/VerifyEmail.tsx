@@ -385,7 +385,7 @@ export function VerifyEmail() {
               className={`w-full h-10 sm:h-[42px] rounded-lg text-sm font-semibold transition-all flex items-center justify-center ${
                 isCodeComplete && !isLoading
                   ? 'bg-[#204b39] hover:bg-[#183a2c] text-white cursor-pointer'
-                  : 'bg-[#ced9cd] text-[#717870] cursor-not-allowed'
+                  : 'bg-[#ced9cd] text-[#555d56] cursor-not-allowed'
               }`}
             >
               {isLoading ? 'Verifying...' : 'Verify email'}
@@ -422,7 +422,7 @@ export function VerifyEmail() {
           </div>
 
           {/* Privacy Reminder Footnote */}
-          <p className="text-[11px] sm:text-xs text-[#717870] text-center pt-1 leading-relaxed">
+          <p className="text-[11px] sm:text-xs text-[#555d56] text-center pt-1 leading-relaxed">
             Keep your code private. StudentNeed won&apos;t ask you to share it in chat.
           </p>
         </form>

@@ -485,7 +485,7 @@ export function ListingDetail() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
             {listing.title}
           </h1>
-          <nav className="flex items-center gap-1.5 text-xs sm:text-sm text-[#717870]" aria-label="Breadcrumb">
+          <nav className="flex items-center gap-1.5 text-xs sm:text-sm text-[#555d56]" aria-label="Breadcrumb">
             <Link to="/marketplace" className="hover:text-[#252b27] transition-colors">
               Marketplace
             </Link>
@@ -598,7 +598,7 @@ export function ListingDetail() {
               <p className="text-sm leading-relaxed text-[#252b27] whitespace-pre-wrap">
                 {listing.description}
               </p>
-              <p className="text-xs text-[#717870] mt-5 pt-4 border-t border-[#f4f3ee]">
+              <p className="text-xs text-[#555d56] mt-5 pt-4 border-t border-[#f4f3ee]">
                 Please check the item and its functions when you meet.
               </p>
             </div>
@@ -720,7 +720,7 @@ export function ListingDetail() {
                     <span>{isSaved ? 'Saved to wishlist' : 'Save to wishlist'}</span>
                   </button>
 
-                  <p className="text-xs text-[#717870] mt-2 leading-relaxed">
+                  <p className="text-xs text-[#555d56] mt-2 leading-relaxed">
                     Reserve to express interest. Discuss the exchange directly with the owner.
                   </p>
                 </div>
@@ -755,7 +755,7 @@ export function ListingDetail() {
 
             {/* "LISTED BY" Card */}
             <div className="rounded-2xl border border-[#dedcd4] bg-white p-6 shadow-none">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#717870] mb-3">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#555d56] mb-3">
                 LISTED BY
               </h3>
               <div className="flex items-center gap-3">
@@ -772,12 +772,12 @@ export function ListingDetail() {
                 )}
                 <div>
                   <p className="font-bold text-sm text-[#252b27]">{seller.name}</p>
-                  <p className="text-xs text-[#717870]">
+                  <p className="text-xs text-[#555d56]">
                     {seller.department || 'Student'} · {seller.campus || 'MIT Campus'}
                   </p>
                 </div>
               </div>
-              <p className="text-xs text-[#717870] mt-3 pt-3 border-t border-[#f4f3ee]">
+              <p className="text-xs text-[#555d56] mt-3 pt-3 border-t border-[#f4f3ee]">
                 Campus student · Anna University
               </p>
             </div>
@@ -814,7 +814,7 @@ export function ListingDetail() {
         </div>
 
         {/* Footer */}
-        <footer className="mt-16 pt-8 pb-12 text-xs text-[#717870]">
+        <footer className="mt-16 pt-8 pb-12 text-xs text-[#555d56]">
           StudentNeed · MIT Campus, Anna University · Campus meetups only
         </footer>
 
@@ -830,7 +830,7 @@ export function ListingDetail() {
               </div>
               <div>
                 <h3 className="text-base font-bold text-[#252b27]">Cancel Listing?</h3>
-                <p className="text-xs text-[#717870]">This action will unpublish your post</p>
+                <p className="text-xs text-[#555d56]">This action will unpublish your post</p>
               </div>
             </div>
             <p className="text-sm text-[#555d56] leading-relaxed">
