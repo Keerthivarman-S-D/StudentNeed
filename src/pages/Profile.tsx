@@ -334,7 +334,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
     const file = e.target.files?.[0];
     if (!file || !firebaseUser) return;
 
-    const validation = validateImageFile(file);
+    const validation = await validateImageFile(file);
     if (!validation.valid) {
       setImageMessage({ type: 'error', text: validation.error || 'Invalid image file.' });
       if (e.target) e.target.value = '';

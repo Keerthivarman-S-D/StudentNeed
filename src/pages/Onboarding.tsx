@@ -27,10 +27,10 @@ export function Onboarding() {
     }
   }, [firebaseUser, currentUser, navigate]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const validation = validateImageFile(file);
+      const validation = await validateImageFile(file);
       if (!validation.valid) {
         setError(validation.error || 'Invalid image file.');
         setAvatarFile(null);

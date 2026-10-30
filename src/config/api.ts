@@ -261,9 +261,6 @@ export const REQUEST_ENDPOINTS = {
 };
 
 export const UPLOAD_ENDPOINTS = {
-  get signature() {
-    return `${getApiBaseUrl()}/api/upload/signature`;
-  },
   get image() {
     return `${getApiBaseUrl()}/api/upload/image`;
   },

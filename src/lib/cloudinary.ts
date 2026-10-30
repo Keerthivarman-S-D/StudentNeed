@@ -13,10 +13,7 @@ import { auth } from './firebase';
 import { API_BASE_URL } from '../config/api';
 
 export const CLOUDINARY_CLOUD_NAME = 
-  (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string) || 'ddc64bq61';
-
-export const CLOUDINARY_UPLOAD_PRESET = 
-  (import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string) || 'studentneed_images';
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_CLOUDINARY_CLOUD_NAME as string) || 'ddc64bq61';
 
 export const MAX_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -39,15 +36,88 @@ export interface ValidationResult {
 }
 
 /**
- * Validates file size, MIME type, and extension to prevent malicious uploads.
- * Explicitly rejects SVGs, scripts, and non-image formats.
+ * Detects the file format from raw header bytes (magic bytes / file signatures).
+ * Accurately identifies JPEG, PNG, WebP, PDF, SVG/XML, and text/script payloads.
  */
-export function validateImageFile(file: File | null | undefined): ValidationResult {
+export function detectImageSignature(bytes: Uint8Array): {
+  format: 'jpeg' | 'png' | 'webp' | 'pdf' | 'svg' | 'unknown';
+  isSafeImage: boolean;
+} {
+  if (bytes.length < 4) {
+    return { format: 'unknown', isSafeImage: false };
+  }
+
+  // 1. PDF signature: %PDF (25 50 44 46)
+  if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+    return { format: 'pdf', isSafeImage: false };
+  }
+
+  // 2. SVG / XML / HTML / script detection via text decoding
+  try {
+    const textHeader = new TextDecoder('utf-8', { fatal: false })
+      .decode(bytes.subarray(0, Math.min(bytes.length, 512)))
+      .toLowerCase();
+
+    if (
+      textHeader.includes('<svg') ||
+      textHeader.includes('<?xml') ||
+      textHeader.includes('<!doctype svg') ||
+      textHeader.includes('<html') ||
+      textHeader.includes('<script')
+    ) {
+      return { format: 'svg', isSafeImage: false };
+    }
+  } catch {
+    // Ignore decoding errors
+  }
+
+  // 3. JPEG signature: FF D8 FF
+  if (bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+    return { format: 'jpeg', isSafeImage: true };
+  }
+
+  // 4. PNG signature: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4E &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0D &&
+    bytes[5] === 0x0A &&
+    bytes[6] === 0x1A &&
+    bytes[7] === 0x0A
+  ) {
+    return { format: 'png', isSafeImage: true };
+  }
+
+  // 5. WebP signature: RIFF .... WEBP
+  // Bytes 0-3: 'RIFF' (52 49 46 46), Bytes 8-11: 'WEBP' (57 45 42 50)
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    return { format: 'webp', isSafeImage: true };
+  }
+
+  return { format: 'unknown', isSafeImage: false };
+}
+
+/**
+ * Asynchronously validates file size, declared MIME type, extension, and genuine magic byte signatures.
+ * Explicitly rejects SVGs, PDFs, renamed or disguised files, malformed images, and files exceeding 5 MB.
+ */
+export async function validateImageFile(file: File | Blob | null | undefined): Promise<ValidationResult> {
   if (!file) {
     return { valid: false, error: 'Please select an image file.' };
   }
 
-  // 1. Validate file size (<= 5MB)
+  // 1. Validate file size (<= 5MB and non-empty)
+  if (file.size === 0) {
+    return { valid: false, error: 'The selected file is empty.' };
+  }
+
   if (file.size > MAX_IMAGE_FILE_SIZE_BYTES) {
     const sizeInMb = (file.size / (1024 * 1024)).toFixed(1);
     return {
@@ -56,9 +126,13 @@ export function validateImageFile(file: File | null | undefined): ValidationResu
     };
   }
 
-  // 2. Validate MIME type
+  if (file.size < 12) {
+    return { valid: false, error: 'Malformed or truncated image file.' };
+  }
+
+  // 2. Validate declared MIME type
   const mime = file.type ? file.type.toLowerCase().trim() : '';
-  if (!ALLOWED_IMAGE_MIME_TYPES.includes(mime as any)) {
+  if (mime && !ALLOWED_IMAGE_MIME_TYPES.includes(mime as any)) {
     return {
       valid: false,
       error: 'Unsupported file format. Only JPG, JPEG, PNG, and WEBP images are allowed. SVG and other file types are rejected.'
@@ -66,16 +140,89 @@ export function validateImageFile(file: File | null | undefined): ValidationResu
   }
 
   // 3. Validate file extension (defense-in-depth against extension-spoofing)
-  const nameParts = file.name.split('.');
-  const ext = nameParts.length > 1 ? nameParts.pop()!.toLowerCase().trim() : '';
-  if (!ALLOWED_IMAGE_EXTENSIONS.includes(ext as any)) {
-    return {
-      valid: false,
-      error: `Unsupported file extension ".${ext}". Only .jpg, .jpeg, .png, and .webp files are supported.`
-    };
+  const fileName = 'name' in file ? (file as File).name : '';
+  let ext = '';
+  if (fileName) {
+    const nameParts = fileName.split('.');
+    ext = nameParts.length > 1 ? nameParts.pop()!.toLowerCase().trim() : '';
+    if (!ALLOWED_IMAGE_EXTENSIONS.includes(ext as any)) {
+      return {
+        valid: false,
+        error: `Unsupported file extension ".${ext}". Only .jpg, .jpeg, .png, and .webp files are supported.`
+      };
+    }
   }
 
-  return { valid: true };
+  // 4. Validate actual file content via magic bytes (file signature)
+  try {
+    const slice = file.slice(0, Math.min(file.size, 512));
+    const arrayBuffer = await slice.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    const signature = detectImageSignature(bytes);
+
+    if (signature.format === 'pdf') {
+      return {
+        valid: false,
+        error: 'PDF documents cannot be uploaded as photos. Please select a JPG, PNG, or WebP image.'
+      };
+    }
+
+    if (signature.format === 'svg') {
+      return {
+        valid: false,
+        error: 'SVG vector files are not permitted for security reasons. Please select a standard JPG, PNG, or WebP image.'
+      };
+    }
+
+    if (!signature.isSafeImage || signature.format === 'unknown') {
+      return {
+        valid: false,
+        error: 'Malformed or unsupported image file. File content does not match genuine JPG, PNG, or WebP signatures.'
+      };
+    }
+
+    // 5. Detect renamed / disguised files where content signature contradicts file extension
+    if (ext) {
+      if ((signature.format === 'jpeg') && (ext !== 'jpg' && ext !== 'jpeg')) {
+        return {
+          valid: false,
+          error: `Renamed file detected: file content is JPEG but extension is ".${ext}". Please upload an authentic .${ext} image.`
+        };
+      }
+      if (signature.format === 'png' && ext !== 'png') {
+        return {
+          valid: false,
+          error: `Renamed file detected: file content is PNG but extension is ".${ext}". Please upload an authentic .${ext} image.`
+        };
+      }
+      if (signature.format === 'webp' && ext !== 'webp') {
+        return {
+          valid: false,
+          error: `Renamed file detected: file content is WebP but extension is ".${ext}". Please upload an authentic .${ext} image.`
+        };
+      }
+    }
+
+    // 6. Detect MIME type mismatch against actual signature
+    if (mime) {
+      if (signature.format === 'jpeg' && mime !== 'image/jpeg') {
+        return { valid: false, error: 'MIME type does not match image signature (expected image/jpeg).' };
+      }
+      if (signature.format === 'png' && mime !== 'image/png') {
+        return { valid: false, error: 'MIME type does not match image signature (expected image/png).' };
+      }
+      if (signature.format === 'webp' && mime !== 'image/webp') {
+        return { valid: false, error: 'MIME type does not match image signature (expected image/webp).' };
+      }
+    }
+
+    return { valid: true };
+  } catch (err: any) {
+    return {
+      valid: false,
+      error: `Failed to verify image file structure: ${err?.message || 'unknown error'}`
+    };
+  }
 }
 
 /**
@@ -181,7 +328,15 @@ export interface CloudinaryUploadOptions {
 }
 
 /**
- * Uploads an image file directly to Cloudinary using an unsigned upload preset.
+ * Uploads an image file exclusively through the authenticated backend validation and upload service (/api/upload/image).
+ * Server enforces:
+ * - 5 MB decoded buffer limit
+ * - Magic byte inspection (rejecting PDFs, SVGs, HTML, and executables)
+ * - Sharp decompression limits (max 4096px dimension, 16 MP input pixels)
+ * - Safe image re-encoding (stripping polyglots and EXIF metadata)
+ * - Verified student authorization
+ * 
+ * Direct browser uploads to Cloudinary are strictly eliminated.
  * Returns the secure HTTPS URL (`secure_url`).
  * Supports upload cancellation via AbortSignal and upload progress reporting.
  */
@@ -194,20 +349,13 @@ export async function uploadImageToCloudinary(
     throw new UploadCancelledError();
   }
 
-  // 1. Strict pre-upload client-side validation
-  const validation = validateImageFile(file);
+  // 1. Strict pre-upload client-side validation (instant UX feedback)
+  const validation = await validateImageFile(file);
   if (!validation.valid) {
     throw new Error(validation.error || 'Invalid image file.');
   }
 
-  const cloudName = CLOUDINARY_CLOUD_NAME;
-  const uploadPreset = CLOUDINARY_UPLOAD_PRESET;
-
-  if (!cloudName || !uploadPreset) {
-    throw new Error('Cloudinary cloud name or upload preset configuration is missing.');
-  }
-
-  // 2. Safe image optimization
+  // 2. Client-side image optimization to reduce network bandwidth
   let uploadPayload: Blob | File = file;
   if (options.optimize !== false) {
     try {
@@ -231,43 +379,7 @@ export async function uploadImageToCloudinary(
   const idToken = await currentUser.getIdToken();
   const apiBase = API_BASE_URL;
 
-  // 3. First Attempt: Signed Direct Upload
-  // Request Cloudinary cryptographic signature from authenticated backend
-  try {
-    const sigRes = await fetch(`${apiBase}/api/upload/signature`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`
-      },
-      body: JSON.stringify({ folder: options.folder }),
-      signal: options.signal
-    });
-
-    if (sigRes.ok) {
-      const sigData = await sigRes.json();
-      if (sigData.signed === true && sigData.signature && sigData.apiKey && sigData.timestamp) {
-        const formData = new FormData();
-        formData.append('file', uploadPayload, file.name);
-        formData.append('api_key', sigData.apiKey);
-        formData.append('timestamp', sigData.timestamp.toString());
-        formData.append('signature', sigData.signature);
-        formData.append('folder', sigData.folder || options.folder);
-
-        const targetCloud = sigData.cloudName || cloudName;
-        const endpoint = `https://api.cloudinary.com/v1_1/${targetCloud}/image/upload`;
-        return await uploadToCloudinaryEndpoint(endpoint, formData, options);
-      }
-    }
-  } catch (sigErr) {
-    if (options.signal?.aborted) {
-      throw new UploadCancelledError();
-    }
-    console.warn('Signed upload negotiation failed, falling back to authenticated backend proxy:', sigErr);
-  }
-
-  // 4. Second Attempt: Route via backend image upload proxy
-  // Helper to convert Blob/File to Data URL for backend proxy
+  // Convert Blob/File to Data URL for backend payload
   const toDataUrl = (blob: Blob | File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -277,51 +389,15 @@ export async function uploadImageToCloudinary(
     });
   };
 
-  try {
-    const base64Data = await toDataUrl(uploadPayload);
-    const proxyRes = await fetch(`${apiBase}/api/upload/image`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`
-      },
-      body: JSON.stringify({
-        file: base64Data,
-        folder: options.folder
-      }),
-      signal: options.signal
-    });
+  const base64Data = await toDataUrl(uploadPayload);
 
-    if (proxyRes.ok) {
-      const data = await proxyRes.json();
-      if (data?.secure_url) {
-        return data.secure_url;
-      }
-    } else {
-      const errorData = await proxyRes.json().catch(() => ({}));
-      throw new Error(errorData.error || `Upload proxy failed (HTTP ${proxyRes.status}).`);
-    }
-  } catch (proxyErr: any) {
-    if (options.signal?.aborted) {
-      throw new UploadCancelledError();
-    }
-    throw new Error(proxyErr.message || 'Failed to upload photo to storage. Please try again.');
-  }
-
-  throw new Error('Failed to upload photo. Storage service unavailable.');
-}
-
-/**
- * Sends FormData to Cloudinary upload REST endpoint with abort signal and progress tracking
- */
-function uploadToCloudinaryEndpoint(
-  endpoint: string,
-  formData: FormData,
-  options: CloudinaryUploadOptions
-): Promise<string> {
+  // 3. Sole Production Path: Authenticated backend upload route (/api/upload/image)
+  // Direct client uploads to Cloudinary are completely removed to prevent security bypasses.
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', endpoint);
+    xhr.open('POST', `${apiBase}/api/upload/image`);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
 
     const onAbort = () => {
       xhr.abort();
@@ -356,17 +432,17 @@ function uploadToCloudinaryEndpoint(
           if (data?.secure_url) {
             resolve(data.secure_url);
           } else {
-            reject(new Error('Image upload succeeded but no secure URL was returned.'));
+            reject(new Error('Image upload succeeded but no secure URL was returned by storage service.'));
           }
         } catch {
-          reject(new Error('Invalid response received from image upload server.'));
+          reject(new Error('Invalid response received from upload service.'));
         }
       } else {
-        let errorMessage = 'Failed to upload photo. Please try again.';
+        let errorMessage = 'Upload rejected by server.';
         try {
           const data = JSON.parse(xhr.responseText);
-          if (data?.error?.message) {
-            errorMessage = data.error.message;
+          if (data?.error) {
+            errorMessage = data.error;
           }
         } catch {
           errorMessage = `Image upload failed (HTTP ${xhr.status}).`;
@@ -379,7 +455,15 @@ function uploadToCloudinaryEndpoint(
       if (options.signal) {
         options.signal.removeEventListener('abort', onAbort);
       }
-      reject(new Error('Unable to connect to image upload service. Please check your internet connection.'));
+      // Clear, retryable upload error when backend is unreachable or offline
+      reject(new Error('Image upload service is temporarily unreachable. Please check your connection and try again.'));
+    };
+
+    xhr.ontimeout = () => {
+      if (options.signal) {
+        options.signal.removeEventListener('abort', onAbort);
+      }
+      reject(new Error('Image upload request timed out. Please try again.'));
     };
 
     xhr.onabort = () => {
@@ -389,7 +473,12 @@ function uploadToCloudinaryEndpoint(
       reject(new UploadCancelledError());
     };
 
-    xhr.send(formData);
+    xhr.send(
+      JSON.stringify({
+        file: base64Data,
+        folder: options.folder,
+      })
+    );
   });
 }
 

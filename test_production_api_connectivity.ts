@@ -55,7 +55,7 @@ console.log('\n--- Running StudentNeed Production Frontend-to-Backend Connectivi
   assert(RESERVATION_ENDPOINTS.cancel.includes('/api/reservations/cancel'), 'RESERVATION_ENDPOINTS.cancel mapped');
 
   assert(REQUEST_ENDPOINTS.renew.includes('/api/requests/renew'), 'REQUEST_ENDPOINTS.renew mapped');
-  assert(UPLOAD_ENDPOINTS.signature.includes('/api/upload/signature'), 'UPLOAD_ENDPOINTS.signature mapped');
+  assert(!('signature' in UPLOAD_ENDPOINTS), 'UPLOAD_ENDPOINTS.signature removed in favor of authoritative backend route');
   assert(UPLOAD_ENDPOINTS.image.includes('/api/upload/image'), 'UPLOAD_ENDPOINTS.image mapped');
 }
 

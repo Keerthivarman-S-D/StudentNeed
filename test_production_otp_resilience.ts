@@ -156,8 +156,8 @@ const serverSrc = fs.readFileSync(path.join(process.cwd(), 'server.ts'), 'utf-8'
     'server.ts applies strict 100kb body limit to standard JSON endpoints to prevent memory exhaustion'
   );
   assert(
-    serverSrc.includes('express.json({ limit: "6mb" })'),
-    'server.ts restricts image upload payload to 6mb'
+    serverSrc.includes('express.json({ limit: "7.5mb" })'),
+    'server.ts restricts image upload payload to 7.5mb to safely permit 5MB base64 images while defending against oversized requests'
   );
   assert(
     serverSrc.includes('validatePassword(password)'),

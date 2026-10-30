@@ -31,6 +31,8 @@ export function NotificationBell() {
     loadMore,
     soundEnabled,
     browserNotificationsEnabled,
+    isPushRegisteredOnServer,
+    permissionStatus,
     toggleSound,
     toggleBrowserNotifications,
     markNotificationAsRead,
@@ -415,27 +417,44 @@ export function NotificationBell() {
               </button>
 
               {/* Browser Alert Toggle */}
-              <button
-                type="button"
-                onClick={toggleBrowserNotifications}
-                className={cn(
-                  "flex items-center gap-1.5 transition-colors rounded px-1.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39] cursor-pointer",
-                  browserNotificationsEnabled
-                    ? "text-[#252b27] hover:text-[#204b39]"
-                    : "text-[#555d56] hover:text-[#252b27]"
-                )}
-                title="Toggle browser push notifications"
-              >
-                <Globe
-                  className={cn(
-                    "h-3.5 w-3.5",
-                    browserNotificationsEnabled ? "text-[#204b39]" : "text-[#555d56]"
-                  )}
-                />
-                <span className="text-[11px] font-medium">
-                  {browserNotificationsEnabled ? 'Alerts ON' : 'Alerts OFF'}
-                </span>
-              </button>
+              {(() => {
+                let alertLabel = 'Alerts OFF';
+                let alertTitle = 'Click to enable browser push notifications';
+                let alertColor = 'text-[#555d56] hover:text-[#252b27]';
+                let iconColor = 'text-[#555d56]';
+
+                if (permissionStatus === 'denied') {
+                  alertLabel = 'Blocked';
+                  alertTitle = 'Notifications are blocked in your browser site settings';
+                  alertColor = 'text-red-700 hover:text-red-800';
+                  iconColor = 'text-red-600';
+                } else if (browserNotificationsEnabled && isPushRegisteredOnServer) {
+                  alertLabel = 'Alerts ON';
+                  alertTitle = 'Browser push notifications are active on this device';
+                  alertColor = 'text-[#252b27] hover:text-[#204b39]';
+                  iconColor = 'text-[#204b39]';
+                } else if (browserNotificationsEnabled || permissionStatus === 'granted') {
+                  alertLabel = 'Not Registered';
+                  alertTitle = 'Browser permission is granted, but server registration is pending or unconfirmed. Click to activate.';
+                  alertColor = 'text-amber-800 hover:text-amber-900';
+                  iconColor = 'text-amber-600';
+                }
+
+                return (
+                  <button
+                    type="button"
+                    onClick={toggleBrowserNotifications}
+                    className={cn(
+                      "flex items-center gap-1.5 transition-colors rounded px-1.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39] cursor-pointer",
+                      alertColor
+                    )}
+                    title={alertTitle}
+                  >
+                    <Globe className={cn("h-3.5 w-3.5", iconColor)} />
+                    <span className="text-[11px] font-medium">{alertLabel}</span>
+                  </button>
+                );
+              })()}
             </div>
 
             {filter === 'unread' && (

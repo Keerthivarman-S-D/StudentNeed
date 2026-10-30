@@ -64,7 +64,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
     const selectedFiles = Array.from(files).slice(0, remainingSlots);
 
     for (const file of selectedFiles) {
-      const validation = validateImageFile(file);
+      const validation = await validateImageFile(file);
       if (!validation.valid) {
         setError(validation.error || 'Invalid image file.');
         return;

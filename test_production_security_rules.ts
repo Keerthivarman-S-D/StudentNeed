@@ -198,9 +198,8 @@ const serverContent = fs.readFileSync(path.join(process.cwd(), 'server.ts'), 'ut
     '/api/upload/image requires verified student authorization'
   );
   assert(
-    serverContent.includes('const caller = await verifyStudentCaller(req);') &&
-    serverContent.includes('/api/upload/signature'),
-    '/api/upload/signature requires verified student authorization'
+    !serverContent.includes('/api/upload/signature'),
+    '/api/upload/signature endpoint removed to eliminate direct client upload bypasses'
   );
 }
 

@@ -11,6 +11,7 @@ import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 import { GoogleAuth } from "google-auth-library";
 import * as webpush from "web-push";
+import sharp from "sharp";
 import { generateGenUIPayload } from "./src/lib/genuiEngine";
 import { validateGenUIPayload } from "./src/lib/genuiValidator";
 
@@ -107,10 +108,10 @@ interface RateLimitBucket {
   count: number;
   resetAt: number;
 }
-const ipRateLimits = new Map<string, RateLimitBucket>();
+export const ipRateLimits = new Map<string, RateLimitBucket>();
 const MAX_RATE_LIMIT_ENTRIES = 10000;
 
-function checkIpRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
+export function checkIpRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
   const now = Date.now();
   const bucket = ipRateLimits.get(key);
   if (!bucket || now > bucket.resetAt) {
@@ -265,13 +266,16 @@ async function deleteOtpRecord(emailDocId: string): Promise<void> {
   }
 }
 
-async function startServer() {
+export async function createApp(options: { skipVite?: boolean; skipTimers?: boolean } = {}) {
   const app = express();
   const PORT = process.env.PORT
     ? parseInt(process.env.PORT, 10)
     : 3000;
 
-  // Cloud Run proxy topology configuration: single reverse-proxy hop
+  // Reverse-proxy topology configuration for Render / Cloud Run: trust exactly 1 proxy hop.
+  // Render's load balancer terminates TLS and appends the real client IP as the last entry in X-Forwarded-For.
+  // Setting 'trust proxy' to 1 ensures Express trusts only Render's proxy hop, resolving req.ip
+  // to the real client IP while safely ignoring any client-spoofed X-Forwarded-For entries.
   app.set("trust proxy", 1);
 
   // Environment-aware framing configuration:
@@ -308,7 +312,7 @@ async function startServer() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://apis.google.com"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://apis.google.com", "https://www.gstatic.com"],
           styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
           fontSrc: ["'self'", "https://fonts.gstatic.com"],
           imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://images.unsplash.com", "https://api.dicebear.com"],
@@ -321,6 +325,8 @@ async function startServer() {
             "https://api.cloudinary.com",
             "https://res.cloudinary.com",
             "https://studentneed-backend.onrender.com",
+            "https://firebaseinstallations.googleapis.com",
+            "https://fcmregistrations.googleapis.com",
           ],
           frameAncestors,
           frameSrc: ["'self'", "https://*.firebaseapp.com", "https://apis.google.com"],
@@ -426,16 +432,16 @@ async function startServer() {
   );
 
   // Route-Specific Body Limits:
-  // - /api/upload/image: dedicated 6MB limit to support compressed student listing images
+  // - /api/upload/image: dedicated 7.5mb limit to support base64-encoded 5MB images (approx 6.67MB encoded + JSON overhead)
   // - All other endpoints: strictly 100KB to mitigate memory exhaustion/DoS attacks
-  app.use((req, res, next) => {
+  app.use(function earlyJsonParserMiddleware(req, res, next) {
     if (req.path === "/api/upload/image") {
       return next();
     }
     express.json({ limit: "100kb" })(req, res, next);
   });
 
-  app.use((req, res, next) => {
+  app.use(function earlyUrlencodedParserMiddleware(req, res, next) {
     if (req.path === "/api/upload/image") {
       return next();
     }
@@ -1268,18 +1274,33 @@ Respond to the student's question directly, and if possible provide structured J
     return { apiKeyVal, apiSecret, cloudName };
   };
 
-  // 4. Authenticated Image Upload Proxy (Validates Firebase Auth ID token and payload format)
-  app.post("/api/upload/image", express.json({ limit: "6mb" }), async (req, res) => {
-    try {
-      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkIpRateLimit(`upload-image:${clientIp}`, 30, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many upload requests. Please wait a few minutes." });
-      }
+  // Upload IP Rate Limit Middleware:
+  // Evaluated BEFORE express.json({ limit: "7.5mb" }) buffers and parses the large payload.
+  // This mitigates DoS attacks by rejecting rate-limited clients with HTTP 429 immediately,
+  // without consuming CPU/memory to parse the 7.5 MB body.
+  const uploadIpRateLimitMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkIpRateLimit(`upload-image:${clientIp}`, 30, 10 * 60 * 1000)) {
+      return res.status(429).json({ error: "Too many upload requests. Please wait a few minutes." });
+    }
+    next();
+  };
 
-      const caller = await verifyStudentCaller(req);
-      if (!caller) {
-        return res.status(403).json({ error: "Authentication and verified student status required for image upload." });
-      }
+  // 4. Authenticated Image Upload Proxy (Validates Firebase Auth ID token and payload format)
+  // Middleware Execution Order:
+  // 1. uploadIpRateLimitMiddleware — Blocks abusive IPs with HTTP 429 before allocating memory for body parsing
+  // 2. express.json({ limit: "7.5mb" }) — Parses Base64 payload up to 7.5mb; rejects larger with HTTP 413
+  // 3. Controller handler — Verifies student authorization, decoded 5MB binary size, magic bytes, Sharp limits
+  app.post(
+    "/api/upload/image",
+    uploadIpRateLimitMiddleware,
+    express.json({ limit: "7.5mb" }),
+    async (req, res) => {
+      try {
+        const caller = await verifyStudentCaller(req);
+        if (!caller) {
+          return res.status(403).json({ error: "Authentication and verified student status required for image upload." });
+        }
 
       const { file, folder } = req.body;
       if (!file || typeof file !== "string") {
@@ -1291,15 +1312,136 @@ Respond to the student's question directly, and if possible provide structured J
 
       // Validate base64/data URI image format and size
       let mimeType = "";
+      let base64Payload = file;
       if (file.startsWith("data:")) {
         const mimeMatch = file.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/);
         if (mimeMatch) {
           mimeType = mimeMatch[1].toLowerCase();
+          base64Payload = file.substring(mimeMatch[0].length);
         }
       }
       const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
       if (mimeType && !allowedMimes.includes(mimeType)) {
-        return res.status(400).json({ error: "Invalid image format. Only JPEG, PNG, and WebP are allowed." });
+        return res.status(400).json({ error: "Invalid image format. Only JPEG, PNG, and WebP are allowed. SVG and PDF are strictly rejected." });
+      }
+
+      // Server-side size and magic bytes content validation
+      let fileBuffer: Buffer;
+      try {
+        fileBuffer = Buffer.from(base64Payload, "base64");
+      } catch {
+        return res.status(400).json({ error: "Malformed base64 image data." });
+      }
+
+      if (fileBuffer.length > 5 * 1024 * 1024) {
+        return res.status(400).json({ error: "File size exceeds the 5 MB limit." });
+      }
+      if (fileBuffer.length < 12) {
+        return res.status(400).json({ error: "Malformed or truncated image file." });
+      }
+
+      // Check for disallowed signatures (PDF, SVG/XML/HTML/scripts)
+      if (fileBuffer[0] === 0x25 && fileBuffer[1] === 0x50 && fileBuffer[2] === 0x44 && fileBuffer[3] === 0x46) {
+        return res.status(400).json({ error: "PDF documents cannot be uploaded as photos." });
+      }
+
+      const sampleHeader = fileBuffer.subarray(0, Math.min(fileBuffer.length, 512)).toString("utf-8").toLowerCase();
+      if (
+        sampleHeader.includes("<svg") ||
+        sampleHeader.includes("<?xml") ||
+        sampleHeader.includes("<!doctype svg") ||
+        sampleHeader.includes("<html") ||
+        sampleHeader.includes("<script")
+      ) {
+        return res.status(400).json({ error: "SVG vector and script-containing files are rejected." });
+      }
+
+      // Verify authentic JPEG, PNG, or WebP signature
+      let detectedFormat: "jpeg" | "png" | "webp" | null = null;
+      if (fileBuffer[0] === 0xFF && fileBuffer[1] === 0xD8 && fileBuffer[2] === 0xFF) {
+        detectedFormat = "jpeg";
+      } else if (
+        fileBuffer.length >= 8 &&
+        fileBuffer[0] === 0x89 && fileBuffer[1] === 0x50 && fileBuffer[2] === 0x4E && fileBuffer[3] === 0x47 &&
+        fileBuffer[4] === 0x0D && fileBuffer[5] === 0x0A && fileBuffer[6] === 0x1A && fileBuffer[7] === 0x0A
+      ) {
+        detectedFormat = "png";
+      } else if (
+        fileBuffer.length >= 12 &&
+        fileBuffer[0] === 0x52 && fileBuffer[1] === 0x49 && fileBuffer[2] === 0x46 && fileBuffer[3] === 0x46 &&
+        fileBuffer[8] === 0x57 && fileBuffer[9] === 0x45 && fileBuffer[10] === 0x42 && fileBuffer[11] === 0x50
+      ) {
+        detectedFormat = "webp";
+      }
+
+      if (!detectedFormat) {
+        return res.status(400).json({ error: "Malformed or unrecognized image format. Only authentic JPG, PNG, and WebP are allowed." });
+      }
+
+      if (mimeType) {
+        if (detectedFormat === "jpeg" && mimeType !== "image/jpeg") {
+          return res.status(400).json({ error: "MIME type mismatch: declared MIME does not match JPEG file signature." });
+        }
+        if (detectedFormat === "png" && mimeType !== "image/png") {
+          return res.status(400).json({ error: "MIME type mismatch: declared MIME does not match PNG file signature." });
+        }
+        if (detectedFormat === "webp" && mimeType !== "image/webp") {
+          return res.status(400).json({ error: "MIME type mismatch: declared MIME does not match WebP file signature." });
+        }
+      }
+
+      // Server-side image decoding, integrity verification and safe re-encoding using Sharp
+      let sanitizedDataUri: string;
+      try {
+        const MAX_IMAGE_DIMENSION = 4096; // 4096px width or height limit
+        const MAX_INPUT_PIXELS = 16777216; // 16 megapixels max (e.g. 4096 x 4096)
+
+        // Protect Sharp against decompression and resource exhaustion bombs
+        const image = sharp(fileBuffer, {
+          failOn: 'error',
+          limitInputPixels: MAX_INPUT_PIXELS
+        });
+        const metadata = await image.metadata();
+
+        if (!metadata.format || !["jpeg", "png", "webp"].includes(metadata.format)) {
+          return res.status(400).json({ error: "Unsupported image format decoded. Only genuine JPG, PNG, and WebP are allowed." });
+        }
+
+        // Enforce maximum dimensions and total pixel count before performing full pixel decoding
+        const width = metadata.width || 0;
+        const height = metadata.height || 0;
+        const totalPixels = width * height;
+
+        if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION || totalPixels > MAX_INPUT_PIXELS) {
+          return res.status(400).json({
+            error: `Image dimensions (${width}x${height}, ${totalPixels} pixels) exceed the maximum allowed limits of ${MAX_IMAGE_DIMENSION}x${MAX_IMAGE_DIMENSION}px or 16 MP.`
+          });
+        }
+
+        // Decode actual pixel data and re-encode to safe sanitized format ONLY after bounds are verified
+        // Strips all EXIF metadata, trailing garbage, and embedded polyglots
+        let sanitizedBuffer: Buffer;
+        let sanitizedMime = "image/jpeg";
+
+        if (metadata.format === "png") {
+          sanitizedBuffer = await image.png({ compressionLevel: 8 }).toBuffer();
+          sanitizedMime = "image/png";
+        } else if (metadata.format === "webp") {
+          sanitizedBuffer = await image.webp({ quality: 85 }).toBuffer();
+          sanitizedMime = "image/webp";
+        } else {
+          sanitizedBuffer = await image.jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+          sanitizedMime = "image/jpeg";
+        }
+
+        sanitizedDataUri = `data:${sanitizedMime};base64,${sanitizedBuffer.toString("base64")}`;
+      } catch (decodeErr: any) {
+        console.warn("Sharp image decoding failed:", decodeErr?.message || decodeErr);
+        const errMsg = decodeErr?.message || "";
+        if (errMsg.includes("pixel limit") || errMsg.includes("exceeds pixel limit")) {
+          return res.status(400).json({ error: "Image total pixel count exceeds the safe limit (16 MP). Decompression bomb rejected." });
+        }
+        return res.status(400).json({ error: "Corrupted, truncated, or malformed image data. The file cannot be safely decoded." });
       }
 
       const { apiKeyVal, apiSecret, cloudName } = getCloudinaryConfig();
@@ -1308,16 +1450,18 @@ Respond to the student's question directly, and if possible provide structured J
         return res.status(500).json({ error: "Storage service configuration error: Cloudinary signing credentials missing on the server." });
       }
 
+      const allowedFormats = "jpg,jpeg,png,webp";
       const timestamp = Math.round(Date.now() / 1000);
-      const stringToSign = `folder=${uploadFolder}&timestamp=${timestamp}${apiSecret}`;
+      const stringToSign = `allowed_formats=${allowedFormats}&folder=${uploadFolder}&timestamp=${timestamp}${apiSecret}`;
       const signature = crypto.createHash("sha1").update(stringToSign).digest("hex");
 
       const formData = new URLSearchParams();
-      formData.append("file", file);
+      formData.append("file", sanitizedDataUri);
       formData.append("folder", uploadFolder);
       formData.append("timestamp", timestamp.toString());
       formData.append("api_key", apiKeyVal);
       formData.append("signature", signature);
+      formData.append("allowed_formats", allowedFormats);
 
       const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
         method: "POST",
@@ -1333,49 +1477,6 @@ Respond to the student's question directly, and if possible provide structured J
     } catch (err: any) {
       console.error("Backend image upload error:", err);
       return res.status(500).json({ error: "Internal error processing image upload." });
-    }
-  });
-
-  // 5. Backend Upload Signature Generator for Signed Cloudinary Uploads
-  app.post("/api/upload/signature", async (req, res) => {
-    try {
-      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkIpRateLimit(`upload-sig:${clientIp}`, 30, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many upload requests. Please wait a few minutes." });
-      }
-
-      const caller = await verifyStudentCaller(req);
-      if (!caller) {
-        return res.status(403).json({ error: "Authentication and verified student status required for upload signature." });
-      }
-
-      const { folder } = req.body;
-      const allowedFolders = ["studentneed/listings", "studentneed/avatars"];
-      const uploadFolder = allowedFolders.includes(folder) ? folder : "studentneed/listings";
-      const { apiKeyVal, apiSecret, cloudName } = getCloudinaryConfig();
-
-      if (!apiSecret || !apiKeyVal) {
-        return res.status(500).json({
-          error: "Cloudinary signing credentials are not configured on the server."
-        });
-      }
-
-      // Compute Cloudinary SHA-1 signature
-      const timestamp = Math.round(Date.now() / 1000);
-      const stringToSign = `folder=${uploadFolder}&timestamp=${timestamp}${apiSecret}`;
-      const signature = crypto.createHash("sha1").update(stringToSign).digest("hex");
-
-      return res.json({
-        signed: true,
-        signature,
-        timestamp,
-        apiKey: apiKeyVal,
-        cloudName,
-        folder: uploadFolder
-      });
-    } catch (err: any) {
-      console.error("Upload signature error:", err);
-      return res.status(500).json({ error: "Failed to generate upload signature." });
     }
   });
 
@@ -2446,6 +2547,21 @@ Respond to the student's question directly, and if possible provide structured J
   // In-memory development fallback store for push subscriptions when system token is not configured
   const devPushStore = new Map<string, Record<string, PushSubscriptionDevice>>();
 
+  // Helper to obtain FCM v1 OAuth2 access token via GoogleAuth
+  async function getFcmAccessToken(): Promise<string | null> {
+    try {
+      const fcmAuth = new GoogleAuth({
+        scopes: ["https://www.googleapis.com/auth/firebase.messaging"],
+      });
+      const client = await fcmAuth.getClient();
+      const tokenRes = await client.getAccessToken();
+      return tokenRes?.token || null;
+    } catch (authErr: any) {
+      console.warn("[FCM] GoogleAuth credential acquisition notice:", authErr?.message || authErr);
+      return null;
+    }
+  }
+
   // FCM v1 REST API Dispatch
   async function sendFcmToUser(
     userId: string,
@@ -2496,18 +2612,7 @@ Respond to the student's question directly, and if possible provide structured J
         return { sent: 0, failed: 0, pruned: 0 };
       }
 
-      let fcmAccessToken: string | null = null;
-      try {
-        const fcmAuth = new GoogleAuth({
-          scopes: ["https://www.googleapis.com/auth/firebase.messaging"],
-        });
-        const client = await fcmAuth.getClient();
-        const tokenRes = await client.getAccessToken();
-        fcmAccessToken = tokenRes?.token || null;
-      } catch (authErr: any) {
-        console.warn("[FCM] GoogleAuth credential acquisition notice:", authErr?.message || authErr);
-      }
-
+      const fcmAccessToken = await getFcmAccessToken();
       if (!fcmAccessToken) {
         console.warn("[FCM] Access token not available for FCM v1 send. If testing locally, ensure Google ADC or service account is configured.");
         return { sent: 0, failed: 0, pruned: 0 };
@@ -3038,7 +3143,13 @@ Respond to the student's question directly, and if possible provide structured J
         }),
       });
 
-      return res.json({ success: true, message: "FCM token registered.", deviceCount: existingTokens.length });
+      const deliveryAvailable = !!(await getFcmAccessToken());
+      return res.json({
+        success: true,
+        message: "FCM token registered.",
+        deviceCount: existingTokens.length,
+        deliveryAvailable,
+      });
     } catch (err: any) {
       console.error("fcm-token error:", err);
       return res.status(500).json({ error: "Failed to register FCM token." });
@@ -3229,9 +3340,12 @@ Respond to the student's question directly, and if possible provide structured J
       let totalSent = 0;
       let totalPruned = 0;
       for (const recipientUid of recipients) {
+        const eventId = `chat_${chatId}_${messageId}`;
+        const notificationId = `notif_chat_${messageId}_${recipientUid}`;
+
         // Create persistent event-driven Firestore notification
         await createServerNotification({
-          notificationId: `notif_chat_${messageId}_${recipientUid}`,
+          notificationId,
           recipientUid,
           type: "chat",
           title: `New message from ${senderName}`,
@@ -3240,7 +3354,7 @@ Respond to the student's question directly, and if possible provide structured J
           targetId: chatId,
           actorUid: callerUid,
           actorName: senderName,
-          eventId: `chat_${chatId}_${messageId}`,
+          eventId,
           link: `/chat/${chatId}`,
           metadata: { chatId, messageId },
         }).catch((err) => console.warn("[Notifications] Chat message notif warning:", err));
@@ -3252,6 +3366,8 @@ Respond to the student's question directly, and if possible provide structured J
           tag: `chat_${chatId}`,
           data: {
             type: "chat_message",
+            eventId,
+            notificationId,
             chatId,
             messageId,
             url: `/chat/${chatId}`,
@@ -5859,16 +5975,18 @@ Respond to the student's question directly, and if possible provide structured J
     }
   });
 
-  // Run cleanup jobs 5 seconds after server start, then every 15 minutes
-  setTimeout(() => {
-    runExpiredListingsCleanup().catch((err) => console.warn("Initial cleanup notice:", err));
-    runExpiredRequestsCleanup().catch((err) => console.warn("Initial requests cleanup notice:", err));
-  }, 5000).unref();
+  if (!options.skipTimers) {
+    // Run cleanup jobs 5 seconds after server start, then every 15 minutes
+    setTimeout(() => {
+      runExpiredListingsCleanup().catch((err) => console.warn("Initial cleanup notice:", err));
+      runExpiredRequestsCleanup().catch((err) => console.warn("Initial requests cleanup notice:", err));
+    }, 5000).unref();
 
-  setInterval(() => {
-    runExpiredListingsCleanup().catch((err) => console.warn("Interval cleanup notice:", err));
-    runExpiredRequestsCleanup().catch((err) => console.warn("Interval requests cleanup notice:", err));
-  }, 15 * 60 * 1000).unref();
+    setInterval(() => {
+      runExpiredListingsCleanup().catch((err) => console.warn("Interval cleanup notice:", err));
+      runExpiredRequestsCleanup().catch((err) => console.warn("Interval requests cleanup notice:", err));
+    }, 15 * 60 * 1000).unref();
+  }
 
   // Graceful PayloadTooLargeError and body parser error handling for API routes
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -5890,40 +6008,51 @@ Respond to the student's question directly, and if possible provide structured J
     next(err);
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    // Serve service worker scripts with strict no-cache and root Service-Worker-Allowed header
-    app.use((req, res, next) => {
-      if (req.path === '/firebase-messaging-sw.js' || req.path === '/sw.js') {
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        res.setHeader('Service-Worker-Allowed', '/');
-      }
-      next();
-    });
-    app.use(express.static(distPath, { dotfiles: 'allow' }));
-    // Explicit handler for .well-known manifests to guarantee application/json and prevent SPA fallback
-    app.get('/.well-known/:file', (req, res) => {
-      const filePath = path.join(distPath, '.well-known', req.params.file);
-      if (fs.existsSync(filePath)) {
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        return res.sendFile(filePath);
-      }
-      res.status(404).json({ error: 'Manifest not found' });
-    });
-    app.get('*all', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+  if (!options.skipVite) {
+    // Vite middleware for development
+    if (process.env.NODE_ENV !== "production") {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(process.cwd(), 'dist');
+      // Serve service worker scripts with strict no-cache and root Service-Worker-Allowed header
+      app.use((req, res, next) => {
+        if (req.path === '/firebase-messaging-sw.js' || req.path === '/sw.js') {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+          res.setHeader('Service-Worker-Allowed', '/');
+        }
+        next();
+      });
+      app.use(express.static(distPath, { dotfiles: 'allow' }));
+      // Explicit handler for .well-known manifests to guarantee application/json and prevent SPA fallback
+      app.get('/.well-known/:file', (req, res) => {
+        const filePath = path.join(distPath, '.well-known', req.params.file);
+        if (fs.existsSync(filePath)) {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          return res.sendFile(filePath);
+        }
+        res.status(404).json({ error: 'Manifest not found' });
+      });
+      app.get('*all', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
   }
+
+  return app;
+}
+
+export async function startServer() {
+  const app = await createApp();
+  const PORT = process.env.PORT
+    ? parseInt(process.env.PORT, 10)
+    : 3000;
 
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
@@ -5943,6 +6072,8 @@ Respond to the student's question directly, and if possible provide structured J
 
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
   process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+  return { app, server };
 }
 
 process.on("unhandledRejection", (reason) => {
@@ -5954,4 +6085,7 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
-startServer();
+// Auto-start server only when executed directly (not when imported for integration testing)
+if (process.env.NODE_ENV !== "test" && !process.env.TEST_APP_INSTANCE) {
+  startServer();
+}

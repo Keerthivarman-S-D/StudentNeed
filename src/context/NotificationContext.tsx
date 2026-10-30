@@ -35,6 +35,54 @@ export interface ToastNotification {
   link?: string;
   targetType?: string;
   targetId?: string;
+  eventId?: string;
+  chatId?: string;
+  messageId?: string;
+  notificationId?: string;
+  requestId?: string;
+  reservationId?: string;
+  fcmMessageId?: string;
+}
+
+export function getStableNotificationKey(item: any): string {
+  if (!item) return '';
+
+  // 1. Explicit stable event ID (e.g. chat_chat123_msg456, res_created_res123)
+  if (item.eventId && typeof item.eventId === 'string') {
+    return item.eventId.trim();
+  }
+  if (item.data?.eventId && typeof item.data.eventId === 'string') {
+    return item.data.eventId.trim();
+  }
+
+  // 2. Chat message key: chatId + messageId (uniquely identifies a specific chat message)
+  const chatId = item.chatId || item.metadata?.chatId || item.data?.chatId;
+  const messageId = item.messageId || item.metadata?.messageId || item.data?.messageId;
+  if (chatId && messageId) {
+    return `chat_${chatId}_${messageId}`;
+  }
+
+  // 3. Deterministic notification document ID (e.g. notif_chat_msg456_user789, notif_res_created_res123_seller456)
+  if (item.notificationId && typeof item.notificationId === 'string') {
+    return item.notificationId.trim();
+  }
+  if (item.data?.notificationId && typeof item.data.notificationId === 'string') {
+    return item.data.notificationId.trim();
+  }
+
+  // 4. Firestore document ID (when distinct and not a synthetic client prefix like fcm_12345)
+  if (item.id && typeof item.id === 'string' && !item.id.startsWith('fcm_')) {
+    return item.id.trim();
+  }
+
+  // 5. Unique FCM Message ID
+  if (item.fcmMessageId && typeof item.fcmMessageId === 'string') {
+    return item.fcmMessageId.trim();
+  }
+
+  // NOTE: Do not fall back to bare targetType + targetId as a deduplication key!
+  // Doing so would incorrectly suppress subsequent distinct messages or reservation updates for the same conversation.
+  return '';
 }
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -54,6 +102,8 @@ interface NotificationContextType {
   chatUnreadCounts: Record<string, number>;
   soundEnabled: boolean;
   browserNotificationsEnabled: boolean;
+  isPushRegisteredOnServer: boolean;
+  permissionStatus: NotificationPermission | 'unsupported';
   isLoading: boolean;
   hasMore: boolean;
   activeToast: ToastNotification | null;
@@ -165,6 +215,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  const [permissionStatus, setPermissionStatus] = useState<NotificationPermission | 'unsupported'>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'unsupported';
+  });
+
+  // Live status of device registration on the backend (separated from persistent user intent)
+  const [isPushRegisteredOnServer, setIsPushRegisteredOnServer] = useState<boolean>(false);
+
   // Sync preference changes to localStorage
   useEffect(() => {
     try {
@@ -180,6 +240,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const [activeToast, setActiveToast] = useState<ToastNotification | null>(null);
   const toastTimerRef = useRef<any>(null);
+  // Bounded map storing eventKey => timestamp (max 500 entries, 5-minute deduplication window)
+  const seenForegroundEventKeysRef = useRef<Map<string, number>>(new Map());
 
   const dismissToast = useCallback(() => {
     if (toastTimerRef.current) {
@@ -189,7 +251,36 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setActiveToast(null);
   }, []);
 
-  const showToast = useCallback((toast: ToastNotification) => {
+  const showToast = useCallback((toast: ToastNotification, playSound = false) => {
+    const stableKey = getStableNotificationKey(toast);
+    const now = Date.now();
+
+    if (stableKey) {
+      const lastSeen = seenForegroundEventKeysRef.current.get(stableKey);
+      if (lastSeen && (now - lastSeen < 5 * 60 * 1000)) {
+        // Event already notified to user in foreground (either via Firestore listener or FCM onMessage)
+        return;
+      }
+
+      // Record event in bounded cache
+      seenForegroundEventKeysRef.current.set(stableKey, now);
+
+      // Keep cache strictly bounded: purge expired entries or oldest if size > 500
+      if (seenForegroundEventKeysRef.current.size > 500) {
+        for (const [key, ts] of seenForegroundEventKeysRef.current.entries()) {
+          if (now - ts > 5 * 60 * 1000) {
+            seenForegroundEventKeysRef.current.delete(key);
+          }
+        }
+        if (seenForegroundEventKeysRef.current.size > 500) {
+          for (const key of seenForegroundEventKeysRef.current.keys()) {
+            seenForegroundEventKeysRef.current.delete(key);
+            if (seenForegroundEventKeysRef.current.size <= 500) break;
+          }
+        }
+      }
+    }
+
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
     }
@@ -198,11 +289,124 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setActiveToast(null);
       toastTimerRef.current = null;
     }, 6000);
-  }, []);
+
+    if (playSound && soundEnabled) {
+      playNotificationChime();
+    }
+  }, [soundEnabled]);
 
   const toggleSound = () => {
     setSoundEnabled((prev) => !prev);
   };
+
+  // Helper to sync and register both FCM and Web Push tokens independently with backend
+  const syncPushRegistration = useCallback(async (vapidKeyParam?: string): Promise<{
+    fcmToken: string | null;
+    fcmSuccess: boolean;
+    webPushSuccess: boolean;
+    success: boolean;
+  }> => {
+    let fcmToken: string | null = null;
+    let fcmSuccess = false;
+    let webPushSuccess = false;
+
+    if (!isPushSupported()) {
+      return { fcmToken: null, fcmSuccess: false, webPushSuccess: false, success: false };
+    }
+
+    try {
+      // 1. Resolve VAPID key
+      let vapidPublicKey =
+        vapidKeyParam?.trim() ||
+        ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_FIREBASE_VAPID_KEY) as string)?.trim() ||
+        ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_VAPID_PUBLIC_KEY) as string)?.trim() ||
+        '';
+
+      if (!vapidPublicKey) {
+        try {
+          const vapidRes = await fetch(NOTIFICATION_ENDPOINTS.vapidPublicKey);
+          if (vapidRes.ok) {
+            const vapidData = await vapidRes.json();
+            vapidPublicKey = vapidData.publicKey || '';
+          }
+        } catch (vErr) {
+          console.warn('VAPID public key fetch notice:', vErr);
+        }
+      }
+
+      const idToken = await auth.currentUser?.getIdToken();
+
+      // 2. Try FCM token registration independently and check actual HTTP status
+      try {
+        fcmToken = await subscribeToFCM(vapidPublicKey);
+        if (fcmToken && idToken) {
+          const fcmRes = await fetch(NOTIFICATION_ENDPOINTS.registerFcm, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({ token: fcmToken }),
+          }).catch((err) => {
+            console.warn('FCM token register network warning:', err);
+            return null;
+          });
+
+          if (fcmRes && fcmRes.ok) {
+            const fcmData = await fcmRes.json().catch(() => ({}));
+            // Only count FCM as successful delivery channel if backend confirms delivery credentials (Google ADC) exist
+            if (fcmData.deliveryAvailable === false) {
+              console.warn('FCM token registered, but backend FCM v1 delivery credentials (Google ADC) are not configured. Web Push fallback remains active.');
+              fcmSuccess = false;
+            } else {
+              fcmSuccess = true;
+            }
+          } else {
+            console.warn(`FCM token registration rejected by server: HTTP ${fcmRes?.status ?? 'error'}`);
+          }
+        }
+      } catch (fcmErr) {
+        console.warn('FCM registration notice (non-fatal, Web Push fallback remains active):', fcmErr);
+      }
+
+      // 3. Register standard Web Push VAPID subscription independently and check actual HTTP status
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        if (vapidPublicKey && 'pushManager' in reg) {
+          let sub = await reg.pushManager.getSubscription();
+          if (!sub) {
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+            });
+          }
+          if (idToken && sub) {
+            const subRes = await fetch(NOTIFICATION_ENDPOINTS.subscribe, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+              },
+              body: JSON.stringify({ subscription: sub.toJSON() }),
+            }).catch(() => null);
+
+            if (subRes && subRes.ok) {
+              webPushSuccess = true;
+            } else {
+              console.warn(`Web Push registration rejected by server: HTTP ${subRes?.status ?? 'error'}`);
+            }
+          }
+        }
+      } catch (webPushErr) {
+        console.warn('Web Push subscription notice:', webPushErr);
+      }
+    } catch (err) {
+      console.warn('Push sync error:', err);
+    }
+
+    const success = fcmSuccess || webPushSuccess;
+    return { fcmToken, fcmSuccess, webPushSuccess, success };
+  }, []);
 
   const toggleBrowserNotifications = async () => {
     if (!isPushSupported()) {
@@ -255,6 +459,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.warn('Unsubscribe device notice:', err);
       }
+      setIsPushRegisteredOnServer(false);
       setBrowserNotificationsEnabled(false);
       return;
     }
@@ -269,72 +474,71 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
 
     const requested = await requestPushPermission();
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPermissionStatus(Notification.permission);
+    }
     if (requested !== 'granted') {
       setBrowserNotificationsEnabled(false);
       return;
     }
 
     try {
-      // 1. Fetch VAPID key
-      let vapidPublicKey =
-        ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_FIREBASE_VAPID_KEY) as string)?.trim() ||
-        ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_VAPID_PUBLIC_KEY) as string)?.trim() ||
-        '';
-
-      if (!vapidPublicKey) {
-        try {
-          const vapidRes = await fetch(NOTIFICATION_ENDPOINTS.vapidPublicKey);
-          if (vapidRes.ok) {
-            const vapidData = await vapidRes.json();
-            vapidPublicKey = vapidData.publicKey || '';
-          }
-        } catch {}
+      const regResult = await syncPushRegistration();
+      setIsPushRegisteredOnServer(regResult.success);
+      if (!regResult.success) {
+        // Distinguish browser permission from successful server registration
+        // Never mark push registration successful if both methods failed on the backend
+        setBrowserNotificationsEnabled(false);
+        alert(
+          'Notification permission was granted by your browser, but registration with the push notification server could not be completed. Please check your connection or server status and try again.'
+        );
+        return;
       }
-
-      // 2. Try FCM subscription first
-      const fcmToken = await subscribeToFCM(vapidPublicKey);
-      const idToken = await auth.currentUser?.getIdToken();
-
-      if (fcmToken && idToken) {
-        await fetch(NOTIFICATION_ENDPOINTS.registerFcm, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({ token: fcmToken }),
-        }).catch(() => {});
-      }
-
-      // 3. Register standard Web Push as well
-      const reg = await navigator.serviceWorker.ready;
-      if (vapidPublicKey && 'pushManager' in reg) {
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-          });
-        }
-        if (idToken && sub) {
-          await fetch(NOTIFICATION_ENDPOINTS.subscribe, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${idToken}`,
-            },
-            body: JSON.stringify({ subscription: sub.toJSON() }),
-          }).catch(() => {});
-        }
-      }
-
       setBrowserNotificationsEnabled(true);
     } catch (err: any) {
       console.error('Failed to enable push notifications:', err);
+      setIsPushRegisteredOnServer(false);
       alert('Could not enable push notifications: ' + (err.message || 'Unknown error'));
       setBrowserNotificationsEnabled(false);
     }
   };
+
+  // Automatically refresh tokens only when permission is granted AND browser notifications are enabled
+  useEffect(() => {
+    if (!currentUserId || typeof window === 'undefined' || !isPushSupported()) {
+      setIsPushRegisteredOnServer(false);
+      return;
+    }
+    if (Notification.permission !== 'granted' || !browserNotificationsEnabled) {
+      setIsPushRegisteredOnServer(false);
+      return;
+    }
+
+    let isMounted = true;
+    const runAutoRefresh = async () => {
+      try {
+        const regResult = await syncPushRegistration();
+        if (isMounted) {
+          setIsPushRegisteredOnServer(regResult.success);
+          if (!regResult.success) {
+            console.warn('Push registration auto-refresh notice: backend registration unconfirmed; preserving user preference.');
+            // Crucial: DO NOT erase user's persistent preference during network outages or server restarts!
+          }
+        }
+      } catch (e) {
+        if (isMounted) {
+          setIsPushRegisteredOnServer(false);
+          console.warn('Auto-refresh push token notice:', e);
+        }
+      }
+    };
+
+    runAutoRefresh();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId, browserNotificationsEnabled, syncPushRegistration]);
 
   // Foreground FCM message listener
   useEffect(() => {
@@ -344,28 +548,35 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const link = payload?.data?.url || payload?.fcmOptions?.link;
       const targetType = payload?.data?.chatId ? 'chat' : payload?.data?.reservationId ? 'reservation' : undefined;
       const targetId = payload?.data?.chatId || payload?.data?.reservationId;
+      const eventId = payload?.data?.eventId;
+      const chatId = payload?.data?.chatId;
+      const messageId = payload?.data?.messageId;
+      const notificationId = payload?.data?.notificationId;
+      const fcmMessageId = payload?.fcmMessageId || payload?.messageId;
 
       showToast({
-        id: `fcm_${Date.now()}`,
+        id: `fcm_${fcmMessageId || Date.now()}`,
         title,
         body,
         link,
         targetType,
         targetId,
-      });
-
-      if (soundEnabled) {
-        playNotificationChime();
-      }
+        eventId,
+        chatId,
+        messageId,
+        notificationId,
+        fcmMessageId,
+      }, true);
     });
     return () => {
       if (unsub) unsub();
     };
-  }, [soundEnabled, showToast]);
+  }, [showToast]);
 
   // Sync browser permission changes
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPermissionStatus(Notification.permission);
       if (Notification.permission === 'denied' && browserNotificationsEnabled) {
         setBrowserNotificationsEnabled(false);
       }
@@ -383,6 +594,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       lastDocRef.current = null;
       seenIdsRef.current = new Set();
       isInitialLoadRef.current = true;
+      setIsPushRegisteredOnServer(false);
       return;
     }
 
@@ -467,15 +679,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           if (newest) {
             showToast({
               id: newest.id,
+              notificationId: newest.notificationId,
               title: newest.title,
               body: newest.body || newest.message,
               link: newest.link,
               targetType: newest.targetType,
               targetId: newest.targetId,
-            });
-          }
-          if (soundEnabled) {
-            playNotificationChime();
+              eventId: newest.eventId,
+              chatId: newest.chatId,
+              requestId: newest.requestId,
+              reservationId: newest.reservationId,
+            }, true);
           }
         }
 
@@ -664,45 +878,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [currentUserId, notifications]
   );
 
-  // Silent auto-sync for users who already granted notification permission
-  useEffect(() => {
-    if (!currentUserId) return;
-    if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) return;
-
-    if (Notification.permission === 'granted' && browserNotificationsEnabled) {
-      (async () => {
-        try {
-          let vapidPublicKey =
-            ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_FIREBASE_VAPID_KEY) as string)?.trim() ||
-            ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_VAPID_PUBLIC_KEY) as string)?.trim() ||
-            '';
-
-          if (!vapidPublicKey) {
-            const vapidRes = await fetch(NOTIFICATION_ENDPOINTS.vapidPublicKey).catch(() => null);
-            if (vapidRes?.ok) {
-              const data = await vapidRes.json();
-              vapidPublicKey = data.publicKey || '';
-            }
-          }
-
-          const fcmToken = await subscribeToFCM(vapidPublicKey);
-          const idToken = await auth.currentUser?.getIdToken();
-
-          if (fcmToken && idToken) {
-            await fetch(NOTIFICATION_ENDPOINTS.registerFcm, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${idToken}`,
-              },
-              body: JSON.stringify({ token: fcmToken }),
-            }).catch(() => {});
-          }
-        } catch {}
-      })();
-    }
-  }, [currentUserId, browserNotificationsEnabled]);
-
   return (
     <NotificationContext.Provider
       value={{
@@ -711,6 +886,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         chatUnreadCounts,
         soundEnabled,
         browserNotificationsEnabled,
+        isPushRegisteredOnServer,
+        permissionStatus,
         isLoading,
         hasMore,
         activeToast,

@@ -87,7 +87,7 @@ export function CreateListing() {
     }
 
     for (const file of selectedFiles) {
-      const validation = validateImageFile(file);
+      const validation = await validateImageFile(file);
       if (!validation.valid) {
         setError(validation.error || 'Invalid image file.');
         if (fileInputRef.current) fileInputRef.current.value = '';
