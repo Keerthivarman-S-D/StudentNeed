@@ -1,17 +1,20 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { NotificationProvider } from './context/NotificationContext';
-import { Navbar } from './components/Navbar';
-import { NotificationToast } from './components/NotificationToast';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { StudentNeedChatbot } from './components/StudentNeedChatbot';
 import { StudentNeedIcon } from './components/StudentNeedLogo';
 import { AdminRoute } from './components/AdminRoute';
 
 // Eagerly loaded critical landing page
 import { Launch } from './pages/Launch';
+
+// Lazy-loaded context providers for authenticated / marketplace routes
+const MarketplaceProviders = lazy(() => import('./context/MarketplaceProviders'));
+
+// Lazy-loaded UI chrome for authenticated / marketplace routes
+const Navbar = lazy(() => import('./components/Navbar').then(m => ({ default: m.Navbar })));
+const NotificationToast = lazy(() => import('./components/NotificationToast').then(m => ({ default: m.NotificationToast })));
+const StudentNeedChatbot = lazy(() => import('./components/StudentNeedChatbot').then(m => ({ default: m.StudentNeedChatbot })));
 
 // Route-level Code Splitting for secondary and heavy application pages
 const Home = lazy(() => import('./pages/Home').then(m => ({ default: m.Home })));
@@ -44,12 +47,17 @@ function AppContent() {
   const { firebaseUser, loading } = useAuth();
   const location = useLocation();
 
-  // Public landing, marketing, and legal routes render immediately without being blocked by auth state resolution
+  // Public landing, marketing, and legal routes render immediately without being blocked by auth state resolution.
+  // For users with an active saved session, we wait on '/' to prevent a flash of logged-out content before hydrating Home.
+  const hasSavedSession = typeof window !== 'undefined' && localStorage.getItem('sn_has_session') === 'true';
   const isPublicRoute =
-    location.pathname === '/' ||
     location.pathname === '/launch' ||
     location.pathname === '/terms' ||
-    location.pathname === '/privacy';
+    location.pathname === '/privacy' ||
+    location.pathname === '/login' ||
+    location.pathname === '/register' ||
+    location.pathname === '/verify-email' ||
+    (location.pathname === '/' && !hasSavedSession);
 
   if (loading && !isPublicRoute) {
     return (
@@ -72,8 +80,14 @@ function AppContent() {
 
   return (
     <div className={`flex min-h-screen flex-col ${isWarmBgPage ? 'bg-[#f7f6f2]' : 'bg-brand-bg'} ${hideAppNavbar ? '' : 'pb-16 md:pb-0'}`}>
-      <NotificationToast />
-      {!hideAppNavbar && <Navbar />}
+      <Suspense fallback={null}>
+        <NotificationToast />
+      </Suspense>
+      {!hideAppNavbar && (
+        <Suspense fallback={null}>
+          <Navbar />
+        </Suspense>
+      )}
       <main className="flex-1">
         <Suspense fallback={<PageLoadingFallback />}>
           <Routes>
@@ -155,21 +169,47 @@ function AppContent() {
           </Routes>
         </Suspense>
       </main>
-      {location.pathname === '/' && Boolean(firebaseUser) && <StudentNeedChatbot />}
+      {location.pathname === '/' && Boolean(firebaseUser) && (
+        <Suspense fallback={null}>
+          <StudentNeedChatbot />
+        </Suspense>
+      )}
     </div>
+  );
+}
+
+function AppShell() {
+  const location = useLocation();
+  const { firebaseUser } = useAuth();
+
+  const hasSavedSession = typeof window !== 'undefined' && localStorage.getItem('sn_has_session') === 'true';
+  // Public marketing & auth routes do NOT need AppProvider or NotificationProvider
+  const isPublicOnly =
+    location.pathname === '/launch' ||
+    location.pathname === '/terms' ||
+    location.pathname === '/privacy' ||
+    (location.pathname === '/' && !hasSavedSession && !firebaseUser) ||
+    ['/login', '/register', '/verify-email'].includes(location.pathname);
+
+  if (isPublicOnly) {
+    return <AppContent />;
+  }
+
+  return (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <MarketplaceProviders>
+        <AppContent />
+      </MarketplaceProviders>
+    </Suspense>
   );
 }
 
 export default function App() {
   return (
     <AuthProvider>
-      <AppProvider>
-        <NotificationProvider>
-          <BrowserRouter>
-            <AppContent />
-          </BrowserRouter>
-        </NotificationProvider>
-      </AppProvider>
+      <BrowserRouter>
+        <AppShell />
+      </BrowserRouter>
     </AuthProvider>
   );
 }

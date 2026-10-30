@@ -23,8 +23,17 @@ export default defineConfig(() => {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
-              if (id.includes('firebase')) {
-                return 'vendor-firebase';
+              if (id.includes('firestore') || id.includes('webchannel-wrapper')) {
+                return 'vendor-firebase-firestore';
+              }
+              if (id.includes('firebase/messaging') || id.includes('@firebase/messaging')) {
+                return 'vendor-firebase-messaging';
+              }
+              if (id.includes('firebase/storage') || id.includes('@firebase/storage')) {
+                return 'vendor-firebase-storage';
+              }
+              if (id.includes('firebase') || id.includes('@firebase')) {
+                return 'vendor-firebase-auth';
               }
               if (id.includes('lucide-react')) {
                 return 'vendor-icons';

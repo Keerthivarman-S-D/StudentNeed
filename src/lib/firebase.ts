@@ -1,13 +1,13 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { app, auth } from './firebaseAuth';
 import { initializeFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
+
+export { app, auth };
+export * from './firebaseAuth';
 
 export enum OperationType {
   CREATE = 'create',
