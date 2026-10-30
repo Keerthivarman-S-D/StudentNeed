@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>StudentNeedd — Your Campus Marketplace</title>
+    <title>StudentNeed — Your Campus Marketplace</title>
     <meta name="description" content="StudentNeed connects students with items available on their campus. Find, connect and meet with other students." />
     <meta property="og:title" content="StudentNeed — Your Campus Marketplace" />
     <meta property="og:description" content="StudentNeed connects students with items available on their campus. Find, connect and meet with other students." />
@@ -14,7 +14,9 @@
         const heroPreload = document.createElement('link');
         heroPreload.rel = 'preload';
         heroPreload.as = 'image';
-        heroPreload.href = '/images/landing/hero-handoff.webp';
+        heroPreload.href = (window.innerWidth && window.innerWidth <= 640)
+          ? '/images/landing/hero-handoff-640.webp'
+          : '/images/landing/hero-handoff.webp';
         heroPreload.setAttribute('fetchpriority', 'high');
         document.head.appendChild(heroPreload);
       }

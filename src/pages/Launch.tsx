@@ -79,7 +79,7 @@ export function Launch() {
       campusInfo: 'Hostel 3 • Library Foyer',
       type: 'For Sale',
       price: '₹450',
-      image: '/images/landing/casio-calculator.jpg',
+      image: '/images/landing/casio-calculator.webp',
     },
     {
       id: 'sample-math',
@@ -89,7 +89,7 @@ export function Launch() {
       campusInfo: 'Mechanical Dept',
       type: 'For Sale',
       price: '₹300',
-      image: '/images/landing/engineering-math.jpg',
+      image: '/images/landing/engineering-math.webp',
     },
     {
       id: 'sample-coat',
@@ -99,7 +99,7 @@ export function Launch() {
       campusInfo: 'Chemistry Lab',
       type: 'Donate',
       price: 'Free',
-      image: '/images/landing/lab-coat.jpg',
+      image: '/images/landing/lab-coat.webp',
     },
     {
       id: 'sample-arduino',
@@ -109,7 +109,7 @@ export function Launch() {
       campusInfo: 'ECE Department',
       type: 'Exchange',
       price: 'Exchange',
-      image: '/images/landing/arduino-kit.jpg',
+      image: '/images/landing/arduino-kit.webp',
     },
   ];
 
@@ -248,6 +248,8 @@ export function Launch() {
                   <div className="overflow-hidden rounded-3xl border border-[#dedcd4] bg-zinc-100 shadow-md aspect-[4/3] relative">
                     <img
                       src="/images/landing/hero-handoff.webp"
+                      srcSet="/images/landing/hero-handoff-640.webp 640w, /images/landing/hero-handoff.webp 1200w"
+                      sizes="(max-width: 640px) 100vw, 600px"
                       alt="Students exchanging study materials on campus"
                       className="h-full w-full object-cover"
                       loading="eager"
@@ -433,8 +435,11 @@ export function Launch() {
                       <img
                         src={item.image}
                         alt={item.title}
+                        width={600}
+                        height={450}
                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                         loading="lazy"
+                        decoding="async"
                       />
 
                       {/* Top Left Badge */}

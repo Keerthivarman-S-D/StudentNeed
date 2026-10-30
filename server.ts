@@ -308,7 +308,7 @@ async function startServer() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://apis.google.com"],
           styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
           fontSrc: ["'self'", "https://fonts.gstatic.com"],
           imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://images.unsplash.com", "https://api.dicebear.com"],
@@ -323,7 +323,7 @@ async function startServer() {
             "https://studentneed-backend.onrender.com",
           ],
           frameAncestors,
-          frameSrc: ["'self'"],
+          frameSrc: ["'self'", "https://*.firebaseapp.com", "https://apis.google.com"],
           objectSrc: ["'none'"],
         },
       },
@@ -5909,7 +5909,17 @@ Respond to the student's question directly, and if possible provide structured J
       }
       next();
     });
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { dotfiles: 'allow' }));
+    // Explicit handler for .well-known manifests to guarantee application/json and prevent SPA fallback
+    app.get('/.well-known/:file', (req, res) => {
+      const filePath = path.join(distPath, '.well-known', req.params.file);
+      if (fs.existsSync(filePath)) {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        return res.sendFile(filePath);
+      }
+      res.status(404).json({ error: 'Manifest not found' });
+    });
     app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

@@ -42,16 +42,23 @@ export function StudentNeedIcon({
   const resolvedClass = isCustomNumber ? '' : sizeMap[size]?.icon || sizeMap.md.icon;
 
   return (
-    <img
-      src="/studentneed-monogram.png"
-      alt={alt}
-      width={isCustomNumber ? size : undefined}
-      height={isCustomNumber ? size : undefined}
-      style={isCustomNumber ? { width: size, height: size } : undefined}
-      className={cn('object-contain select-none shrink-0 transition-transform', resolvedClass, className)}
-      loading="eager"
-      decoding="async"
-    />
+    <picture className="shrink-0 select-none inline-flex items-center justify-center">
+      <source
+        type="image/webp"
+        srcSet="/studentneed-monogram-96.webp 96w, /studentneed-monogram.webp 186w"
+        sizes="48px"
+      />
+      <img
+        src="/studentneed-monogram.png"
+        alt={alt}
+        width={isCustomNumber ? size : 48}
+        height={isCustomNumber ? size : 48}
+        style={isCustomNumber ? { width: size, height: size } : undefined}
+        className={cn('object-contain select-none shrink-0 transition-transform', resolvedClass, className)}
+        loading="eager"
+        decoding="async"
+      />
+    </picture>
   );
 }
 

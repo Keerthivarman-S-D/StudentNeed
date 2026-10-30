@@ -10,14 +10,16 @@ import { StudentNeedChatbot } from './components/StudentNeedChatbot';
 import { StudentNeedIcon } from './components/StudentNeedLogo';
 import { AdminRoute } from './components/AdminRoute';
 
-// Eagerly loaded critical landing / auth pages
+// Eagerly loaded critical landing page
 import { Launch } from './pages/Launch';
-import { Home } from './pages/Home';
-import { Marketplace } from './pages/Marketplace';
-import { Login } from './pages/Login';
-import { Register } from './pages/Register';
-import { VerifyEmail } from './pages/VerifyEmail';
-import { Onboarding } from './pages/Onboarding';
+
+// Route-level Code Splitting for secondary and heavy application pages
+const Home = lazy(() => import('./pages/Home').then(m => ({ default: m.Home })));
+const Marketplace = lazy(() => import('./pages/Marketplace').then(m => ({ default: m.Marketplace })));
+const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
+const Register = lazy(() => import('./pages/Register').then(m => ({ default: m.Register })));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail').then(m => ({ default: m.VerifyEmail })));
+const Onboarding = lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
 
 // Route-level Code Splitting for heavy application pages
 const ListingDetail = lazy(() => import('./pages/ListingDetail').then(m => ({ default: m.ListingDetail })));
@@ -42,7 +44,14 @@ function AppContent() {
   const { firebaseUser, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  // Public landing, marketing, and legal routes render immediately without being blocked by auth state resolution
+  const isPublicRoute =
+    location.pathname === '/' ||
+    location.pathname === '/launch' ||
+    location.pathname === '/terms' ||
+    location.pathname === '/privacy';
+
+  if (loading && !isPublicRoute) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-brand-bg space-y-4">
         <StudentNeedIcon size="2xl" />

@@ -38,6 +38,8 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             <div className="overflow-hidden rounded-[22px] bg-zinc-100 shadow-2xs max-w-[430px] w-full aspect-[16/11]">
               <img
                 src="/images/landing/hero-handoff.webp"
+                srcSet="/images/landing/hero-handoff-640.webp 640w, /images/landing/hero-handoff.webp 1200w"
+                sizes="(max-width: 640px) 100vw, 430px"
                 alt="Students exchanging campus essentials on college pathway"
                 className="w-full h-full object-cover"
                 loading="eager"
