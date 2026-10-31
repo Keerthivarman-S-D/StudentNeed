@@ -60,6 +60,7 @@ export function Onboarding() {
   });
 
   const verifiedEmail = registrationSession.email || firebaseUser?.email || '';
+  const registrationToken = registrationSession.registrationToken || (location.state as any)?.registrationToken || '';
 
   // Profile fields state
   const [name, setName] = useState(currentUser?.name || '');
@@ -244,21 +245,33 @@ export function Onboarding() {
           body: JSON.stringify({
             email: cleanEmail,
             password,
+            registrationToken,
           }),
         });
 
         const createData = await createRes.json().catch(() => ({}));
 
-        if (!createRes.ok) {
-          throw new Error(
-            createData.error ||
-              (createData.details
-                ? createData.details[0]
-                : 'Failed to create account. Please try again.')
-          );
+        if (createRes.ok) {
+          activeUid = createData.uid;
+        } else {
+          // If the account was already created (e.g. retry or rapid double click), attempt sign-in
+          const errMsg = (createData.error || '').toLowerCase();
+          if (
+            createRes.status === 409 ||
+            errMsg.includes('already in use') ||
+            errMsg.includes('email_exists') ||
+            errMsg.includes('already registered')
+          ) {
+            // Account exists, proceed to sign in with user's verified password
+          } else {
+            throw new Error(
+              createData.error ||
+                (createData.details
+                  ? createData.details[0]
+                  : 'Failed to create account. Please try again.')
+            );
+          }
         }
-
-        activeUid = createData.uid;
 
         // Sign in via Firebase Auth to obtain authenticated session
         const userCred = await signInWithEmailAndPassword(
@@ -291,6 +304,7 @@ export function Onboarding() {
             bio: cleanBio,
             avatarUrl: finalAvatarUrl,
             idToken,
+            registrationToken,
           }),
         });
 
@@ -299,31 +313,37 @@ export function Onboarding() {
         } else {
           const errData = await response.json().catch(() => ({}));
           console.warn('Backend finalizeAccount returned non-200:', errData);
+          if (errData.error) {
+            throw new Error(errData.error);
+          }
         }
-      } catch (backendErr) {
-        console.warn('Backend finalizeAccount network error, will apply Firestore sync:', backendErr);
+      } catch (backendErr: any) {
+        console.warn('Backend finalizeAccount note:', backendErr?.message || backendErr);
+        if (backendErr?.message && !backendErr.message.toLowerCase().includes('fetch')) {
+          throw backendErr;
+        }
       }
 
-      // 5. Resilience Fallback: Update Firestore document directly
-      try {
-        await setDoc(
-          doc(db, 'users', activeUid),
-          {
-            id: activeUid,
-            name: cleanName,
-            department: cleanDept,
-            yearOfStudy: cleanYear,
-            bio: cleanBio,
-            avatarUrl: finalAvatarUrl,
-            campus: 'Madras Institute of Technology – Anna University',
-            onboardingCompleted: true,
-            isVerified: true,
-          },
-          { merge: true }
-        );
-      } catch (firestoreErr) {
-        if (!backendSuccess) {
-          throw firestoreErr;
+      // 5. Resilience Fallback: Update Firestore document directly if backend was offline
+      if (!backendSuccess) {
+        try {
+          await setDoc(
+            doc(db, 'users', activeUid),
+            {
+              id: activeUid,
+              name: cleanName,
+              department: cleanDept,
+              yearOfStudy: cleanYear,
+              bio: cleanBio,
+              avatarUrl: finalAvatarUrl,
+              campus: 'Madras Institute of Technology – Anna University',
+              onboardingCompleted: true,
+              isVerified: true,
+            },
+            { merge: true }
+          );
+        } catch (firestoreErr) {
+          console.warn('Direct Firestore sync note:', firestoreErr);
         }
       }
 

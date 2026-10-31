@@ -58,6 +58,7 @@ function AppContent() {
     location.pathname === '/login' ||
     location.pathname === '/register' ||
     location.pathname === '/verify-email' ||
+    location.pathname === '/onboarding' ||
     (location.pathname === '/' && !hasSavedSession);
 
   if (loading && !isPublicRoute) {
@@ -75,7 +76,7 @@ function AppContent() {
   const isLaunchExplicit = location.pathname === '/launch';
   const isRootLaunch = location.pathname === '/' && !firebaseUser;
   const isLaunchActive = isLaunchExplicit || isRootLaunch;
-  const isAuthPage = ['/login', '/register', '/verify-email', '/terms', '/privacy'].includes(location.pathname);
+  const isAuthPage = ['/login', '/register', '/verify-email', '/onboarding', '/terms', '/privacy'].includes(location.pathname);
   const isWarmBgPage = isAuthPage || location.pathname === '/' || location.pathname === '/launch' || location.pathname === '/marketplace' || location.pathname.startsWith('/listing/') || location.pathname === '/requests' || location.pathname === '/create-request' || location.pathname === '/create-listing' || location.pathname.startsWith('/chat') || location.pathname === '/profile' || location.pathname === '/reserved' || location.pathname === '/onboarding' || location.pathname === '/admin' || location.pathname === '/terms' || location.pathname === '/privacy' || location.pathname === '/genui';
   const hideAppNavbar = isLaunchActive || isAuthPage;
 
@@ -196,7 +197,8 @@ function AppShell() {
     location.pathname === '/terms' ||
     location.pathname === '/privacy' ||
     (location.pathname === '/' && !hasSavedSession && !firebaseUser) ||
-    ['/login', '/register', '/verify-email'].includes(location.pathname);
+    ['/login', '/register', '/verify-email'].includes(location.pathname) ||
+    (location.pathname === '/onboarding' && !firebaseUser);
 
   if (isPublicOnly) {
     return <AppContent />;

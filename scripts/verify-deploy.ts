@@ -97,11 +97,11 @@ function verifyDeploymentArtifacts() {
     console.log('PASS: firebase.json hosting.ignore correctly blocks .cjs, .map, and server files.');
 
     const rewrites = firebaseJson.hosting?.rewrites || [];
-    const hasApiExclusion = rewrites.some((rw: any) => rw.source === '!/api/**');
-    if (!hasApiExclusion) {
-      console.warn('WARN: firebase.json rewrites does not exclude !/api/**');
+    const hasApiRewrite = rewrites.some((rw: any) => rw.source === '!/api/**' || (rw.source === '/api/**' && rw.function));
+    if (!hasApiRewrite) {
+      console.warn('WARN: firebase.json rewrites does not route /api/** to Cloud Functions');
     } else {
-      console.log('PASS: firebase.json rewrites excludes /api/** from SPA index.html fallback.');
+      console.log('PASS: firebase.json rewrites correctly routes /api/** to Cloud Functions.');
     }
   }
 

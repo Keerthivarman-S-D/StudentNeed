@@ -21,12 +21,30 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     );
   }
 
+  const isOnboardingRoute = location.pathname === '/onboarding';
+
+  // Check if there is an active verified registration session in progress
+  const hasVerifiedRegistrationSession = (() => {
+    if (!isOnboardingRoute) return false;
+    if (location.state && location.state.verified && location.state.email && location.state.registrationToken) return true;
+    try {
+      const stored = sessionStorage.getItem('studentneed_registration_session');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.verified && parsed.email && parsed.registrationToken) return true;
+      }
+    } catch {}
+    return false;
+  })();
+
   // If not authenticated via Firebase
   if (!firebaseUser) {
+    if (isOnboardingRoute && hasVerifiedRegistrationSession) {
+      return <>{children}</>;
+    }
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const isOnboardingRoute = location.pathname === '/onboarding';
   const profileComplete = isProfileComplete(currentUser);
 
   // Returning users with completed profiles must not see onboarding again

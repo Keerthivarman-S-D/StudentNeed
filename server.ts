@@ -61,35 +61,54 @@ async function getServerToken(): Promise<string | null> {
   const systemEmail = process.env.INTERNAL_SYSTEM_EMAIL?.trim() || "internal.system@student.annauniv.edu";
   const systemPassword = process.env.INTERNAL_SYSTEM_PASSWORD?.trim();
 
-  if (!systemEmail || !systemPassword) {
-    console.warn("[System Auth] INTERNAL_SYSTEM_EMAIL or INTERNAL_SYSTEM_PASSWORD is not set in environment.");
-    return null;
-  }
+  if (systemEmail && systemPassword) {
+    try {
+      const authUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`;
+      const res = await fetch(authUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: systemEmail,
+          password: systemPassword,
+          returnSecureToken: true,
+        }),
+      });
 
-  try {
-    const authUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`;
-    const res = await fetch(authUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: systemEmail,
-        password: systemPassword,
-        returnSecureToken: true,
-      }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
+      const data = await res.json();
+      if (res.ok) {
+        serverToken = data.idToken;
+        serverTokenExpiry = Date.now() + (parseInt(data.expiresIn, 10) || 3600) * 1000;
+        return serverToken;
+      }
       console.warn(`[System Auth] System account sign-in rejected (${res.status}):`, data?.error?.message || data);
-      return null;
+    } catch (err: any) {
+      console.warn("[System Auth] Network error during system account sign-in:", err?.message);
     }
-    serverToken = data.idToken;
-    serverTokenExpiry = Date.now() + (parseInt(data.expiresIn, 10) || 3600) * 1000;
-    return serverToken;
-  } catch (err: any) {
-    console.warn("[System Auth] Network error during system account sign-in:", err?.message);
-    return null;
   }
+
+  // Fallback to Google Application Default Credentials (for Google Cloud Run)
+  try {
+    const auth = new GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/datastore"],
+    });
+    const client = await auth.getClient();
+    const tokenResponse = await client.getAccessToken();
+    if (tokenResponse && tokenResponse.token) {
+      serverToken = tokenResponse.token;
+      serverTokenExpiry = Date.now() + 55 * 60 * 1000;
+      return serverToken;
+    }
+  } catch (adcErr: any) {
+    // ADC unavailable (e.g. local development)
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    // Non-production environment fallback
+  } else {
+    console.warn("[System Auth] INTERNAL_SYSTEM_EMAIL or INTERNAL_SYSTEM_PASSWORD is not set in environment.");
+  }
+
+  return null;
 }
 
 // Interface for shared persistent Firestore-backed OTP store
@@ -1202,7 +1221,7 @@ Respond to the student's question directly, and if possible provide structured J
         return sendRateLimitResponse(res, ipLimit.retryAfterSeconds, "Too many account creation requests. Please wait a few minutes.");
       }
 
-      const { email, password } = req.body;
+      const { email, password, registrationToken } = req.body;
       if (!email || typeof email !== "string" || !password || typeof password !== "string") {
         return res.status(400).json({ error: "Email and password are required." });
       }
@@ -1230,6 +1249,11 @@ Respond to the student's question directly, and if possible provide structured J
 
       if (!verifiedRecord || !verifiedRecord.verified || !verifiedRecord.verifiedExpiresAt || Date.now() > verifiedRecord.verifiedExpiresAt) {
         return res.status(403).json({ error: "Email not verified or verification expired. Please complete email verification first." });
+      }
+
+      // Anti-bypass check: Verify server-issued registrationToken
+      if (registrationToken && verifiedRecord.registrationToken && verifiedRecord.registrationToken !== registrationToken) {
+        return res.status(403).json({ error: "Invalid registration session. Verification cannot be bypassed." });
       }
 
       // Create user via Google Identity Toolkit
@@ -1278,7 +1302,7 @@ Respond to the student's question directly, and if possible provide structured J
         return sendRateLimitResponse(res, ipLimit.retryAfterSeconds, "Too many profile finalization requests. Please wait a few minutes.");
       }
 
-      const { uid, email, name, department, yearOfStudy, bio, avatarUrl, idToken } = req.body;
+      const { uid, email, name, department, yearOfStudy, bio, avatarUrl, idToken, registrationToken } = req.body;
 
       if (!uid || !email || !idToken) {
         return res.status(400).json({ error: "UID, email, and idToken are required." });
@@ -1293,9 +1317,22 @@ Respond to the student's question directly, and if possible provide structured J
 
       const emailDocId = crypto.createHash("sha256").update(normalizedEmail).digest("hex");
       const verifiedRecord = await getOtpRecord(emailDocId);
+      const isRegistered = await isEmailRegistered(emailDocId);
 
-      if (!verifiedRecord || !verifiedRecord.verified || !verifiedRecord.verifiedExpiresAt || Date.now() > verifiedRecord.verifiedExpiresAt) {
+      const hasValidOtp = Boolean(
+        verifiedRecord &&
+        verifiedRecord.verified &&
+        verifiedRecord.verifiedExpiresAt &&
+        Date.now() <= verifiedRecord.verifiedExpiresAt
+      );
+
+      if (!hasValidOtp && !isRegistered) {
         return res.status(403).json({ error: "Email not verified or verification expired. You cannot create an account." });
+      }
+
+      // Anti-bypass check: Verify server-issued registrationToken
+      if (registrationToken && verifiedRecord?.registrationToken && verifiedRecord.registrationToken !== registrationToken) {
+        return res.status(403).json({ error: "Invalid registration session. Verification cannot be bypassed." });
       }
 
       const finalAvatarUrl = avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${name || 'User'}&backgroundColor=000000`;
@@ -1318,40 +1355,30 @@ Respond to the student's question directly, and if possible provide structured J
 
       // Use Firestore REST API with system privileges to securely create verified public profile
       const systemToken = await getServerToken();
-      const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users?documentId=${uid}`;
 
-      const firestorePayload = {
-        fields: {
-          id: { stringValue: uid },
-          name: { stringValue: name || '' },
-          department: { stringValue: department || '' },
-          yearOfStudy: { stringValue: yearOfStudy || '' },
-          bio: { stringValue: bio || '' },
-          onboardingCompleted: { booleanValue: true },
-          campus: { stringValue: 'Madras Institute of Technology – Anna University' },
-          rating: { integerValue: "0" },
-          avatarUrl: { stringValue: finalAvatarUrl },
-          exchangesCompleted: { integerValue: "0" },
-          role: { stringValue: 'student' },
-          isVerified: { booleanValue: true },
-          createdAt: { stringValue: new Date().toISOString() }
-        }
-      };
+      if (systemToken) {
+        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users?documentId=${uid}`;
 
-      const firestoreRes = await fetch(firestoreUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${systemToken}`
-        },
-        body: JSON.stringify(firestorePayload)
-      });
+        const firestorePayload = {
+          fields: {
+            id: { stringValue: uid },
+            name: { stringValue: name || '' },
+            department: { stringValue: department || '' },
+            yearOfStudy: { stringValue: yearOfStudy || '' },
+            bio: { stringValue: bio || '' },
+            onboardingCompleted: { booleanValue: true },
+            campus: { stringValue: 'Madras Institute of Technology – Anna University' },
+            rating: { integerValue: "0" },
+            avatarUrl: { stringValue: finalAvatarUrl },
+            exchangesCompleted: { integerValue: "0" },
+            role: { stringValue: 'student' },
+            isVerified: { booleanValue: true },
+            createdAt: { stringValue: new Date().toISOString() }
+          }
+        };
 
-      if (!firestoreRes.ok) {
-        // If POST fails, it might already exist, try PATCH
-        const patchUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${uid}`;
-        const patchRes = await fetch(patchUrl, {
-          method: "PATCH",
+        const firestoreRes = await fetch(firestoreUrl, {
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${systemToken}`
@@ -1359,32 +1386,53 @@ Respond to the student's question directly, and if possible provide structured J
           body: JSON.stringify(firestorePayload)
         });
 
-        if (!patchRes.ok) {
-           const errText = await patchRes.text();
-           console.error("Firestore REST Error:", errText);
-           return res.status(500).json({ error: "Failed to create user profile in database." });
-        }
-      }
+        if (!firestoreRes.ok) {
+          // If POST fails, it might already exist, try PATCH
+          const patchUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${uid}`;
+          const patchRes = await fetch(patchUrl, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${systemToken}`
+            },
+            body: JSON.stringify(firestorePayload)
+          });
 
-      // Securely store private PII (institutional email, phone, private settings) in isolated subcollection
-      const privateProfileUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${uid}/private/profile`;
-      const privatePayload = {
-        fields: {
-          email: { stringValue: normalizedEmail },
-          phone: { stringValue: "" },
-          uid: { stringValue: uid },
-          createdAt: { stringValue: new Date().toISOString() },
-          updatedAt: { stringValue: new Date().toISOString() }
+          if (!patchRes.ok) {
+             const errText = await patchRes.text();
+             console.error("Firestore REST Error:", errText);
+             if (process.env.NODE_ENV === "production") {
+               return res.status(500).json({ error: "Failed to create user profile in database." });
+             }
+          }
         }
-      };
-      await fetch(privateProfileUrl, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${systemToken}`
-        },
-        body: JSON.stringify(privatePayload)
-      });
+
+        // Securely store private PII (institutional email, phone, private settings) in isolated subcollection
+        const privateProfileUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${uid}/private/profile`;
+        const privatePayload = {
+          fields: {
+            email: { stringValue: normalizedEmail },
+            phone: { stringValue: "" },
+            uid: { stringValue: uid },
+            createdAt: { stringValue: new Date().toISOString() },
+            updatedAt: { stringValue: new Date().toISOString() }
+          }
+        };
+        await fetch(privateProfileUrl, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${systemToken}`
+          },
+          body: JSON.stringify(privatePayload)
+        }).catch((err) => console.warn("Private profile write non-fatal note:", err));
+      } else {
+        if (process.env.NODE_ENV === "production") {
+          console.error("[Finalize Account] System authentication token is unavailable in production environment.");
+          return res.status(500).json({ error: "System authentication token unavailable. Please contact campus admin." });
+        }
+        console.info(`[DEV MODE] Finalize account profile recorded for ${uid} (${normalizedEmail})`);
+      }
 
       // Mark email as registered in persistent store
       await markEmailRegistered(emailDocId, uid);

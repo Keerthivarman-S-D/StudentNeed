@@ -17,12 +17,12 @@ function assert(condition: boolean, testName: string, detail?: string) {
 
 console.log('\n--- Running StudentNeed Production Frontend-to-Backend Connectivity Tests ---\n');
 
-// 1. Verify getApiBaseUrl logic & fallback
+// 1. Verify getApiBaseUrl logic & fallback (Pure Firebase Architecture)
 {
   const url = getApiBaseUrl();
   assert(
-    url === '' || url === 'https://studentneed-backend.onrender.com',
-    'getApiBaseUrl returns valid backend URL or dev origin'
+    url === '',
+    'getApiBaseUrl returns empty string for same-origin Firebase Hosting Cloud Functions routing'
   );
 
   // Check .env.production
@@ -30,8 +30,8 @@ console.log('\n--- Running StudentNeed Production Frontend-to-Backend Connectivi
   assert(fs.existsSync(envProdPath), '.env.production template exists for Vite builds');
   const envProdContent = fs.readFileSync(envProdPath, 'utf-8');
   assert(
-    envProdContent.includes('VITE_API_URL=https://studentneed-backend.onrender.com'),
-    '.env.production configures VITE_API_URL to production Render backend'
+    !envProdContent.includes('onrender.com'),
+    '.env.production does NOT contain external Render backend host'
   );
 }
 
