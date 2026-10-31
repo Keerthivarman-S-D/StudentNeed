@@ -209,35 +209,10 @@ export function Onboarding() {
       const cleanBio = bio.trim();
       const cleanEmail = verifiedEmail.trim().toLowerCase();
 
-      // 2. Resolve Avatar: Upload new photo to Cloudinary or use default monogram
-      let finalAvatarUrl =
-        avatarPreview && !avatarPreview.startsWith('blob:')
-          ? avatarPreview
-          : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
-              cleanName
-            )}&backgroundColor=000000`;
-
-      if (avatarFile) {
-        try {
-          finalAvatarUrl = await uploadImageToCloudinary(avatarFile, {
-            folder: 'studentneed/avatars',
-          });
-        } catch (imgError: any) {
-          console.error('Failed to upload avatar to Cloudinary:', imgError);
-          setFieldErrors((prev) => ({
-            ...prev,
-            avatar:
-              'Image upload failed. Please try again or continue with the default monogram.',
-          }));
-          setIsLoading(false);
-          return;
-        }
-      }
-
       let activeUid = firebaseUser?.uid;
       let idToken = '';
 
-      // 3. If new user, create Firebase Authentication account securely
+      // 2. Establish Authenticated Session FIRST: Create account and sign in so user is authenticated
       if (!firebaseUser) {
         const createRes = await fetch(AUTH_ENDPOINTS.createAccount, {
           method: 'POST',
@@ -283,10 +258,35 @@ export function Onboarding() {
         idToken = await userCred.user.getIdToken();
       } else {
         idToken = await firebaseUser.getIdToken();
+        activeUid = firebaseUser.uid;
       }
 
       if (!activeUid || !idToken) {
         throw new Error('Unable to establish student authentication session.');
+      }
+
+      // 3. Resolve Avatar: User is now authenticated, so uploadImageToCloudinary has a valid auth session
+      const defaultAvatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+        cleanName
+      )}&backgroundColor=000000`;
+
+      let finalAvatarUrl =
+        avatarPreview && !avatarPreview.startsWith('blob:')
+          ? avatarPreview
+          : defaultAvatarUrl;
+
+      let avatarUploadFailed = false;
+      if (avatarFile) {
+        try {
+          finalAvatarUrl = await uploadImageToCloudinary(avatarFile, {
+            folder: 'studentneed/avatars',
+          });
+        } catch (imgError: any) {
+          console.warn('Failed to upload avatar to Cloudinary during registration:', imgError);
+          avatarUploadFailed = true;
+          // Gracefully continue with default monogram so registration is not blocked
+          finalAvatarUrl = defaultAvatarUrl;
+        }
       }
 
       // 4. Finalize User Profile via authoritative backend endpoint
@@ -362,12 +362,18 @@ export function Onboarding() {
       // Clean up registration session
       sessionStorage.removeItem('studentneed_registration_session');
 
-      setSuccessMessage('Welcome to StudentNeed! Taking you to the marketplace...');
+      if (avatarUploadFailed) {
+        setSuccessMessage(
+          'Welcome to StudentNeed! Your account is ready. Your profile photo could not be uploaded, but you can update it anytime in settings.'
+        );
+      } else {
+        setSuccessMessage('Welcome to StudentNeed! Taking you to the marketplace...');
+      }
 
       // 7. Seamless Redirect to the main Marketplace
       setTimeout(() => {
         navigate('/marketplace', { replace: true });
-      }, 700);
+      }, avatarUploadFailed ? 1500 : 700);
     } catch (err: any) {
       console.error('Profile setup error:', err);
       setGeneralError(
@@ -512,6 +518,7 @@ export function Onboarding() {
                 <input
                   id="onboarding-name"
                   type="text"
+                  autoComplete="name"
                   value={name}
                   onChange={(e) => {
                     setName(e.target.value);

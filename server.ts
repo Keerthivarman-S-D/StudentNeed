@@ -4023,9 +4023,32 @@ Respond to the student's question directly, and if possible provide structured J
             }
             return null;
           }
+          if (uRes.status === 404) {
+            // Check if user has an active verified OTP record or registered email record during onboarding
+            const emailDocId = crypto.createHash("sha256").update(email).digest("hex");
+            const verifiedRecord = await getOtpRecord(emailDocId);
+            const isRegistered = await isEmailRegistered(emailDocId);
+            if (
+              (verifiedRecord && verifiedRecord.verified && Date.now() <= (verifiedRecord.verifiedExpiresAt || 0)) ||
+              isRegistered
+            ) {
+              return { uid: user.localId, email, isVerified: true, role: "student" };
+            }
+          }
           if (!isAdmin) return null;
         } catch {
           if (!isAdmin) return null;
+        }
+      } else if (process.env.NODE_ENV !== "production") {
+        const emailDocId = crypto.createHash("sha256").update(email).digest("hex");
+        const verifiedRecord = await getOtpRecord(emailDocId);
+        const isRegistered = await isEmailRegistered(emailDocId);
+        if (
+          (verifiedRecord && verifiedRecord.verified) ||
+          isRegistered ||
+          email.endsWith(allowedDomain)
+        ) {
+          return { uid: user.localId, email, isVerified: true, role: "student" };
         }
       }
 

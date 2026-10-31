@@ -363,9 +363,8 @@ export function CreateListing() {
 
       {error && (
         <FormAlert 
-          type="error" 
-          message={error} 
-          onClose={() => setError(null)} 
+          error={error} 
+          onDismiss={() => setError(null)} 
           className="mb-6" 
         />
       )}
