@@ -1,189 +1,106 @@
-# StudentNeed — Anna University Campus Marketplace
+# StudentNeed — Hybrid Spark-Compatible Build
 
-StudentNeed is a verified campus-only peer-to-peer exchange platform engineered for Anna University students (`@student.annauniv.edu`). Students can securely discover textbooks, lab supplies, hostel essentials, and electronics, initiate real-time peer chat, request reservations, and coordinate safe in-person campus meetups.
+StudentNeed is a campus-only peer-to-peer marketplace for Anna University students (`@student.annauniv.edu`). This build keeps the newer marketplace UI and feature work while using the independent Express backend pattern from the earlier working project.
 
----
+## Architecture
 
-## 1. Prerequisites & GCP Environment
+- **Frontend:** React + Vite, deployed as static files to Firebase Hosting.
+- **Authentication:** Firebase Authentication email/password (Spark-compatible), with the existing server-side college-email OTP verification flow.
+- **Database:** Existing Cloud Firestore database and the security rules in `firestore.rules`.
+- **API:** Standalone Express backend (`server.ts`) deployed separately to Render or another independently hosted Node.js service.
+- **Email:** Resend for OTP and password-reset email; keep the API key only in the backend environment.
+- **Images:** Existing Cloudinary integration; configure credentials only if image uploads are enabled.
 
-Ensure the following tools and APIs are enabled in your Google Cloud Project:
+This project does **not** deploy Firebase Cloud Functions and does not require `firebase-functions` or `firebase-admin` in the root application. Firebase Hosting serves the frontend only. The frontend calls the Express API using `VITE_API_URL`.
 
-1. **Google Cloud SDK (`gcloud` CLI)** installed and authenticated.
-2. **Node.js 20+** and `npm` installed.
-3. Enable required Google Cloud services:
-   ```bash
-   gcloud services enable \
-     run.googleapis.com \
-     secretmanager.googleapis.com \
-     firestore.googleapis.com \
-     identitytoolkit.googleapis.com
-   ```
+## Free-plan notes
 
----
+- Firebase email/password Authentication is available on the Firebase Spark plan.
+- Firebase Hosting and Cloud Firestore have free quotas and usage limits. Firestore's free quota applies to exactly one database per Firebase project; the first database created qualifies, regardless of its ID. Confirm that the configured `firestoreDatabaseId` is that free-eligible database before relying on Spark-only operation.
+- Firebase Cloud Functions are intentionally not used because deployment requires Blaze billing.
+- Render's free web services may sleep when idle and have resource limits. Resend and Cloudinary also have their own free-tier quotas. No external free tier is unlimited or guaranteed to remain unchanged.
 
-## 2. Secret Management Setup
+## Prerequisites
 
-Sensitive operational credentials and API tokens are dynamically managed via Google Cloud Secret Manager.
+- Node.js 20 or newer and npm.
+- Firebase CLI (`npm install -g firebase-tools`).
+- Existing Firebase project with Email/Password provider enabled.
+- Existing Firestore database and Firebase project configuration in `firebase-applet-config.json`.
+- Resend account/API key for sending OTP emails.
 
-```bash
-# Set your project ID
-export PROJECT_ID="your-project-id"
-export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
-
-# Create and populate the secret for Gemini API
-gcloud secrets create GEMINI_API_KEY --replication-policy="automatic"
-echo -n "YOUR_API_KEY" | gcloud secrets versions add GEMINI_API_KEY --data-file=-
-
-# Provision Resend API Key in Secret Manager
-gcloud secrets create RESEND_API_KEY --replication-policy="automatic"
-echo -n "YOUR_RESEND_API_KEY" | gcloud secrets versions add RESEND_API_KEY --data-file=-
-
-# Grant the default Cloud Run service account access to read the secrets
-gcloud secrets add-iam-policy-binding GEMINI_API_KEY \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-
-gcloud secrets add-iam-policy-binding RESEND_API_KEY \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-```
-
----
-
-## 3. Cloud Firestore Security Rules Configuration
-
-Deploy the locked-down security rules supporting user data isolation and role boundaries:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId}/interactions/{interactionId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function isInternalSystem() {
-      return request.auth != null && 
-        (request.auth.token.email == 'internal.system@student.annauniv.edu' ||
-         request.auth.token.firebase.identities['email'][0] == 'internal.system@student.annauniv.edu');
-    }
-
-    match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && request.auth.uid == userId;
-      allow delete: if false;
-    }
-
-    match /listings/{listingId} {
-      allow read: if true;
-      allow create: if isAuthenticated() && request.resource.data.sellerId == request.auth.uid;
-      allow update: if isAuthenticated() && (
-        resource.data.sellerId == request.auth.uid ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
-      );
-      allow delete: if isAuthenticated() && resource.data.sellerId == request.auth.uid;
-    }
-
-    match /chats/{chatId} {
-      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
-      allow create: if isAuthenticated() && 
-        request.auth.uid in request.resource.data.participants &&
-        request.resource.data.participants.size() == 2 &&
-        request.resource.data.participants[0] != request.resource.data.participants[1];
-      allow update: if isAuthenticated() && request.auth.uid in resource.data.participants;
-      allow delete: if false;
-
-      match /messages/{messageId} {
-        allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
-        allow create: if isAuthenticated() && 
-          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
-          request.resource.data.senderId == request.auth.uid;
-        allow update, delete: if false;
-      }
-    }
-
-    match /reservations/{reservationId} {
-      function isBuyer() { return request.auth.uid == resource.data.buyerId; }
-      function isSeller() { return request.auth.uid == resource.data.sellerId; }
-
-      allow read: if isAuthenticated() && (
-        resource.data.buyerId == request.auth.uid ||
-        resource.data.sellerId == request.auth.uid ||
-        request.auth.uid == get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.sellerId
-      );
-
-      allow create: if isAuthenticated() &&
-        request.resource.data.buyerId == request.auth.uid &&
-        request.resource.data.sellerId != request.auth.uid &&
-        request.resource.data.status == 'pending';
-
-      allow update: if isAuthenticated() && (
-        (isSeller() && resource.data.status == 'pending' && (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected') && request.resource.data.buyerId == resource.data.buyerId && request.resource.data.sellerId == resource.data.sellerId && request.resource.data.listingId == resource.data.listingId) ||
-        (isBuyer() && resource.data.status == 'rejected' && request.resource.data.status == 'pending' && request.resource.data.buyerId == resource.data.buyerId && request.resource.data.sellerId == resource.data.sellerId && request.resource.data.listingId == resource.data.listingId) ||
-        ((isBuyer() || isSeller()) && resource.data.status == 'accepted' && (request.resource.data.status == 'completed' || request.resource.data.status == 'cancelled') && request.resource.data.buyerId == resource.data.buyerId && request.resource.data.sellerId == resource.data.sellerId && request.resource.data.listingId == resource.data.listingId) ||
-        ((isBuyer() || isSeller()) && resource.data.status == 'accepted' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['meetup', 'updatedAt']) && request.resource.data.buyerId == resource.data.buyerId && request.resource.data.sellerId == resource.data.sellerId && request.resource.data.listingId == resource.data.listingId)
-      );
-
-      allow delete: if false;
-    }
-
-    match /temp_otps/{hashId} {
-      allow read, write: if isInternalSystem();
-    }
-  }
-}
-```
-
-Deploy the rules via Firebase CLI:
-```bash
-firebase deploy --only firestore:rules
-```
-
----
-
-## 4. Google Cloud Run Deployment
-
-Build and deploy the application container to Google Cloud Run:
+## Local development
 
 ```bash
-# Build and deploy service
-gcloud run deploy studentneed-app \
-  --source . \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --port 3000 \
-  --set-env-vars NODE_ENV=production,COLLEGE_EMAIL_DOMAIN=@student.annauniv.edu,EMAIL_FROM="StudentNeed <studentneed.info@gmail.com>" \
-  --set-secrets RESEND_API_KEY=RESEND_API_KEY:latest
-```
-
----
-
-## 5. Required Campaign Verification Binding
-
-Apply the mandatory verification resource label for automated campaign compliance:
-
-```bash
-gcloud run services update studentneed-app \
-  --update-labels=dev-tutorial=cloud-run-ai-challenge \
-  --region=us-central1
-```
-
----
-
-## 6. Local Development
-
-```bash
-# Install dependencies
-npm install
-
-# Run unified full-stack server
+npm ci
+cp .env.example .env
 npm run dev
-
-# Build production bundle
-npm run build
 ```
+
+The development server runs Express and Vite together. Local API calls use same-origin routes.
+
+## Build and checks
+
+```bash
+npm run lint
+npm run build
+npm run test:hybrid
+```
+
+`npm run build` creates the frontend in `dist/`, bundles the Express backend in `dist-server/server.cjs`, and checks that backend artifacts are not published through Firebase Hosting.
+
+## Deploy the Express backend
+
+Create a Render Web Service from this repository:
+
+- Runtime: Node
+- Build command: `npm ci && npm run build`
+- Start command: `npm start`
+
+Set backend environment variables in Render's dashboard (never commit real values):
+
+- `NODE_ENV=production`
+- `FRONTEND_URL=https://studentneed.me`
+- `RESEND_API_KEY` — your Resend key
+- `INTERNAL_SYSTEM_EMAIL=internal.system@student.annauniv.edu`
+- `INTERNAL_SYSTEM_PASSWORD` — password for the dedicated internal system Firebase Auth account
+- `ADMIN_EMAIL=admin@student.annauniv.edu`
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` — if image uploads are used
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — if web push is used
+
+The internal system account is used by the Express backend for its Firestore REST operations. Keep its credentials private, use a strong unique password, and do not use a personal student account for this purpose.
+
+After deployment, copy the Render service URL, for example `https://your-service.onrender.com`.
+
+## Deploy the frontend to Firebase Hosting
+
+Set the frontend build variable `VITE_API_URL` to the actual deployed Express backend URL and `VITE_COLLEGE_EMAIL_DOMAIN=student.annauniv.edu`.
+
+```bash
+npm ci
+npm run build:client
+firebase deploy --only hosting
+```
+
+For a local production build, put those two `VITE_` values in `.env.production` before running `npm run build:client`. The checked-in `.env.production` uses the previous Render service URL as a fallback; replace it if your actual backend URL differs.
+
+## Firebase setup
+
+1. In Firebase Console → Authentication → Sign-in method, enable **Email/Password**.
+2. Confirm that `firebase-applet-config.json` points to the intended Firebase project and Firestore database.
+3. Confirm the configured Firestore database is the project's one free-eligible database if remaining on Spark.
+4. Deploy the repository's current security rules and indexes when you are ready:
+
+```bash
+firebase deploy --only firestore:rules,firestore:indexes
+```
+
+Do not replace the repository's security rules with permissive sample rules. Review the existing data model and rules before deployment.
+
+## Important migration notes
+
+- The new project's UI, marketplace pages, validation, onboarding, cross-tab synchronization, and security improvements are retained.
+- The frontend still uses Firebase Authentication (`signInWithEmailAndPassword`, `onAuthStateChanged`) for user sessions.
+- OTP creation/verification and account finalization remain server-side in `server.ts`.
+- The Firebase Hosting config no longer declares Cloud Functions or rewrites `/api/**` to a function.
+- The API client uses `VITE_API_URL` and retains the former Render backend URL as a fallback. Change it to your real backend URL before production deployment.
+- Existing Firebase project data is not migrated or deleted by this source-code change.

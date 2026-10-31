@@ -17,21 +17,21 @@ function assert(condition: boolean, testName: string, detail?: string) {
 
 console.log('\n--- Running StudentNeed Production Frontend-to-Backend Connectivity Tests ---\n');
 
-// 1. Verify getApiBaseUrl logic & fallback (Pure Firebase Architecture)
+// 1. Verify getApiBaseUrl logic & independent Express backend fallback
 {
   const url = getApiBaseUrl();
   assert(
-    url === '',
-    'getApiBaseUrl returns empty string for same-origin Firebase Hosting Cloud Functions routing'
+    url.includes('studentneed-backend.onrender.com'),
+    'getApiBaseUrl falls back to the independent Express backend when VITE_API_URL is not injected'
   );
 
   // Check .env.production
   const envProdPath = path.join(process.cwd(), '.env.production');
-  assert(fs.existsSync(envProdPath), '.env.production template exists for Vite builds');
+  assert(fs.existsSync(envProdPath), '.env.production contains the production API target for Vite builds');
   const envProdContent = fs.readFileSync(envProdPath, 'utf-8');
   assert(
-    !envProdContent.includes('onrender.com'),
-    '.env.production does NOT contain external Render backend host'
+    envProdContent.includes('VITE_API_URL=') && envProdContent.includes('studentneed-backend.onrender.com'),
+    '.env.production points the frontend at the standalone Express backend (replace with actual Cloud Run URL if applicable)'
   );
 }
 
