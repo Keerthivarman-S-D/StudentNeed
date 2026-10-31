@@ -1,0 +1,38 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isCollegeEmail() {
+      return isAuthenticated() &&
+             request.auth.token.email != null &&
+             request.auth.token.email.matches('.*@student\\.annauniv\\.edu');
+    }
+
+    function isSafeImage() {
+      return request.resource.contentType.matches('image/(jpeg|jpg|png|webp|gif)')
+             && request.resource.size <= 5 * 1024 * 1024;
+    }
+
+    // Listing images: Authenticated Anna Univ students can read; only the authenticated owner can write/delete in listings/{userId}/...
+    match /listings/{userId}/{fileName} {
+      allow read: if isCollegeEmail();
+      allow write: if isCollegeEmail()
+                    && request.auth.uid == userId
+                    && isSafeImage();
+      allow delete: if isCollegeEmail() && request.auth.uid == userId;
+    }
+
+    // Profile avatars: Authenticated Anna Univ students can read; only the authenticated owner can write/delete in avatars/{userId}/...
+    match /avatars/{userId}/{fileName} {
+      allow read: if isCollegeEmail();
+      allow write: if isCollegeEmail()
+                    && request.auth.uid == userId
+                    && isSafeImage();
+      allow delete: if isCollegeEmail() && request.auth.uid == userId;
+    }
+  }
+}
