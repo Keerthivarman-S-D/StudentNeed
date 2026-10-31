@@ -7,18 +7,22 @@ import {
   query, 
   where,
   limit,
+  limitToLast,
+  endBefore,
   orderBy, 
   addDoc, 
   setDoc,
   updateDoc, 
   getDoc, 
   getDocs,
-  serverTimestamp 
+  serverTimestamp,
+  QueryDocumentSnapshot
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { useAppContext } from '../context/AppContext';
+import { getOptimizedAvatarUrl } from '../lib/cloudinary';
 import { 
   Chat, 
   ChatMessage, 
@@ -30,6 +34,7 @@ import {
   ItemRequest 
 } from '../types';
 import { RESERVATION_ENDPOINTS, NOTIFICATION_ENDPOINTS } from '../config/api';
+import { formatErrorMessage } from '../lib/errorHandler';
 import { cn } from '../lib/utils';
 import { 
   Send, 
@@ -59,7 +64,7 @@ export function ChatPage() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { markChatAsRead, chatUnreadCounts } = useNotifications();
-  const { users } = useAppContext();
+  const { users, fetchUserProfile } = useAppContext();
   const currentUserId = auth.currentUser?.uid || currentUser?.id;
 
   // Active chat state
@@ -69,6 +74,10 @@ export function ChatPage() {
   const [itemRequest, setItemRequest] = useState<ItemRequest | null>(null);
   const [reservation, setReservation] = useState<Reservation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasMoreEarlierMessages, setHasMoreEarlierMessages] = useState<boolean>(false);
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState<boolean>(false);
+  const oldestDocSnapshotRef = useRef<QueryDocumentSnapshot | null>(null);
+  const isLoadingEarlierRef = useRef<boolean>(false);
   
   const [loading, setLoading] = useState(Boolean(chatId));
   const [authError, setAuthError] = useState<string | null>(null);
@@ -106,9 +115,9 @@ export function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change, unless loading earlier messages
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && !isLoadingEarlierRef.current) {
       scrollToBottom('smooth');
     }
   }, [messages]);
@@ -127,13 +136,22 @@ export function ChatPage() {
       limit(50)
     );
 
-    const messageUnsubs: Record<string, () => void> = {};
+    const fetchedPreviewIds = new Set<string>();
 
     const unsubChats = onSnapshot(
       chatsQuery,
       (snapshot) => {
         const loadedChats: Chat[] = snapshot.docs.map((docSnap) => {
           const data = docSnap.data();
+          if (data.lastMessageText) {
+            setRecentMessagesMap((prev) => ({
+              ...prev,
+              [docSnap.id]: {
+                text: data.lastMessageText,
+                createdAt: data.updatedAt,
+              },
+            }));
+          }
           return {
             id: docSnap.id,
             participants: data.participants || [],
@@ -155,50 +173,43 @@ export function ChatPage() {
         setSidebarChats(loadedChats);
         setSidebarLoading(false);
 
-        // Fetch latest preview message for each chat
-        const currentChatIds = new Set(loadedChats.map(c => c.id));
-        Object.keys(messageUnsubs).forEach(id => {
-          if (!currentChatIds.has(id)) {
-            messageUnsubs[id]();
-            delete messageUnsubs[id];
-          }
-        });
-
+        // Fetch latest preview message for chats missing lastMessage metadata using one-shot read
         loadedChats.forEach((c) => {
-          if (!messageUnsubs[c.id]) {
+          const docData = snapshot.docs.find((d) => d.id === c.id)?.data();
+          if (!docData?.lastMessageText && !fetchedPreviewIds.has(c.id)) {
+            fetchedPreviewIds.add(c.id);
             const lastMsgQuery = query(
               collection(db, 'chats', c.id, 'messages'),
               orderBy('createdAt', 'desc'),
               limit(1)
             );
-            messageUnsubs[c.id] = onSnapshot(lastMsgQuery, (msgSnap) => {
-              if (!msgSnap.empty) {
-                const msgData = msgSnap.docs[0].data();
-                setRecentMessagesMap((prev) => ({
-                  ...prev,
-                  [c.id]: {
-                    text: msgData.text || '',
-                    createdAt: msgData.createdAt,
-                  },
-                }));
-              }
-            }, (err) => console.warn('Sidebar message preview note:', err));
+            getDocs(lastMsgQuery)
+              .then((msgSnap) => {
+                if (!msgSnap.empty) {
+                  const msgData = msgSnap.docs[0].data();
+                  setRecentMessagesMap((prev) => ({
+                    ...prev,
+                    [c.id]: {
+                      text: msgData.text || '',
+                      createdAt: msgData.createdAt,
+                    },
+                  }));
+                }
+              })
+              .catch((err) => console.warn('Sidebar message preview note:', err));
           }
 
-          // Fetch other participant profile if not already cached
+          // Fetch other participant profile reusing deduplicated cache
           const otherId = c.participants.find((p) => p !== currentUserId);
           if (otherId && !sidebarUsersMap[otherId]) {
             const existingUser = users.find(u => u.id === otherId);
             if (existingUser) {
               setSidebarUsersMap(prev => ({ ...prev, [otherId]: existingUser }));
             } else {
-              getDoc(doc(db, 'users', otherId))
-                .then((snap) => {
-                  if (snap.exists()) {
-                    setSidebarUsersMap((prev) => ({
-                      ...prev,
-                      [otherId]: { id: snap.id, ...snap.data() } as User,
-                    }));
+              fetchUserProfile(otherId)
+                .then((fetched) => {
+                  if (fetched) {
+                    setSidebarUsersMap((prev) => ({ ...prev, [otherId]: fetched }));
                   }
                 })
                 .catch(() => {});
@@ -214,9 +225,8 @@ export function ChatPage() {
 
     return () => {
       unsubChats();
-      Object.values(messageUnsubs).forEach((unsub) => unsub());
     };
-  }, [currentUserId, users]);
+  }, [currentUserId, users, fetchUserProfile]);
 
   // 2. Subscribe to Active Chat Document and verify participant
   useEffect(() => {
@@ -395,15 +405,19 @@ export function ChatPage() {
     return () => unsubscribeQuery();
   }, [chat, listing, buyerId, currentUserId, isBuyer]);
 
-  // 4. Subscribe to Messages subcollection in real time
+  // 4. Subscribe to Messages subcollection in real time with pagination (limit to last 30)
   useEffect(() => {
     if (!chatId || !currentUserId || authError) {
       return;
     }
 
+    setHasMoreEarlierMessages(false);
+    oldestDocSnapshotRef.current = null;
+
     const messagesQuery = query(
       collection(db, 'chats', chatId, 'messages'),
-      orderBy('createdAt', 'asc')
+      orderBy('createdAt', 'asc'),
+      limitToLast(30)
     );
 
     const unsubscribeMessages = onSnapshot(
@@ -419,7 +433,22 @@ export function ChatPage() {
           };
         });
 
-        setMessages(loadedMessages);
+        if (snapshot.docs.length > 0) {
+          oldestDocSnapshotRef.current = snapshot.docs[0];
+          setHasMoreEarlierMessages(snapshot.docs.length >= 30);
+        } else {
+          setHasMoreEarlierMessages(false);
+        }
+
+        setMessages((prev) => {
+          // If earlier messages were already loaded, merge without duplicate IDs
+          if (prev.length > loadedMessages.length) {
+            const loadedIds = new Set(loadedMessages.map((m) => m.id));
+            const earlierOnly = prev.filter((m) => !loadedIds.has(m.id));
+            return [...earlierOnly, ...loadedMessages];
+          }
+          return loadedMessages;
+        });
         setLoading(false);
       },
       (err) => {
@@ -431,6 +460,64 @@ export function ChatPage() {
 
     return () => unsubscribeMessages();
   }, [chatId, currentUserId, authError]);
+
+  // Load earlier messages on demand (cursor-based pagination)
+  const handleLoadEarlierMessages = async () => {
+    if (!oldestDocSnapshotRef.current || !chatId || isLoadingEarlier) return;
+    setIsLoadingEarlier(true);
+    isLoadingEarlierRef.current = true;
+
+    try {
+      const earlierQuery = query(
+        collection(db, 'chats', chatId, 'messages'),
+        orderBy('createdAt', 'asc'),
+        endBefore(oldestDocSnapshotRef.current),
+        limitToLast(30)
+      );
+
+      const snap = await getDocs(earlierQuery);
+      if (!snap.empty) {
+        oldestDocSnapshotRef.current = snap.docs[0];
+        const earlierMessages: ChatMessage[] = snap.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            senderId: data.senderId,
+            text: data.text,
+            createdAt: data.createdAt,
+          };
+        });
+
+        const container = messageListRef.current;
+        const previousScrollHeight = container ? container.scrollHeight : 0;
+
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const uniqueEarlier = earlierMessages.filter((m) => !existingIds.has(m.id));
+          return [...uniqueEarlier, ...prev];
+        });
+
+        setHasMoreEarlierMessages(snap.docs.length >= 30);
+
+        requestAnimationFrame(() => {
+          if (container) {
+            container.scrollTop = container.scrollHeight - previousScrollHeight;
+          }
+          setTimeout(() => {
+            isLoadingEarlierRef.current = false;
+          }, 150);
+        });
+      } else {
+        setHasMoreEarlierMessages(false);
+        isLoadingEarlierRef.current = false;
+      }
+    } catch (err) {
+      console.warn('Failed to load earlier messages:', err);
+      isLoadingEarlierRef.current = false;
+    } finally {
+      setIsLoadingEarlier(false);
+    }
+  };
 
   // Track conversation read receipt strictly in user's isolated private document
   useEffect(() => {
@@ -457,7 +544,11 @@ export function ChatPage() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = inputText.trim();
-    if (!trimmed || isSending || !chatId || !currentUserId) return;
+    if (!trimmed) {
+      setSendError('Please enter a message before sending.');
+      return;
+    }
+    if (isSending || !chatId || !currentUserId) return;
 
     if (trimmed.length > 2000) {
       setSendError('Message is too long (maximum 2,000 characters).');
@@ -481,8 +572,10 @@ export function ChatPage() {
         createdAt: serverTimestamp(),
       });
 
-      // Update chats/{chatId}.updatedAt
+      // Update chats/{chatId}.updatedAt and lastMessage preview metadata
       await updateDoc(doc(db, 'chats', chatId), {
+        lastMessageText: trimmed,
+        lastMessageSenderId: currentUserId,
         updatedAt: serverTimestamp(),
       });
 
@@ -512,7 +605,7 @@ export function ChatPage() {
       }
     } catch (err: unknown) {
       console.error('Failed to send message:', err);
-      setSendError('Failed to send message. Please try again.');
+      setSendError(formatErrorMessage(err, 'Failed to send message. Please try again.'));
     } finally {
       setIsSending(false);
     }
@@ -1137,8 +1230,10 @@ export function ChatPage() {
                       <div className="relative shrink-0 mt-0.5">
                         {participant?.avatarUrl ? (
                           <img
-                            src={participant.avatarUrl}
+                            src={getOptimizedAvatarUrl(participant.avatarUrl, 72)}
                             alt={participant.name || 'Student'}
+                            loading="lazy"
+                            decoding="async"
                             className="h-9 w-9 rounded-full object-cover border border-[#dedcd4]"
                           />
                         ) : (
@@ -1264,8 +1359,10 @@ export function ChatPage() {
                     <div className="flex items-center gap-2.5">
                       {otherUser?.avatarUrl ? (
                         <img
-                          src={otherUser.avatarUrl}
+                          src={getOptimizedAvatarUrl(otherUser.avatarUrl, 80)}
                           alt={otherUser.name || 'Student'}
+                          loading="lazy"
+                          decoding="async"
                           className="h-10 w-10 rounded-full object-cover border border-[#dedcd4]"
                         />
                       ) : (
@@ -1700,6 +1797,27 @@ export function ChatPage() {
                   ref={messageListRef}
                   className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 bg-[#faf9f5]"
                 >
+                  {/* Load earlier messages button */}
+                  {hasMoreEarlierMessages && (
+                    <div className="flex justify-center pb-2">
+                      <button
+                        type="button"
+                        onClick={handleLoadEarlierMessages}
+                        disabled={isLoadingEarlier}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full border border-[#dedcd4] bg-white text-[#204b39] hover:bg-[#edf1ec] transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                      >
+                        {isLoadingEarlier ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin text-[#204b39]" />
+                            <span>Loading earlier messages...</span>
+                          </>
+                        ) : (
+                          <span>Load earlier messages</span>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
                   {messages.length === 0 ? (
                     /* Empty Messages State */
                     <div className="flex h-full flex-col items-center justify-center text-center p-4 sm:p-6 space-y-2.5 my-auto max-w-sm mx-auto">
@@ -1795,7 +1913,10 @@ export function ChatPage() {
                     <input
                       type="text"
                       value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
+                      onChange={(e) => {
+                        setInputText(e.target.value);
+                        if (sendError) setSendError(null);
+                      }}
                       placeholder="Type your message to coordinate pickup..."
                       disabled={isSending}
                       maxLength={2000}

@@ -37,6 +37,9 @@ import { Reservation, Listing } from '../types';
 import { AUTH_ENDPOINTS, RESERVATION_ENDPOINTS } from '../config/api';
 import { validatePassword } from '../lib/passwordSecurity';
 import { PasswordRequirements } from '../components/PasswordRequirements';
+import { FieldError } from '../components/ui/FieldError';
+import { validateFullName } from '../lib/validation';
+import { formatErrorMessage } from '../lib/errorHandler';
 
 export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' | 'saved' | 'settings' } = {}) {
   const navigate = useNavigate();
@@ -76,6 +79,20 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
   const [editBio, setEditBio] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState({ type: '', text: '' });
+  const [profileFieldErrors, setProfileFieldErrors] = useState<Record<string, string>>({});
+
+  const clearProfileFieldError = (field: string) => {
+    if (profileFieldErrors[field]) {
+      setProfileFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+    if (profileMessage.type === 'error') {
+      setProfileMessage({ type: '', text: '' });
+    }
+  };
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -85,6 +102,20 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
+  const [passwordFieldErrors, setPasswordFieldErrors] = useState<Record<string, string>>({});
+
+  const clearPasswordFieldError = (field: string) => {
+    if (passwordFieldErrors[field]) {
+      setPasswordFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+    if (passwordMessage.type === 'error') {
+      setPasswordMessage({ type: '', text: '' });
+    }
+  };
 
   const newPasswordValidation = validatePassword(newPassword);
 
@@ -230,6 +261,14 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firebaseUser) return;
+
+    const nameValidation = validateFullName(editName);
+    if (!nameValidation.valid) {
+      setProfileFieldErrors({ name: nameValidation.error || 'Please enter your full name.' });
+      setProfileMessage({ type: 'error', text: nameValidation.error || 'Please enter your full name.' });
+      return;
+    }
+
     setIsSavingProfile(true);
     setProfileMessage({ type: '', text: '' });
     try {
@@ -241,7 +280,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
       });
       setProfileMessage({ type: 'success', text: 'Profile updated successfully.' });
     } catch (err: any) {
-      setProfileMessage({ type: 'error', text: err.message || 'Failed to update profile.' });
+      setProfileMessage({ type: 'error', text: formatErrorMessage(err, 'Failed to update profile.') });
     } finally {
       setIsSavingProfile(false);
     }
@@ -252,6 +291,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
     if (!firebaseUser) return;
 
     if (!currentPassword.trim()) {
+      setPasswordFieldErrors({ current: 'Please enter your current password.' });
       setPasswordMessage({
         type: 'error',
         text: 'Please enter your current password.',
@@ -260,6 +300,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
     }
 
     if (!newPasswordValidation.isValid) {
+      setPasswordFieldErrors({ new: newPasswordValidation.errors[0] || 'Password does not meet the security requirements.' });
       setPasswordMessage({
         type: 'error',
         text: newPasswordValidation.errors[0] || 'Password does not meet the security requirements.',
@@ -268,6 +309,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
     }
 
     if (newPassword !== confirmNewPassword) {
+      setPasswordFieldErrors({ confirm: 'Passwords do not match.' });
       setPasswordMessage({ type: 'error', text: 'Passwords do not match.' });
       return;
     }
@@ -907,17 +949,34 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                         <Input
                           required
                           value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
+                          onChange={(e) => {
+                            setEditName(e.target.value);
+                            clearProfileFieldError('name');
+                          }}
                           placeholder="Student A"
-                          className="h-11 rounded-xl border-[#dedcd4] bg-white text-sm text-[#252b27] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                          className={cn(
+                            "h-11 rounded-xl bg-white text-sm text-[#252b27] transition-all",
+                            profileFieldErrors.name
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                              : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                          )}
                         />
+                        <FieldError error={profileFieldErrors.name} />
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-[#252b27] mb-1.5">Year of study</label>
                         <select
                           value={editYearOfStudy}
-                          onChange={(e) => setEditYearOfStudy(e.target.value)}
-                          className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs font-normal"
+                          onChange={(e) => {
+                            setEditYearOfStudy(e.target.value);
+                            clearProfileFieldError('yearOfStudy');
+                          }}
+                          className={cn(
+                            "flex h-11 w-full rounded-xl border bg-white px-3.5 py-2 text-sm text-[#252b27] focus:outline-none focus:ring-2 transition-all shadow-2xs font-normal",
+                            profileFieldErrors.yearOfStudy
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                              : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                          )}
                         >
                           <option value="1st Year">1st Year</option>
                           <option value="2nd Year">2nd Year</option>
@@ -925,6 +984,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                           <option value="4th Year">4th Year</option>
                           <option value="Postgraduate / PhD">Postgraduate / PhD</option>
                         </select>
+                        <FieldError error={profileFieldErrors.yearOfStudy} />
                       </div>
                     </div>
 
@@ -1008,8 +1068,16 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                           required
                           placeholder="Enter current password"
                           value={currentPassword}
-                          onChange={(e) => setCurrentPassword(e.target.value)}
-                          className="h-11 rounded-xl border-[#dedcd4] bg-white text-sm text-[#252b27] pr-10 focus:border-[#204b39] focus:ring-[#204b39]/20"
+                          onChange={(e) => {
+                            setCurrentPassword(e.target.value);
+                            clearPasswordFieldError('current');
+                          }}
+                          className={cn(
+                            "h-11 rounded-xl bg-white text-sm text-[#252b27] pr-10 transition-all",
+                            passwordFieldErrors.current
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                              : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                          )}
                         />
                         <button
                           type="button"
@@ -1020,6 +1088,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                           {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
+                      <FieldError error={passwordFieldErrors.current} />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1031,8 +1100,16 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                             required
                             placeholder="At least 8 characters"
                             value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            className="h-11 rounded-xl border-[#dedcd4] bg-white text-sm text-[#252b27] pr-10 focus:border-[#204b39] focus:ring-[#204b39]/20"
+                            onChange={(e) => {
+                              setNewPassword(e.target.value);
+                              clearPasswordFieldError('new');
+                            }}
+                            className={cn(
+                              "h-11 rounded-xl bg-white text-sm text-[#252b27] pr-10 transition-all",
+                              passwordFieldErrors.new
+                                ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                                : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                            )}
                           />
                           <button
                             type="button"
@@ -1043,6 +1120,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                             {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
+                        <FieldError error={passwordFieldErrors.new} />
                       </div>
 
                       <div>
@@ -1053,8 +1131,16 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                             required
                             placeholder="Enter new password again"
                             value={confirmNewPassword}
-                            onChange={(e) => setConfirmNewPassword(e.target.value)}
-                            className="h-11 rounded-xl border-[#dedcd4] bg-white text-sm text-[#252b27] pr-10 focus:border-[#204b39] focus:ring-[#204b39]/20"
+                            onChange={(e) => {
+                              setConfirmNewPassword(e.target.value);
+                              clearPasswordFieldError('confirm');
+                            }}
+                            className={cn(
+                              "h-11 rounded-xl bg-white text-sm text-[#252b27] pr-10 transition-all",
+                              passwordFieldErrors.confirm
+                                ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                                : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                            )}
                           />
                           <button
                             type="button"
@@ -1065,6 +1151,7 @@ export function Profile({ defaultTab }: { defaultTab?: 'listings' | 'reserved' |
                             {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
+                        <FieldError error={passwordFieldErrors.confirm} />
                       </div>
                     </div>
 

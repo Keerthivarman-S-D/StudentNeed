@@ -57,8 +57,25 @@ export async function apiFetch<T = any>(endpoint: string, options: ApiFetchOptio
   const signal = options.signal || controller.signal;
 
   try {
+    let appCheckHeader: Record<string, string> = {};
+    try {
+      const { getAppCheckToken } = await import('../lib/appCheck');
+      const token = await getAppCheckToken();
+      if (token) {
+        appCheckHeader['X-Firebase-AppCheck'] = token;
+      }
+    } catch {
+      // Non-blocking monitoring mode
+    }
+
+    const headers = {
+      ...appCheckHeader,
+      ...(fetchOptions.headers || {}),
+    };
+
     const res = await fetch(url, {
       ...fetchOptions,
+      headers,
       signal,
     });
 

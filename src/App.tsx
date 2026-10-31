@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { StudentNeedIcon } from './components/StudentNeedLogo';
 import { AdminRoute } from './components/AdminRoute';
+import { isProfileComplete } from './lib/validation';
 
 // Eagerly loaded critical landing page
 import { Launch } from './pages/Launch';
@@ -44,7 +45,7 @@ const PageLoadingFallback = () => (
 );
 
 function AppContent() {
-  const { firebaseUser, loading } = useAuth();
+  const { firebaseUser, currentUser, loading } = useAuth();
   const location = useLocation();
 
   // Public landing, marketing, and legal routes render immediately without being blocked by auth state resolution.
@@ -88,7 +89,16 @@ function AppContent() {
       <main className="flex-1">
         <Suspense fallback={<PageLoadingFallback />}>
           <Routes>
-            <Route path="/" element={firebaseUser ? <Home /> : <Launch />} />
+            <Route
+              path="/"
+              element={
+                firebaseUser
+                  ? isProfileComplete(currentUser)
+                    ? <Home />
+                    : <Navigate to="/onboarding" replace />
+                  : <Launch />
+              }
+            />
             <Route path="/launch" element={<Launch />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/listing/:id" element={<ListingDetail />} />

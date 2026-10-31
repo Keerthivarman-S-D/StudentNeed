@@ -7,6 +7,7 @@ import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { StudentNeedLogo } from './StudentNeedLogo';
 import { NotificationBell } from './NotificationBell';
+import { getOptimizedAvatarUrl } from '../lib/cloudinary';
 
 export function Navbar() {
   const { currentUser } = useAuth();
@@ -143,8 +144,10 @@ export function Navbar() {
                   <div className="relative">
                     {currentUser.avatarUrl ? (
                       <img
-                        src={currentUser.avatarUrl}
+                        src={getOptimizedAvatarUrl(currentUser.avatarUrl, 64)}
                         alt={currentUser.name}
+                        loading="lazy"
+                        decoding="async"
                         className="h-7 w-7 rounded-full object-cover"
                       />
                     ) : (

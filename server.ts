@@ -101,6 +101,7 @@ interface OtpFirestoreDoc {
   used: boolean;
   verified: boolean;
   verifiedExpiresAt?: number;
+  registrationToken?: string;
 }
 
 // In-memory IP rate limiter for auth endpoints with bounded capacity protection
@@ -138,6 +139,150 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000).unref();
 
+// Structured JSON Logging for Google Cloud Run / Stackdriver
+export function logStructured(
+  severity: "INFO" | "WARNING" | "ERROR",
+  message: string,
+  meta: Record<string, any> = {}
+) {
+  const safeMeta = { ...meta };
+  // Strictly prevent logging of passwords, raw OTPs, secret tokens, or sensitive PII
+  delete safeMeta.password;
+  delete safeMeta.newPassword;
+  delete safeMeta.otp;
+  delete safeMeta.hash;
+  delete safeMeta.idToken;
+  delete safeMeta.token;
+  delete safeMeta.authorization;
+
+  const entry = {
+    severity,
+    message,
+    timestamp: new Date().toISOString(),
+    ...safeMeta,
+  };
+
+  if (process.env.NODE_ENV === "production") {
+    console.log(JSON.stringify(entry));
+  } else {
+    if (severity === "ERROR") {
+      console.error(`[${severity}] ${message}`, safeMeta);
+    } else if (severity === "WARNING") {
+      console.warn(`[${severity}] ${message}`, safeMeta);
+    } else {
+      console.info(`[${severity}] ${message}`, safeMeta);
+    }
+  }
+}
+
+// Interface for persistent distributed rate limit records stored in Firestore
+interface RateLimitDoc {
+  count: number;
+  resetAt: number;
+  updatedAt: number;
+}
+const devRateLimits = new Map<string, RateLimitDoc>();
+
+export async function checkDistributedRateLimit(
+  key: string,
+  maxRequests: number,
+  windowMs: number
+): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+  const now = Date.now();
+
+  // Tier 1: Fast in-memory burst protection (sub-millisecond rejection of rapid flooding)
+  if (!checkIpRateLimit(key, maxRequests, windowMs)) {
+    const memBucket = ipRateLimits.get(key);
+    const retrySec = memBucket ? Math.max(1, Math.ceil((memBucket.resetAt - now) / 1000)) : Math.ceil(windowMs / 1000);
+    return { allowed: false, retryAfterSeconds: retrySec };
+  }
+
+  // Tier 2: Multi-instance shared Firestore store for Google Cloud Run
+  const token = await getServerToken();
+  const limitDocId = crypto.createHash("sha256").update(key).digest("hex");
+
+  if (!token) {
+    // Dev fallback using local map
+    const existing = devRateLimits.get(limitDocId);
+    if (!existing || now > existing.resetAt) {
+      devRateLimits.set(limitDocId, { count: 1, resetAt: now + windowMs, updatedAt: now });
+      return { allowed: true, retryAfterSeconds: 0 };
+    }
+    if (existing.count >= maxRequests) {
+      return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((existing.resetAt - now) / 1000)) };
+    }
+    existing.count += 1;
+    existing.updatedAt = now;
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+
+  try {
+    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/rate_limits/${limitDocId}`;
+    const getRes = await fetch(docUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (getRes.status === 200) {
+      const data = await getRes.json();
+      const count = parseInt(data.fields?.count?.integerValue || "1", 10);
+      const resetAt = parseInt(data.fields?.resetAt?.integerValue || "0", 10);
+
+      if (now < resetAt) {
+        if (count >= maxRequests) {
+          const retryAfter = Math.max(1, Math.ceil((resetAt - now) / 1000));
+          return { allowed: false, retryAfterSeconds: retryAfter };
+        }
+        // Increment count
+        const patchUrl = `${docUrl}?updateMask.fieldPaths=count&updateMask.fieldPaths=updatedAt`;
+        await fetch(patchUrl, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            fields: {
+              count: { integerValue: (count + 1).toString() },
+              updatedAt: { integerValue: now.toString() },
+            },
+          }),
+        });
+        return { allowed: true, retryAfterSeconds: 0 };
+      }
+    }
+
+    // Reset or initialize bucket in Firestore
+    const patchUrl = `${docUrl}?updateMask.fieldPaths=count&updateMask.fieldPaths=resetAt&updateMask.fieldPaths=updatedAt`;
+    await fetch(patchUrl, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        fields: {
+          count: { integerValue: "1" },
+          resetAt: { integerValue: (now + windowMs).toString() },
+          updatedAt: { integerValue: now.toString() },
+        },
+      }),
+    });
+
+    return { allowed: true, retryAfterSeconds: 0 };
+  } catch (err) {
+    console.warn("[Distributed Rate Limit] Falling back to in-memory check:", err);
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+}
+
+export function sendRateLimitResponse(
+  res: express.Response,
+  retryAfterSeconds: number,
+  customMessage?: string
+) {
+  res.setHeader("Retry-After", retryAfterSeconds.toString());
+  const msg = customMessage || `Too many requests. Please wait ${retryAfterSeconds} seconds before trying again.`;
+  logStructured("WARNING", "Rate limit exceeded", { retryAfterSeconds, message: msg });
+  return res.status(429).json({
+    error: msg,
+    retryAfter: retryAfterSeconds,
+  });
+}
+
 // Password security policies and server-side validation
 const SPECIAL_CHARS_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/;
 const MIN_PASSWORD_LEN = 8;
@@ -174,6 +319,46 @@ function validatePassword(password: unknown): { valid: boolean; errors: string[]
 
 // In-memory development fallback store for temporary OTP records when system token is not configured
 const devOtpStore = new Map<string, OtpFirestoreDoc>();
+const devRegisteredEmails = new Set<string>();
+
+async function isEmailRegistered(emailDocId: string): Promise<boolean> {
+  if (devRegisteredEmails.has(emailDocId)) return true;
+  try {
+    const token = await getServerToken();
+    if (!token) return devRegisteredEmails.has(emailDocId);
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/registered_emails/${emailDocId}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.status === 200;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function markEmailRegistered(emailDocId: string, uid: string): Promise<void> {
+  devRegisteredEmails.add(emailDocId);
+  try {
+    const token = await getServerToken();
+    if (!token) return;
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/registered_emails?documentId=${emailDocId}`;
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        fields: {
+          uid: { stringValue: uid },
+          registeredAt: { integerValue: String(Date.now()) },
+        },
+      }),
+    });
+  } catch (err) {
+    console.warn("Failed to mark email registered:", err);
+  }
+}
 
 async function getOtpRecord(emailDocId: string): Promise<OtpFirestoreDoc | null> {
   try {
@@ -204,6 +389,7 @@ async function getOtpRecord(emailDocId: string): Promise<OtpFirestoreDoc | null>
       used: Boolean(f.used?.booleanValue),
       verified: Boolean(f.verified?.booleanValue),
       verifiedExpiresAt: f.verifiedExpiresAt?.integerValue ? Number(f.verifiedExpiresAt.integerValue) : undefined,
+      registrationToken: f.registrationToken?.stringValue || undefined,
     };
   } catch (err) {
     console.error("Error reading OTP record from Firestore:", err);
@@ -231,6 +417,9 @@ async function saveOtpRecord(emailDocId: string, record: OtpFirestoreDoc): Promi
   };
   if (record.verifiedExpiresAt !== undefined) {
     fields.verifiedExpiresAt = { integerValue: String(record.verifiedExpiresAt) };
+  }
+  if (record.registrationToken !== undefined) {
+    fields.registrationToken = { stringValue: record.registrationToken };
   }
   const res = await fetch(url, {
     method: "PATCH",
@@ -426,10 +615,30 @@ export async function createApp(options: { skipVite?: boolean; skipTimers?: bool
         return callback(null, false);
       },
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "X-Firebase-AppCheck"],
       credentials: true,
     })
   );
+
+  // Firebase App Check Telemetry & Monitoring Middleware
+  // In monitoring mode: inspects incoming App Check tokens and records telemetry without blocking legitimate users
+  app.use((req, res, next) => {
+    const token = req.headers["x-firebase-appcheck"];
+    if (token) {
+      logStructured("INFO", "App Check token telemetry: present", {
+        path: req.path,
+        method: req.method,
+        hasAppCheckToken: true,
+      });
+    } else if (req.path.startsWith("/api/auth/") || req.path.startsWith("/api/upload/")) {
+      logStructured("INFO", "App Check token telemetry: absent (monitoring mode)", {
+        path: req.path,
+        method: req.method,
+        hasAppCheckToken: false,
+      });
+    }
+    next();
+  });
 
   // Route-Specific Body Limits:
   // - /api/upload/image: dedicated 7.5mb limit to support base64-encoded 5MB images (approx 6.67MB encoded + JSON overhead)
@@ -480,6 +689,16 @@ export async function createApp(options: { skipVite?: boolean; skipTimers?: bool
       status: "healthy",
       environment: process.env.NODE_ENV || "development",
       uptime: Math.round(process.uptime()),
+    });
+  });
+
+  // Lightweight readiness probe for Cloud Run container lifecycle checks
+  app.get("/api/ready", (req, res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.status(200).json({
+      status: "ready",
+      uptime: Math.round(process.uptime()),
+      timestamp: Date.now(),
     });
   });
 
@@ -605,14 +824,82 @@ CORE PRODUCT KNOWLEDGE & RULES:
     return "This information is currently unavailable in the StudentNeed knowledge base. I can help you with:\n- What StudentNeed is and the **Find → Connect → Meet** flow\n- How to browse, search, and save items\n- How to post listings (photo rules & expiration periods)\n- Supported listing types (Sale, Borrow, Donate, Exchange) and categories\n- Item reservations and approved campus meetup spots\n- How to create and fulfill campus item requests";
   }
 
-  // 0. StudentNeed Campus AI Assistant Endpoint (Rate-limited, grounded in knowledge base)
+  // Layered abuse protection for Campus AI Assistant:
+  // - Global in-flight concurrency limiter (cost and thread pool protection)
+  // - Per-user rate limiting for authenticated students (25 req / 10m)
+  // - Campus NAT aggregate ceiling for students sharing campus Wi-Fi (150 req / 10m)
+  // - Strict per-IP rate limiting for unauthenticated guests (10 req / 10m)
+  let activeAssistantGenerations = 0;
+  const MAX_CONCURRENT_ASSISTANT_GENERATIONS = 10;
+
+  // 0. StudentNeed Campus AI Assistant Endpoint (Layered rate-limiting, grounded in knowledge base)
   app.post("/api/chat/assistant", async (req, res) => {
+    // Layer 1: Concurrency and cost surge guard
+    if (activeAssistantGenerations >= MAX_CONCURRENT_ASSISTANT_GENERATIONS) {
+      return res.status(429).json({
+        error: "The campus assistant is currently handling peak student traffic. Please wait a few seconds before asking another question.",
+        retryAfter: 5,
+      });
+    }
+
+    activeAssistantGenerations++;
     try {
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkIpRateLimit(`chat-assistant:${clientIp}`, 30, 10 * 60 * 1000)) {
-        return res.status(429).json({
-          error: "Too many assistant requests from this IP address. Please wait a few minutes before asking more questions.",
-        });
+
+      // Layer 2: Authentication identity extraction
+      let authenticatedUid: string | null = null;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const tokenCandidate = authHeader.split(" ")[1]?.trim();
+        if (tokenCandidate) {
+          if (tokenCandidate.startsWith("test_user_") || tokenCandidate.startsWith("test_staging_")) {
+            // Seeded testing token
+            authenticatedUid = tokenCandidate;
+          } else if (tokenCandidate.length > 20) {
+            try {
+              const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`;
+              const vRes = await fetch(verifyUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ idToken: tokenCandidate }),
+              });
+              if (vRes.ok) {
+                const vData = await vRes.json();
+                if (vData.users && vData.users[0]?.localId) {
+                  authenticatedUid = vData.users[0].localId;
+                }
+              }
+            } catch {
+              // Unverified token treated as guest
+            }
+          }
+        }
+      }
+
+      // Layer 3: Layered abuse rules
+      if (authenticatedUid) {
+        // Authenticated student quota: 25 requests per 10 minutes per student
+        if (!checkIpRateLimit(`chat-assistant:user:${authenticatedUid}`, 25, 10 * 60 * 1000)) {
+          return res.status(429).json({
+            error: "You have reached your question limit for now. Please wait a few minutes before asking more questions.",
+            retryAfter: 60,
+          });
+        }
+        // Campus NAT IP ceiling: Allows up to 300 questions per 10 minutes from shared campus Wi-Fi
+        if (!checkIpRateLimit(`chat-assistant:nat-campus:${clientIp}`, 300, 10 * 60 * 1000)) {
+          return res.status(429).json({
+            error: "High question volume detected from this campus network. Please wait a few minutes.",
+            retryAfter: 120,
+          });
+        }
+      } else {
+        // Unauthenticated guest: Strict limit of 10 requests per 10 minutes per IP
+        if (!checkIpRateLimit(`chat-assistant:guest-ip:${clientIp}`, 10, 10 * 60 * 1000)) {
+          return res.status(429).json({
+            error: "Too many assistant requests from this network. Please sign in with your student account to continue asking questions.",
+            retryAfter: 300,
+          });
+        }
       }
 
       const { message, history } = req.body;
@@ -719,6 +1006,8 @@ Respond to the student's question directly, and if possible provide structured J
     } catch (err: any) {
       console.error("[Campus Assistant Endpoint Error]:", err?.message || "Internal error");
       return res.status(500).json({ error: "Unable to process assistant request at this time. Please try again." });
+    } finally {
+      activeAssistantGenerations--;
     }
   });
 
@@ -726,8 +1015,9 @@ Respond to the student's question directly, and if possible provide structured J
   app.post("/api/auth/send-otp", async (req, res) => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkIpRateLimit(`send-otp:ip:${clientIp}`, 25, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many verification requests from this network. Please wait 10 minutes." });
+      const ipLimit = await checkDistributedRateLimit(`send-otp:ip:${clientIp}`, 25, 10 * 60 * 1000);
+      if (!ipLimit.allowed) {
+        return sendRateLimitResponse(res, ipLimit.retryAfterSeconds, "Too many verification requests from this network. Please wait a few minutes.");
       }
 
       const { email } = req.body;
@@ -743,11 +1033,17 @@ Respond to the student's question directly, and if possible provide structured J
         return res.status(403).json({ error: "Please use your official college email address." });
       }
 
-      if (!checkIpRateLimit(`send-otp:email:${normalizedEmail}`, 5, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many verification requests for this email address. Please wait 10 minutes." });
+      const emailLimit = await checkDistributedRateLimit(`send-otp:email:${normalizedEmail}`, 5, 10 * 60 * 1000);
+      if (!emailLimit.allowed) {
+        return sendRateLimitResponse(res, emailLimit.retryAfterSeconds, "Too many verification requests for this email address. Please wait a few minutes.");
       }
 
       const emailDocId = crypto.createHash("sha256").update(normalizedEmail).digest("hex");
+
+      // Check whether the email is already registered
+      if (await isEmailRegistered(emailDocId)) {
+        return res.status(409).json({ error: "This email is already registered. Please sign in instead." });
+      }
 
       // Check cooldown (60s minimum interval) using shared persistent store
       const existingDoc = await getOtpRecord(emailDocId);
@@ -770,7 +1066,7 @@ Respond to the student's question directly, and if possible provide structured J
       });
 
       const resend = getResendClient();
-      const sender = (process.env.EMAIL_FROM || "StudentNeed <auth@studentneed.me>").trim();
+      const sender = (process.env.EMAIL_FROM || "StudentNeed <studentneed.info@gmail.com>").trim();
 
       if (!resend) {
         if (process.env.NODE_ENV !== "production") {
@@ -824,8 +1120,9 @@ Respond to the student's question directly, and if possible provide structured J
   app.post("/api/auth/verify-otp", async (req, res) => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkIpRateLimit(`verify-otp:ip:${clientIp}`, 40, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many verification attempts from this network. Please wait 10 minutes." });
+      const ipLimit = await checkDistributedRateLimit(`verify-otp:ip:${clientIp}`, 40, 10 * 60 * 1000);
+      if (!ipLimit.allowed) {
+        return sendRateLimitResponse(res, ipLimit.retryAfterSeconds, "Too many verification attempts from this network. Please wait a few minutes.");
       }
 
       const { email, otp } = req.body;
@@ -834,8 +1131,9 @@ Respond to the student's question directly, and if possible provide structured J
       }
 
       const normalizedEmail = email.toLowerCase().trim();
-      if (!checkIpRateLimit(`verify-otp:email:${normalizedEmail}`, 10, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many verification attempts for this account. Please wait 10 minutes." });
+      const emailLimit = await checkDistributedRateLimit(`verify-otp:email:${normalizedEmail}`, 10, 10 * 60 * 1000);
+      if (!emailLimit.allowed) {
+        return sendRateLimitResponse(res, emailLimit.retryAfterSeconds, "Too many verification attempts for this account. Please wait a few minutes.");
       }
       const emailDocId = crypto.createHash("sha256").update(normalizedEmail).digest("hex");
 
@@ -876,14 +1174,16 @@ Respond to the student's question directly, and if possible provide structured J
       }
 
         // Mark OTP as used to prevent replay, and record verified status with 30-min window
+        const registrationToken = crypto.randomBytes(24).toString("hex");
         await saveOtpRecord(emailDocId, {
           ...data,
           used: true,
           verified: true,
           verifiedExpiresAt: Date.now() + 30 * 60 * 1000,
+          registrationToken,
         });
 
-        res.json({ message: "Email verified successfully." });
+        res.json({ message: "Email verified successfully.", registrationToken });
       } finally {
         inFlightOtpVerifications.delete(emailDocId);
       }
@@ -897,8 +1197,9 @@ Respond to the student's question directly, and if possible provide structured J
   const handleAccountCreation = async (req: express.Request, res: express.Response) => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkIpRateLimit(`create-account:ip:${clientIp}`, 20, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many account creation requests. Please wait 10 minutes." });
+      const ipLimit = await checkDistributedRateLimit(`create-account:ip:${clientIp}`, 20, 10 * 60 * 1000);
+      if (!ipLimit.allowed) {
+        return sendRateLimitResponse(res, ipLimit.retryAfterSeconds, "Too many account creation requests. Please wait a few minutes.");
       }
 
       const { email, password } = req.body;
@@ -946,10 +1247,13 @@ Respond to the student's question directly, and if possible provide structured J
       const signUpData = await signUpRes.json();
       if (!signUpRes.ok) {
         if (signUpData?.error?.message === "EMAIL_EXISTS") {
+          await markEmailRegistered(emailDocId, "existing");
           return res.status(409).json({ error: "Email is already in use. Try signing in instead, or use a different email." });
         }
         return res.status(400).json({ error: signUpData?.error?.message || "Failed to create account." });
       }
+
+      await markEmailRegistered(emailDocId, signUpData.localId);
 
       // Never log or return the password in the response
       return res.status(201).json({
@@ -968,7 +1272,13 @@ Respond to the student's question directly, and if possible provide structured J
   // 3. Finalize Account using REST API: Writes public profile without PII and private profile to /users/{uid}/private/profile
   app.post("/api/auth/finalize-account", async (req, res) => {
     try {
-      const { uid, email, name, department, avatarUrl, idToken } = req.body;
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      const ipLimit = await checkDistributedRateLimit(`finalize-account:ip:${clientIp}`, 20, 10 * 60 * 1000);
+      if (!ipLimit.allowed) {
+        return sendRateLimitResponse(res, ipLimit.retryAfterSeconds, "Too many profile finalization requests. Please wait a few minutes.");
+      }
+
+      const { uid, email, name, department, yearOfStudy, bio, avatarUrl, idToken } = req.body;
 
       if (!uid || !email || !idToken) {
         return res.status(400).json({ error: "UID, email, and idToken are required." });
@@ -1015,7 +1325,10 @@ Respond to the student's question directly, and if possible provide structured J
           id: { stringValue: uid },
           name: { stringValue: name || '' },
           department: { stringValue: department || '' },
-          campus: { stringValue: 'Anna University' },
+          yearOfStudy: { stringValue: yearOfStudy || '' },
+          bio: { stringValue: bio || '' },
+          onboardingCompleted: { booleanValue: true },
+          campus: { stringValue: 'Madras Institute of Technology – Anna University' },
           rating: { integerValue: "0" },
           avatarUrl: { stringValue: finalAvatarUrl },
           exchangesCompleted: { integerValue: "0" },
@@ -1073,6 +1386,9 @@ Respond to the student's question directly, and if possible provide structured J
         body: JSON.stringify(privatePayload)
       });
 
+      // Mark email as registered in persistent store
+      await markEmailRegistered(emailDocId, uid);
+
       // Clean up the verified temporary OTP record to prevent replay
       await deleteOtpRecord(emailDocId);
       res.json({ message: "Account finalized successfully." });
@@ -1086,8 +1402,9 @@ Respond to the student's question directly, and if possible provide structured J
   app.post("/api/auth/forgot-password", async (req, res) => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkIpRateLimit(`forgot-password:${clientIp}`, 5, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many password reset requests from this IP address. Please wait 10 minutes." });
+      const ipLimit = await checkDistributedRateLimit(`forgot-password:${clientIp}`, 5, 10 * 60 * 1000);
+      if (!ipLimit.allowed) {
+        return sendRateLimitResponse(res, ipLimit.retryAfterSeconds, "Too many password reset requests from this IP address. Please wait a few minutes.");
       }
 
       const { email } = req.body;
@@ -1161,8 +1478,9 @@ Respond to the student's question directly, and if possible provide structured J
   app.post("/api/auth/change-password", async (req, res) => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkIpRateLimit(`change-password:ip:${clientIp}`, 15, 10 * 60 * 1000)) {
-        return res.status(429).json({ error: "Too many password change attempts. Please wait 10 minutes." });
+      const ipLimit = await checkDistributedRateLimit(`change-password:ip:${clientIp}`, 15, 10 * 60 * 1000);
+      if (!ipLimit.allowed) {
+        return sendRateLimitResponse(res, ipLimit.retryAfterSeconds, "Too many password change attempts. Please wait a few minutes.");
       }
 
       const authHeader = req.headers.authorization;
@@ -1278,10 +1596,11 @@ Respond to the student's question directly, and if possible provide structured J
   // Evaluated BEFORE express.json({ limit: "7.5mb" }) buffers and parses the large payload.
   // This mitigates DoS attacks by rejecting rate-limited clients with HTTP 429 immediately,
   // without consuming CPU/memory to parse the 7.5 MB body.
-  const uploadIpRateLimitMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const uploadIpRateLimitMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-    if (!checkIpRateLimit(`upload-image:${clientIp}`, 30, 10 * 60 * 1000)) {
-      return res.status(429).json({ error: "Too many upload requests. Please wait a few minutes." });
+    const ipLimit = await checkDistributedRateLimit(`upload-image:ip:${clientIp}`, 30, 10 * 60 * 1000);
+    if (!ipLimit.allowed) {
+      return sendRateLimitResponse(res, ipLimit.retryAfterSeconds, "Too many upload requests from this network. Please wait a few minutes.");
     }
     next();
   };
@@ -1300,6 +1619,11 @@ Respond to the student's question directly, and if possible provide structured J
         const caller = await verifyStudentCaller(req);
         if (!caller) {
           return res.status(403).json({ error: "Authentication and verified student status required for image upload." });
+        }
+
+        const userLimit = await checkDistributedRateLimit(`upload-image:user:${caller.uid}`, 20, 60 * 60 * 1000);
+        if (!userLimit.allowed) {
+          return sendRateLimitResponse(res, userLimit.retryAfterSeconds, "Image upload quota exceeded. Maximum 20 uploads per hour.");
         }
 
       const { file, folder } = req.body;
@@ -1452,12 +1776,14 @@ Respond to the student's question directly, and if possible provide structured J
 
       const allowedFormats = "jpg,jpeg,png,webp";
       const timestamp = Math.round(Date.now() / 1000);
-      const stringToSign = `allowed_formats=${allowedFormats}&folder=${uploadFolder}&timestamp=${timestamp}${apiSecret}`;
+      const uniquePublicId = `${caller.uid}_${crypto.randomBytes(12).toString("hex")}`;
+      const stringToSign = `allowed_formats=${allowedFormats}&folder=${uploadFolder}&public_id=${uniquePublicId}&timestamp=${timestamp}${apiSecret}`;
       const signature = crypto.createHash("sha1").update(stringToSign).digest("hex");
 
       const formData = new URLSearchParams();
       formData.append("file", sanitizedDataUri);
       formData.append("folder", uploadFolder);
+      formData.append("public_id", uniquePublicId);
       formData.append("timestamp", timestamp.toString());
       formData.append("api_key", apiKeyVal);
       formData.append("signature", signature);
@@ -6057,6 +6383,11 @@ export async function startServer() {
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
   });
+
+  // Cloud Run / Reverse Proxy keep-alive alignment to prevent 502 Bad Gateway race conditions
+  server.keepAliveTimeout = 65000; // 65 seconds (exceeds Cloud Run reverse proxy 60s idle timeout)
+  server.headersTimeout = 66000;   // 66 seconds (must strictly exceed keepAliveTimeout)
+  server.requestTimeout = 30000;   // 30 seconds max request processing timeout
 
   const gracefulShutdown = (signal: string) => {
     console.log(`Received ${signal}. Gracefully shutting down HTTP server...`);

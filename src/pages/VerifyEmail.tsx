@@ -1,36 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { auth } from '../lib/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
 import { AUTH_ENDPOINTS, COLLEGE_EMAIL_DOMAIN } from '../config/api';
 import { AuthLayout } from '../components/AuthLayout';
+import { FieldError } from '../components/ui/FieldError';
+import { FormAlert } from '../components/ui/FormAlert';
+import { isProfileComplete } from '../lib/validation';
+import { formatErrorMessage } from '../lib/errorHandler';
+import { AuthProgressIndicator } from '../components/AuthProgressIndicator';
+import { Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
 
 export function VerifyEmail() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { firebaseUser, currentUser } = useAuth();
+  const { firebaseUser, currentUser, loading } = useAuth();
 
-  // Retrieve pending registration state from location.state or sessionStorage
-  const [pendingData, setPendingData] = useState<{
-    email?: string;
-    name?: string;
-    yearOfStudy?: string;
-    password?: string;
-  }>(() => {
+  // Retrieve pending registration session from location.state or sessionStorage
+  const [email] = useState<string>(() => {
     if (location.state && location.state.email) {
-      return location.state;
+      return location.state.email;
     }
     try {
-      const stored = sessionStorage.getItem('studentneed_pending_registration');
+      const stored = sessionStorage.getItem('studentneed_registration_session');
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (parsed.email) return parsed.email;
       }
     } catch (_) {}
-    return {};
+    return '';
   });
-
-  const email = pendingData.email || firebaseUser?.email || '';
 
   // 6-digit OTP input boxes state
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
@@ -40,7 +38,15 @@ export function VerifyEmail() {
   const [isResending, setIsResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(60);
   const [error, setError] = useState<string | null>(null);
+  const [otpError, setOtpError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // If email is missing, redirect back to registration
+  useEffect(() => {
+    if (!email) {
+      navigate('/register', { replace: true });
+    }
+  }, [email, navigate]);
 
   // Timer countdown for Resend code button
   useEffect(() => {
@@ -58,18 +64,20 @@ export function VerifyEmail() {
     }
   }, []);
 
-  // Redirect if already fully authenticated with profile
+  // Redirect if already fully authenticated with completed profile
   useEffect(() => {
-    if (firebaseUser && currentUser) {
-      navigate('/');
+    if (loading) return;
+    if (firebaseUser && currentUser && isProfileComplete(currentUser)) {
+      navigate('/', { replace: true });
     }
-  }, [firebaseUser, currentUser, navigate]);
+  }, [firebaseUser, currentUser, loading, navigate]);
 
   const otpCode = digits.join('');
   const isCodeComplete = otpCode.length === 6 && digits.every((d) => d.length === 1);
 
   const handleDigitChange = (index: number, value: string) => {
     setError(null);
+    setOtpError(null);
     setSuccessMessage(null);
 
     // Allow only numeric digits
@@ -141,12 +149,13 @@ export function VerifyEmail() {
 
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
-      setError('Email address is missing. Please start registration again.');
+      setError('Email address is missing. Please restart registration.');
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    setOtpError(null);
     setSuccessMessage(null);
 
     try {
@@ -157,78 +166,43 @@ export function VerifyEmail() {
         body: JSON.stringify({ email: cleanEmail, otp: otpCode }),
       });
 
+      const verifyData = await verifyRes.json().catch(() => ({}));
+
       if (!verifyRes.ok) {
-        let errMessage = 'Invalid verification code.';
-        try {
-          const text = await verifyRes.text();
-          const data = JSON.parse(text);
-          errMessage = data.error || errMessage;
-        } catch (_) {}
-        throw new Error(errMessage);
+        const rawErr = verifyData.error || 'Invalid verification code.';
+        throw new Error(rawErr);
       }
 
-      // If we have full pending registration credentials, complete account creation and finalization
-      if (pendingData.password) {
-        // 2. Submit to backend create-account endpoint
-        const createRes = await fetch(AUTH_ENDPOINTS.createAccount, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+      // Store verified registration session with token for Step 3 Onboarding
+      sessionStorage.setItem(
+        'studentneed_registration_session',
+        JSON.stringify({
+          email: cleanEmail,
+          verified: true,
+          registrationToken: verifyData.registrationToken || '',
+          verifiedAt: Date.now(),
+        })
+      );
+
+      setSuccessMessage('Email verified successfully! Setting up your student profile...');
+
+      // Transition to Step 3: Onboarding
+      setTimeout(() => {
+        navigate('/onboarding', {
+          replace: true,
+          state: {
             email: cleanEmail,
-            password: pendingData.password,
-          }),
+            verified: true,
+            registrationToken: verifyData.registrationToken,
+          },
         });
-
-        const createData = await createRes.json();
-        if (!createRes.ok) {
-          throw new Error(
-            createData.error ||
-              (createData.details ? createData.details[0] : 'Failed to create account.')
-          );
-        }
-
-        // 3. Establish Firebase Auth session
-        const userCred = await signInWithEmailAndPassword(
-          auth,
-          cleanEmail,
-          pendingData.password
-        );
-
-        // 4. Finalize student public & private profiles
-        const idToken = await userCred.user.getIdToken();
-        const finalizeRes = await fetch(AUTH_ENDPOINTS.finalizeAccount, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            uid: userCred.user.uid,
-            email: cleanEmail,
-            name: pendingData.name || 'Student',
-            department: pendingData.yearOfStudy || 'General',
-            avatarUrl: '',
-            idToken,
-          }),
-        });
-
-        if (!finalizeRes.ok) {
-          console.warn('Profile finalization returned non-200, will fallback to onboarding.');
-        }
-
-        // Clean up temporary session storage
-        sessionStorage.removeItem('studentneed_pending_registration');
-        setSuccessMessage('Account created and verified successfully!');
-
-        // Redirect directly to the app
-        navigate('/');
-      } else {
-        // Email verified successfully in standalone mode
-        setSuccessMessage('Email verified successfully!');
-        sessionStorage.removeItem('studentneed_pending_registration');
-        setTimeout(() => {
-          navigate(currentUser ? '/' : '/login');
-        }, 1000);
-      }
+      }, 500);
     } catch (err: any) {
-      setError(err.message || 'An error occurred during verification.');
+      const formatted = formatErrorMessage(
+        err,
+        'Invalid verification code. Please check and try again.'
+      );
+      setOtpError(formatted);
     } finally {
       setIsLoading(false);
     }
@@ -243,6 +217,7 @@ export function VerifyEmail() {
 
     setIsResending(true);
     setError(null);
+    setOtpError(null);
     setSuccessMessage(null);
 
     try {
@@ -262,25 +237,23 @@ export function VerifyEmail() {
         throw new Error(errMessage);
       }
 
-      setSuccessMessage(`A new verification code was sent to ${cleanEmail}`);
+      setSuccessMessage('A new verification code has been sent to your student email.');
       setResendCooldown(60);
       setDigits(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } catch (err: any) {
-      setError(err.message || 'Unable to resend code. Please try again.');
+      setError(formatErrorMessage(err, 'Failed to resend verification code. Please try again.'));
     } finally {
       setIsResending(false);
     }
   };
 
-  const handleDifferentEmail = () => {
-    sessionStorage.removeItem('studentneed_pending_registration');
-    navigate('/register');
-  };
-
   return (
     <AuthLayout>
       <div className="space-y-4">
+        {/* Progress Indicator: Step 2 (Verification) */}
+        <AuthProgressIndicator currentStep={2} />
+
         {/* Header */}
         <div>
           <h2 className="text-[26px] sm:text-[28px] font-bold tracking-tight text-[#252b27] leading-tight">
@@ -291,143 +264,134 @@ export function VerifyEmail() {
           </p>
         </div>
 
-        {/* Envelope Icon & Email Display matching screenshot */}
-        <div className="space-y-1 pt-0.5">
-          {/* Custom SVG Envelope with checkmark in bottom-right corner */}
-          <div className="text-[#252b27]">
-            <svg
-              className="h-8 w-8 text-[#252b27]"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.6}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 8.2l7.89 5.26a2 2 0 002.22 0L21 8.2M5 19h7m-7-14h14a2 2 0 012 2v5.5M5 5a2 2 0 00-2 2v10a2 2 0 002 2"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15 19l2 2 4-4"
-              />
-            </svg>
+        {/* Email Target Indicator & Change Link */}
+        <div className="flex items-center justify-between rounded-xl border border-[#dedcd4] bg-[#f7f6f2] p-3 text-xs">
+          <div className="truncate pr-2">
+            <span className="text-[#889089] block text-[10px] uppercase font-bold tracking-wider">
+              Verification sent to
+            </span>
+            <span className="font-semibold text-[#252b27] truncate block text-[13px]">
+              {email || `student@${COLLEGE_EMAIL_DOMAIN}`}
+            </span>
           </div>
-
-          <p className="text-sm font-bold text-[#252b27] tracking-tight">
-            {email || `student.a@${COLLEGE_EMAIL_DOMAIN}`}
-          </p>
+          <Link
+            to="/register"
+            className="shrink-0 text-xs font-semibold text-[#204b39] hover:text-[#18392b] hover:underline flex items-center gap-1"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Use a different email</span>
+          </Link>
         </div>
 
-        {/* Error Alert */}
+        {/* General Error Alert */}
         {error && (
-          <div
-            role="alert"
-            className="p-2.5 text-xs sm:text-sm text-red-600 bg-red-50 rounded-lg border border-red-100"
-          >
-            {error}
-          </div>
+          <FormAlert
+            error={error}
+            onDismiss={() => setError(null)}
+          />
         )}
 
         {/* Success Alert */}
         {successMessage && (
-          <div
-            role="status"
-            className="p-2.5 text-xs sm:text-sm text-[#204b39] bg-[#edf1ec] rounded-lg border border-[#e0e6df]"
-          >
-            {successMessage}
-          </div>
+          <FormAlert
+            success={successMessage}
+            onDismiss={() => setSuccessMessage(null)}
+          />
         )}
 
-        {/* Verification Form */}
-        <form onSubmit={handleVerifyOtp} className="space-y-3.5 pt-0.5">
-          {/* Verification Code Label */}
+        {/* OTP Form */}
+        <form onSubmit={handleVerifyOtp} className="space-y-4" noValidate>
           <div>
-            <label className="block text-[13px] font-medium text-[#252b27] mb-1.5">
+            <label
+              htmlFor="otp-digit-0"
+              className="block text-xs font-semibold uppercase tracking-wider text-[#555d56] mb-2"
+            >
               Verification code
             </label>
 
-            {/* 6 Digit Input Boxes matching screenshot */}
-            <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+            {/* 6 Individual Digit Input Boxes */}
+            <div className="flex justify-between gap-1.5 sm:gap-2">
               {digits.map((digit, index) => (
-                <div key={index} className="flex-1 max-w-[56px]">
-                  <input
-                    ref={(el) => {
-                      inputRefs.current[index] = el;
-                    }}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleDigitChange(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(index, e)}
-                    onPaste={handlePaste}
-                    placeholder="—"
-                    aria-label={`Digit ${index + 1} of 6`}
-                    className={`w-full h-11 sm:h-12 rounded-lg border text-center text-lg sm:text-xl font-semibold transition-all focus:outline-none ${
-                      digit
-                        ? 'border-[#252b27] text-[#252b27] bg-white'
-                        : 'border-[#dedcd4] text-[#252b27] bg-white placeholder:text-[#a0a59e]'
-                    } focus:border-[#204b39] focus:ring-1 focus:ring-[#204b39]/20`}
-                  />
-                </div>
+                <input
+                  key={index}
+                  id={`otp-digit-${index}`}
+                  ref={(el) => {
+                    inputRefs.current[index] = el;
+                  }}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleDigitChange(index, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(index, e)}
+                  onPaste={handlePaste}
+                  disabled={isLoading}
+                  className={`w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold rounded-xl border bg-white text-[#252b27] transition-all focus:outline-none focus:ring-2 focus:ring-[#204b39]/15 disabled:bg-[#f7f6f2] disabled:cursor-not-allowed ${
+                    otpError
+                      ? 'border-red-400 focus:border-red-500 bg-red-50/20'
+                      : digit
+                      ? 'border-[#204b39] bg-[#204b39]/5 text-[#204b39]'
+                      : 'border-[#dedcd4] focus:border-[#204b39]'
+                  }`}
+                  aria-label={`Digit ${index + 1} of verification code`}
+                />
               ))}
             </div>
+
+            {/* Field Error below OTP boxes */}
+            <FieldError error={otpError || undefined} id="otp-input-error" />
           </div>
 
-          {/* Primary Verify Email Button */}
-          <div className="pt-1">
-            <button
-              type="submit"
-              disabled={!isCodeComplete || isLoading}
-              className={`w-full h-10 sm:h-[42px] rounded-lg text-sm font-semibold transition-all flex items-center justify-center ${
-                isCodeComplete && !isLoading
-                  ? 'bg-[#204b39] hover:bg-[#183a2c] text-white cursor-pointer'
-                  : 'bg-[#ced9cd] text-[#555d56] cursor-not-allowed'
-              }`}
-            >
-              {isLoading ? 'Verifying...' : 'Verify email'}
-            </button>
+          {/* Verify Button */}
+          <button
+            type="submit"
+            disabled={!isCodeComplete || isLoading}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#204b39] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#18392b] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                <span>Verifying code…</span>
+              </>
+            ) : (
+              <>
+                <span>Verify & Continue</span>
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </>
+            )}
+          </button>
+
+          {/* Resend Action with Countdown */}
+          <div className="flex items-center justify-between text-xs text-[#555d56] pt-1">
+            <span>Didn&apos;t get the code?</span>
+            {resendCooldown > 0 ? (
+              <span className="text-[#889089] font-medium">
+                Resend code in {resendCooldown}s
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleResendCode}
+                disabled={isResending}
+                className="font-semibold text-[#204b39] hover:text-[#18392b] hover:underline disabled:opacity-50"
+              >
+                {isResending ? 'Sending…' : 'Resend code'}
+              </button>
+            )}
           </div>
-
-          {/* Spam Folder Guidance */}
-          <p className="text-[11px] sm:text-xs text-[#667065] text-center pt-0.5">
-            Didn&apos;t get the email? Check your spam folder.
-          </p>
-
-          {/* Action Buttons: Resend code & Use a different email */}
-          <div className="space-y-2 pt-0.5">
-            <button
-              type="button"
-              onClick={handleResendCode}
-              disabled={isResending || resendCooldown > 0}
-              className="w-full h-10 sm:h-[42px] flex items-center justify-center rounded-lg border border-[#dedcd4] bg-white text-xs sm:text-sm font-semibold text-[#252b27] hover:bg-[#f7f6f2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              {isResending
-                ? 'Sending code...'
-                : resendCooldown > 0
-                ? `Resend code (${resendCooldown}s)`
-                : 'Resend code'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleDifferentEmail}
-              className="w-full h-10 sm:h-[42px] flex items-center justify-center rounded-lg border border-[#dedcd4] bg-white text-xs sm:text-sm font-semibold text-[#252b27] hover:bg-[#f7f6f2] transition-colors cursor-pointer"
-            >
-              Use a different email
-            </button>
-          </div>
-
-          {/* Privacy Reminder Footnote */}
-          <p className="text-[11px] sm:text-xs text-[#555d56] text-center pt-1 leading-relaxed">
-            Keep your code private. StudentNeed won&apos;t ask you to share it in chat.
-          </p>
         </form>
+
+        {/* Guidance and Security Reminders */}
+        <div className="rounded-xl border border-[#dedcd4] bg-[#f7f6f2] p-3 text-[11px] text-[#555d56] space-y-1 leading-relaxed">
+          <p>
+            • <strong>Spam folder:</strong> Check your spam folder or promotions tab if you don&apos;t see the email within 1–2 minutes.
+          </p>
+          <p>
+            • <strong>Security:</strong> Keep your code private. StudentNeed staff won&apos;t ask for your code.
+          </p>
+        </div>
       </div>
     </AuthLayout>
   );
 }
-export default VerifyEmail;

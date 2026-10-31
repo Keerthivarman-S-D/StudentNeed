@@ -561,6 +561,16 @@ service cloud.firestore {
       allow read, write: if isInternalSystem() || isAdmin();
     }
 
+    // Registered email lookup collection managed strictly by backend service account or admin
+    match /registered_emails/{emailDocId} {
+      allow read, write: if isInternalSystem() || isAdmin();
+    }
+
+    // Distributed rate limits store managed strictly by backend service account or admin
+    match /rate_limits/{limitId} {
+      allow read, write: if isInternalSystem() || isAdmin();
+    }
+
     // Real-Time Event-Driven Notifications System
     match /notifications/{notificationId} {
       // Users can only read their own notifications

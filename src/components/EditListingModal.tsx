@@ -5,6 +5,10 @@ import { useAppContext } from '../context/AppContext';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { uploadImageToCloudinary, validateImageFile } from '../lib/cloudinary';
+import { FieldError } from './ui/FieldError';
+import { FormAlert } from './ui/FormAlert';
+import { validateListingForm } from '../lib/validation';
+import { formatErrorMessage } from '../lib/errorHandler';
 import { cn } from '../lib/utils';
 
 const CATEGORIES: Category[] = [
@@ -45,7 +49,19 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const clearFieldError = (field: string) => {
+    if (fieldErrors[field]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+    if (error) setError(null);
+  };
 
   if (!isOpen) return null;
 
@@ -100,6 +116,25 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
     if (isTerminal) {
       setError(`Cannot edit a listing with status "${listing.status}".`);
+      return;
+    }
+
+    const validation = validateListingForm({
+      title,
+      description,
+      price: type === 'Sale' ? price : undefined,
+      type,
+      condition,
+      category,
+      location,
+      wantedItem,
+      imagesCount: images.length,
+    });
+
+    if (!validation.valid) {
+      setFieldErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      setError(firstError || 'Please fix the errors below.');
       return;
     }
 
@@ -180,7 +215,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
       }, 700);
     } catch (err: any) {
       console.error('Failed to update listing:', err);
-      setError('Failed to update listing. Please try again.');
+      setError(formatErrorMessage(err, 'Failed to update listing. Please try again.'));
     } finally {
       setIsSaving(false);
     }
@@ -214,17 +249,18 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
         </div>
 
         {error && (
-          <div className="rounded-2xl bg-red-50 border border-red-200 p-3.5 flex items-start gap-2.5 text-red-700 text-xs font-semibold">
-            <AlertCircle className="h-4 w-4 shrink-0 text-red-600 mt-0.5" />
-            <span>{error}</span>
-          </div>
+          <FormAlert
+            type="error"
+            message={error}
+            onClose={() => setError(null)}
+          />
         )}
 
         {successMessage && (
-          <div className="rounded-2xl bg-[#edf1ec] border border-[#dedcd4] p-3.5 flex items-center gap-2.5 text-[#204b39] text-xs font-semibold">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-[#204b39]" />
-            <span>{successMessage}</span>
-          </div>
+          <FormAlert
+            type="success"
+            message={successMessage}
+          />
         )}
 
         {isTerminal ? (
@@ -257,12 +293,20 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
               </div>
               <Input
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  clearFieldError('title');
+                }}
                 placeholder="e.g. Scientific Calculator - Casio fx-991EX"
                 required
                 minLength={3}
                 maxLength={50}
+                className={cn(
+                  "transition-all",
+                  fieldErrors.title && "border-red-400 focus:border-red-500 focus:ring-red-200"
+                )}
               />
+              <FieldError error={fieldErrors.title} />
             </div>
 
             {/* Offering Type / Legacy Borrow Conversion */}
@@ -298,7 +342,10 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
               ) : (
                 <select
                   value={type}
-                  onChange={(e) => setType(e.target.value as ActiveListingType)}
+                  onChange={(e) => {
+                    setType(e.target.value as ActiveListingType);
+                    clearFieldError('type');
+                  }}
                   className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
                 >
                   <option value="Sale">Sell</option>
@@ -316,8 +363,16 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 </label>
                 <select
                   value={category}
-                  onChange={(e) => setCategory(e.target.value as Category)}
-                  className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
+                  onChange={(e) => {
+                    setCategory(e.target.value as Category);
+                    clearFieldError('category');
+                  }}
+                  className={cn(
+                    "flex h-11 w-full rounded-xl border bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:outline-none focus:ring-2 transition-all shadow-2xs",
+                    fieldErrors.category
+                      ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                      : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                  )}
                 >
                   {CATEGORIES.map((cat) => (
                     <option key={cat} value={cat}>
@@ -325,6 +380,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                     </option>
                   ))}
                 </select>
+                <FieldError error={fieldErrors.category} />
               </div>
 
               {type !== 'Borrow' && (
@@ -334,8 +390,16 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                   </label>
                   <select
                     value={condition}
-                    onChange={(e) => setCondition(e.target.value as Condition)}
-                    className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
+                    onChange={(e) => {
+                      setCondition(e.target.value as Condition);
+                      clearFieldError('condition');
+                    }}
+                    className={cn(
+                      "flex h-11 w-full rounded-xl border bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:outline-none focus:ring-2 transition-all shadow-2xs",
+                      fieldErrors.condition
+                        ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                        : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                    )}
                   >
                     {CONDITIONS.map((cond) => (
                       <option key={cond} value={cond}>
@@ -343,6 +407,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                       </option>
                     ))}
                   </select>
+                  <FieldError error={fieldErrors.condition} />
                 </div>
               )}
             </div>
@@ -362,11 +427,19 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                   max="10000"
                   step="1"
                   value={price}
-                  onChange={(e) => setPrice(e.target.value)}
+                  onChange={(e) => {
+                    setPrice(e.target.value);
+                    clearFieldError('price');
+                  }}
                   placeholder="e.g. 450"
                   required
+                  className={cn(
+                    "transition-all",
+                    fieldErrors.price && "border-red-400 focus:border-red-500 focus:ring-red-200"
+                  )}
                 />
-                {price && (Number(price) < 1 || Number(price) > 10000) && (
+                <FieldError error={fieldErrors.price} />
+                {price && (Number(price) < 1 || Number(price) > 10000) && !fieldErrors.price && (
                   <p className="mt-1 text-xs text-red-600 font-medium">Price must be between ₹1 and ₹10,000.</p>
                 )}
               </div>
@@ -380,11 +453,19 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                 </label>
                 <Input
                   value={wantedItem}
-                  onChange={(e) => setWantedItem(e.target.value)}
+                  onChange={(e) => {
+                    setWantedItem(e.target.value);
+                    clearFieldError('wantedItem');
+                  }}
                   placeholder="e.g. Scientific Calculator, Lab Coat, Engineering Book"
                   required
                   maxLength={100}
+                  className={cn(
+                    "transition-all",
+                    fieldErrors.wantedItem && "border-red-400 focus:border-red-500 focus:ring-red-200"
+                  )}
                 />
+                <FieldError error={fieldErrors.wantedItem} />
                 <p className="mt-1 text-xs text-zinc-500">Specify the item or equipment you wish to trade for.</p>
               </div>
             )}
@@ -396,8 +477,16 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
               </label>
               <select
                 value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
+                onChange={(e) => {
+                  setLocation(e.target.value);
+                  clearFieldError('location');
+                }}
+                className={cn(
+                  "flex h-11 w-full rounded-xl border bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:outline-none focus:ring-2 transition-all shadow-2xs",
+                  fieldErrors.location
+                    ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                    : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                )}
                 required
               >
                 {!APPROVED_CAMPUS_LOCATIONS.includes(location as any) && (
@@ -409,6 +498,7 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
                   </option>
                 ))}
               </select>
+              <FieldError error={fieldErrors.location} />
             </div>
 
             {/* Description */}
@@ -430,13 +520,22 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
               </div>
               <textarea
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  clearFieldError('description');
+                }}
                 rows={3}
-                className="w-full rounded-xl border border-[#dedcd4] bg-[#faf9f5] focus:bg-white p-3.5 text-sm text-[#252b27] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
+                className={cn(
+                  "w-full rounded-xl border bg-[#faf9f5] focus:bg-white p-3.5 text-sm text-[#252b27] focus:outline-none focus:ring-2 transition-all shadow-2xs",
+                  fieldErrors.description
+                    ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                    : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                )}
                 placeholder="Provide detailed description of the item (10–100 characters)..."
                 required
                 maxLength={100}
               />
+              <FieldError error={fieldErrors.description} />
               <p className="mt-1 text-xs text-zinc-500">
                 Must be between 10 and 100 characters.
               </p>

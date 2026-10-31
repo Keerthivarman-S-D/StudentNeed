@@ -24,6 +24,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { cn } from '../lib/utils';
 import { ItemRequest, Chat, Category } from '../types';
 import { NOTIFICATION_ENDPOINTS } from '../config/api';
+import { formatErrorMessage } from '../lib/errorHandler';
 
 /**
  * Checks whether an item request has expired based on trusted expiresAt
@@ -281,6 +282,7 @@ export function Requests() {
       await updateRequestStatus(requestId, 'completed');
     } catch (err) {
       console.error('Failed to mark request as found:', err);
+      setChatError(formatErrorMessage(err, 'Could not update request status. Please try again.'));
     } finally {
       setUpdatingId(null);
     }
@@ -293,6 +295,7 @@ export function Requests() {
       setConfirmCancelId(null);
     } catch (err) {
       console.error('Failed to cancel request:', err);
+      setChatError(formatErrorMessage(err, 'Could not cancel request. Please try again.'));
     } finally {
       setCancellingId(null);
     }
@@ -307,7 +310,7 @@ export function Requests() {
       setTimeout(() => setRenewSuccessId(null), 4000);
     } catch (err: any) {
       console.error('Failed to renew request:', err);
-      setChatError(err?.message || 'Could not renew request. Please try again.');
+      setChatError(formatErrorMessage(err, 'Could not renew request. Please try again.'));
     } finally {
       setRenewingId(null);
     }

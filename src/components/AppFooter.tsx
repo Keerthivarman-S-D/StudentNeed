@@ -29,9 +29,9 @@ export function AppFooter() {
           <div className="space-y-2">
             <p className="text-xs font-semibold text-[#252b27] uppercase tracking-wider">Support</p>
             <ul className="space-y-1.5 text-xs">
-              <li><a href="mailto:auth@studentneed.me" className="hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:underline">Contact</a></li>
+              <li><a href="mailto:studentneed.info@gmail.com" className="hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:underline">Contact (studentneed.info@gmail.com)</a></li>
               <li><Link to="/launch#campus-first" className="hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:underline">About</Link></li>
-              <li><a href="mailto:auth@studentneed.me?subject=StudentNeed%20Report" className="hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:underline">Report an Issue</a></li>
+              <li><a href="mailto:studentneed.info@gmail.com?subject=StudentNeed%20Report" className="hover:text-[#204b39] transition-colors focus-visible:outline-none focus-visible:underline">Report an Issue</a></li>
             </ul>
           </div>
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   collection,
   onSnapshot,
@@ -20,6 +20,7 @@ import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { User, Listing, ItemRequest, RequestStatus, UpdateListingInput, isValidApprovedLocation } from '../types';
 import { mockUsers } from '../data';
 import { REQUEST_ENDPOINTS } from '../config/api';
+import { broadcastSyncEvent, subscribeToSyncEvents } from '../lib/crossTabSync';
 
 export type NewListingInput = {
   title: string;
@@ -55,6 +56,7 @@ type AppContextType = {
   listingsLoading: boolean;
   listingsError: string | null;
   hasMoreListings: boolean;
+  isLoadingMoreListings: boolean;
   loadMoreListings: () => void;
   addListing: (listing: NewListingInput | Listing) => Promise<string>;
   updateListing: (listingId: string, updates: UpdateListingInput) => Promise<void>;
@@ -123,6 +125,36 @@ function parseListingSnapshot(docSnap: any): Listing {
   };
 }
 
+// Deduplicate in-flight profile fetch promises across components to avoid duplicate Firestore reads
+const inFlightUserPromises = new Map<string, Promise<User | null>>();
+
+// Safe sessionStorage cache helper with TTL (15 minutes) for non-sensitive public student profiles
+const PROFILE_CACHE_TTL_MS = 15 * 60 * 1000;
+function getSessionUser(userId: string): User | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(`sn_user_${userId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed._cachedAt && Date.now() - parsed._cachedAt < PROFILE_CACHE_TTL_MS) {
+      const { _cachedAt, ...user } = parsed;
+      return user as User;
+    }
+  } catch {
+    // ignore sessionStorage errors
+  }
+  return null;
+}
+
+function setSessionUser(userId: string, user: User): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(`sn_user_${userId}`, JSON.stringify({ ...user, _cachedAt: Date.now() }));
+  } catch {
+    // ignore sessionStorage errors
+  }
+}
+
 export const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -133,6 +165,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [lastListingDoc, setLastListingDoc] = useState<QueryDocumentSnapshot | null>(null);
   const [isLoadingMoreListings, setIsLoadingMoreListings] = useState<boolean>(false);
   const LISTINGS_PAGE_SIZE = 10;
+
+  // In-flight submission guards to prevent duplicate listings and requests
+  const isSubmittingListingRef = useRef<boolean>(false);
+  const isSubmittingRequestRef = useRef<boolean>(false);
 
   const [requests, setRequests] = useState<ItemRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState<boolean>(true);
@@ -163,6 +199,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setAuthUser(user);
     });
     return () => unsubscribe();
+  }, []);
+
+  // Cross-tab sync: Listen to listing creation in other tabs to update state seamlessly without full re-queries
+  useEffect(() => {
+    const unsubscribeSync = subscribeToSyncEvents(async (event) => {
+      if (event.type === 'LISTING_CREATED' && event.listingId) {
+        try {
+          const snap = await getDoc(doc(db, 'listings', event.listingId));
+          if (snap.exists()) {
+            const newListing = parseListingSnapshot(snap);
+            setListings((prev) => {
+              if (prev.some((l) => l.id === newListing.id)) return prev;
+              return [newListing, ...prev];
+            });
+          }
+        } catch {
+          // ignore background sync errors
+        }
+      }
+    });
+
+    return () => unsubscribeSync();
   }, []);
 
   // Sync saved listings to localStorage
@@ -208,90 +266,79 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserProfile = async (userId: string): Promise<User | null> => {
     if (!userId) return null;
+
+    // 1. In-memory state cache
     if (userCache.has(userId)) {
       return userCache.get(userId)!;
     }
-    try {
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        const createdAt = data.createdAt?.toDate
-          ? data.createdAt.toDate().toISOString()
-          : typeof data.createdAt === 'string'
-          ? data.createdAt
-          : new Date().toISOString();
 
-        const fetchedUser: User = {
-          id: userDoc.id,
-          name: data.name || 'Student',
-          email: data.email || '',
-          department: data.department || 'Anna Univ',
-          campus: data.campus || 'Main Campus',
-          rating: typeof data.rating === 'number' ? data.rating : 5.0,
-          avatarUrl: data.avatarUrl,
-          exchangesCompleted: data.exchangesCompleted || 0,
-          role: data.role || 'student',
-          isVerified: Boolean(data.isVerified),
-          createdAt,
-        };
-
-        setUserCache((prev) => {
-          const next = new Map(prev);
-          next.set(userId, fetchedUser);
-          return next;
-        });
-        return fetchedUser;
-      }
-      return null;
-    } catch (err) {
-      console.warn(`[Profile Cache] Could not fetch user ${userId}:`, err);
-      return null;
+    // 2. Safe sessionStorage cache
+    const sessionUser = getSessionUser(userId);
+    if (sessionUser) {
+      setUserCache((prev) => {
+        const next = new Map(prev);
+        next.set(userId, sessionUser);
+        return next;
+      });
+      return sessionUser;
     }
+
+    // 3. In-flight request deduplication: return active promise if already in flight
+    if (inFlightUserPromises.has(userId)) {
+      return inFlightUserPromises.get(userId)!;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          const createdAt = data.createdAt?.toDate
+            ? data.createdAt.toDate().toISOString()
+            : typeof data.createdAt === 'string'
+            ? data.createdAt
+            : new Date().toISOString();
+
+          const fetchedUser: User = {
+            id: userDoc.id,
+            name: data.name || 'Student',
+            email: data.email || '',
+            department: data.department || 'Anna Univ',
+            campus: data.campus || 'Main Campus',
+            rating: typeof data.rating === 'number' ? data.rating : 5.0,
+            avatarUrl: data.avatarUrl,
+            exchangesCompleted: data.exchangesCompleted || 0,
+            role: data.role || 'student',
+            isVerified: Boolean(data.isVerified),
+            createdAt,
+          };
+
+          setSessionUser(userId, fetchedUser);
+          setUserCache((prev) => {
+            const next = new Map(prev);
+            next.set(userId, fetchedUser);
+            return next;
+          });
+          return fetchedUser;
+        }
+        return null;
+      } catch (err) {
+        console.warn(`[Profile Cache] Could not fetch user ${userId}:`, err);
+        return null;
+      } finally {
+        inFlightUserPromises.delete(userId);
+      }
+    })();
+
+    inFlightUserPromises.set(userId, fetchPromise);
+    return fetchPromise;
   };
 
   const prefetchUsers = (userIds: string[]) => {
     const missing = userIds.filter((id) => id && !userCache.has(id));
     if (missing.length === 0) return;
-    Promise.all(
-      missing.map(async (id) => {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', id));
-          if (userDoc.exists()) {
-            const data = userDoc.data();
-            const createdAt = data.createdAt?.toDate
-              ? data.createdAt.toDate().toISOString()
-              : typeof data.createdAt === 'string'
-              ? data.createdAt
-              : new Date().toISOString();
-
-            return {
-              id: userDoc.id,
-              name: data.name || 'Student',
-              email: data.email || '',
-              department: data.department || 'Anna Univ',
-              campus: data.campus || 'Main Campus',
-              rating: typeof data.rating === 'number' ? data.rating : 5.0,
-              avatarUrl: data.avatarUrl,
-              exchangesCompleted: data.exchangesCompleted || 0,
-              role: data.role || 'student',
-              isVerified: Boolean(data.isVerified),
-              createdAt,
-            } as User;
-          }
-        } catch {
-          // ignore individual fetch errors
-        }
-        return null;
-      })
-    ).then((fetchedUsers) => {
-      const valid = fetchedUsers.filter((u): u is User => u !== null);
-      if (valid.length > 0) {
-        setUserCache((prev) => {
-          const next = new Map(prev);
-          valid.forEach((u) => next.set(u.id, u));
-          return next;
-        });
-      }
+    missing.forEach((id) => {
+      fetchUserProfile(id);
     });
   };
 
@@ -561,8 +608,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       newListingData.wantedItem = listingInput.wantedItem.trim();
     }
 
+    if (isSubmittingListingRef.current) {
+      throw new Error('A listing submission is already in progress. Please wait a moment.');
+    }
+    isSubmittingListingRef.current = true;
+
     try {
       await setDoc(docRef, newListingData);
+
+      // Broadcast event across open browser tabs so they update seamlessly without redundant queries
+      broadcastSyncEvent({ type: 'LISTING_CREATED', listingId: docRef.id });
 
       // Prepend to local state for instantaneous UX
       const newlyCreated: Listing = {
@@ -588,6 +643,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return docRef.id;
     } catch (err: unknown) {
       handleFirestoreError(err, OperationType.CREATE, `listings/${docRef.id}`);
+    } finally {
+      isSubmittingListingRef.current = false;
     }
   };
 
@@ -755,11 +812,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       newRequestData.budget = Number(requestInput.budget);
     }
 
+    if (isSubmittingRequestRef.current) {
+      throw new Error('A request submission is already in progress. Please wait a moment.');
+    }
+    isSubmittingRequestRef.current = true;
+
     try {
       await setDoc(docRef, newRequestData);
       return docRef.id;
     } catch (err: unknown) {
       handleFirestoreError(err, OperationType.CREATE, `requests/${docRef.id}`);
+    } finally {
+      isSubmittingRequestRef.current = false;
     }
   };
 
@@ -873,6 +937,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         listingsLoading,
         listingsError,
         hasMoreListings,
+        isLoadingMoreListings,
         loadMoreListings,
         addListing,
         updateListing,

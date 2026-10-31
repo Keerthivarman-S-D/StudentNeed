@@ -115,12 +115,18 @@ export function LaunchFooter() {
             <p className="text-xs text-[#555d56] leading-relaxed">
               Anna University, Chromepet, Chennai 600044.
             </p>
-            <div className="pt-1">
+            <div className="pt-1 flex flex-col gap-1">
+              <a
+                href="mailto:studentneed.info@gmail.com"
+                className="text-xs text-[#204b39] font-semibold hover:underline"
+              >
+                studentneed.info@gmail.com →
+              </a>
               <button
                 onClick={() => scrollToSection('contact')}
-                className="text-xs text-[#204b39] font-semibold hover:underline cursor-pointer"
+                className="text-xs text-[#555d56] hover:text-[#204b39] hover:underline cursor-pointer text-left"
               >
-                Contact Campus Team →
+                Contact Details &amp; Hours
               </button>
             </div>
           </div>

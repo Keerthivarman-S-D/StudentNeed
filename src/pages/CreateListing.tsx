@@ -8,6 +8,10 @@ import { Input } from '../components/ui/Input';
 import { Category, ActiveListingType, Condition, APPROVED_CAMPUS_LOCATIONS, isValidApprovedLocation } from '../types';
 import { uploadImageToCloudinary, validateImageFile, UploadCancelledError } from '../lib/cloudinary';
 import { MODERATION_ENDPOINTS } from '../config/api';
+import { FieldError } from '../components/ui/FieldError';
+import { FormAlert } from '../components/ui/FormAlert';
+import { validateListingForm } from '../lib/validation';
+import { formatErrorMessage } from '../lib/errorHandler';
 import { cn } from '../lib/utils';
 
 export function CreateListing() {
@@ -37,9 +41,21 @@ export function CreateListing() {
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const clearFieldError = (field: string) => {
+    if (fieldErrors[field]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+    if (error) setError(null);
+  };
 
   // Clean up any in-flight upload when unmounting
   useEffect(() => {
@@ -186,6 +202,25 @@ export function CreateListing() {
       console.warn('Moderation pre-check failed or skipped:', modErr);
     }
 
+    const validation = validateListingForm({
+      title,
+      description,
+      price,
+      type,
+      condition,
+      category,
+      location,
+      wantedItem,
+      imagesCount: uploadedImages.length,
+    });
+
+    if (!validation.valid) {
+      setFieldErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      setError(firstError || 'Please fix the errors below before publishing.');
+      return;
+    }
+
     if (type === 'Exchange' && !wantedItem.trim()) {
       setError('Please specify what item you are looking for in exchange.');
       return;
@@ -264,7 +299,7 @@ export function CreateListing() {
     } catch (err: any) {
       console.error('Failed to create listing:', err);
       setIsSubmitting(false);
-      setError(err?.message || 'Could not publish listing. Please try again.');
+      setError(formatErrorMessage(err, 'Could not publish listing. Please try again.'));
     }
   };
 
@@ -321,16 +356,18 @@ export function CreateListing() {
           <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-red-600" />
           <div>
             <span className="font-semibold block capitalize">Account {currentUser.status}</span>
-            <span>Your account is currently restricted from publishing items to the marketplace. Please contact campus administration if you believe this is an error.</span>
+            <span>Your account is currently restricted from publishing items to the marketplace. Please contact campus administration at <a href="mailto:studentneed.info@gmail.com" className="underline font-semibold hover:text-red-950">studentneed.info@gmail.com</a> if you believe this is an error.</span>
           </div>
         </div>
       )}
 
       {error && (
-        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
-          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-red-600" />
-          <span>{error}</span>
-        </div>
+        <FormAlert 
+          type="error" 
+          message={error} 
+          onClose={() => setError(null)} 
+          className="mb-6" 
+        />
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -403,10 +440,19 @@ export function CreateListing() {
                 maxLength={50}
                 placeholder="e.g. Casio fx-991EX Scientific Calculator" 
                 value={title}
-                onChange={e => setTitle(e.target.value)}
-                className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                onChange={e => {
+                  setTitle(e.target.value);
+                  clearFieldError('title');
+                }}
+                className={cn(
+                  "transition-all",
+                  fieldErrors.title
+                    ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                    : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                )}
               />
-              {title.length > 0 && title.trim().length < 3 && (
+              <FieldError error={fieldErrors.title} />
+              {title.length > 0 && title.trim().length < 3 && !fieldErrors.title && (
                 <p className="mt-1 text-xs text-red-600 font-medium">Title must be at least 3 characters.</p>
               )}
             </div>
@@ -418,12 +464,21 @@ export function CreateListing() {
                   Category <span className="text-red-500">*</span>
                 </label>
                 <select 
-                  className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
+                  className={cn(
+                    "flex h-11 w-full rounded-xl border bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:outline-none focus:ring-2 transition-all shadow-2xs",
+                    fieldErrors.category
+                      ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                      : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                  )}
                   value={category}
-                  onChange={e => setCategory(e.target.value as Category)}
+                  onChange={e => {
+                    setCategory(e.target.value as Category);
+                    clearFieldError('category');
+                  }}
                 >
                   {categories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
+                <FieldError error={fieldErrors.category} />
               </div>
               
               <div>
@@ -431,12 +486,21 @@ export function CreateListing() {
                   Condition <span className="text-red-500">*</span>
                 </label>
                 <select 
-                  className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
+                  className={cn(
+                    "flex h-11 w-full rounded-xl border bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:outline-none focus:ring-2 transition-all shadow-2xs",
+                    fieldErrors.condition
+                      ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                      : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                  )}
                   value={condition}
-                  onChange={e => setCondition(e.target.value as Condition)}
+                  onChange={e => {
+                    setCondition(e.target.value as Condition);
+                    clearFieldError('condition');
+                  }}
                 >
                   {conditions.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
+                <FieldError error={fieldErrors.condition} />
               </div>
             </div>
 
@@ -456,18 +520,27 @@ export function CreateListing() {
                   max="10000"
                   placeholder="e.g. 450" 
                   value={price}
-                  onChange={e => setPrice(e.target.value)}
-                  className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                  onChange={e => {
+                    setPrice(e.target.value);
+                    clearFieldError('price');
+                  }}
+                  className={cn(
+                    "transition-all",
+                    fieldErrors.price
+                      ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                      : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                  )}
                 />
-                {price !== '' && Number(price) >= 1 && Number(price) <= 10000 && (
+                <FieldError error={fieldErrors.price} />
+                {price !== '' && Number(price) >= 1 && Number(price) <= 10000 && !fieldErrors.price && (
                   <p className="mt-1 text-xs text-[#204b39] font-semibold flex items-center gap-1">
                     <CheckCircle2 className="h-3.5 w-3.5" /> Valid price.
                   </p>
                 )}
-                {price !== '' && Number(price) < 1 && (
+                {price !== '' && Number(price) < 1 && !fieldErrors.price && (
                   <p className="mt-1 text-xs text-red-600 font-medium">Minimum listing price is ₹1.</p>
                 )}
-                {price !== '' && Number(price) > 10000 && (
+                {price !== '' && Number(price) > 10000 && !fieldErrors.price && (
                   <p className="mt-1 text-xs text-red-600 font-medium">Maximum listing price is ₹10,000.</p>
                 )}
               </div>
@@ -483,9 +556,18 @@ export function CreateListing() {
                   required 
                   placeholder="e.g. Scientific Calculator, Lab Coat, Engineering Book" 
                   value={wantedItem}
-                  onChange={e => setWantedItem(e.target.value)}
-                  className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                  onChange={e => {
+                    setWantedItem(e.target.value);
+                    clearFieldError('wantedItem');
+                  }}
+                  className={cn(
+                    "transition-all",
+                    fieldErrors.wantedItem
+                      ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                      : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                  )}
                 />
+                <FieldError error={fieldErrors.wantedItem} />
                 <p className="mt-1 text-xs text-[#555d56]">Specify the item or equipment you wish to trade for.</p>
               </div>
             )}
@@ -508,12 +590,21 @@ export function CreateListing() {
                 rows={4}
                 maxLength={100}
                 placeholder="Describe the item, condition, defects, or reasons for giving away..."
-                className="w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2.5 text-sm text-[#252b27] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs placeholder:text-[#555d56]"
+                className={cn(
+                  "w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-[#252b27] focus:outline-none focus:ring-2 transition-all shadow-2xs placeholder:text-[#555d56]",
+                  fieldErrors.description
+                    ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                    : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                )}
                 value={description}
-                onChange={e => setDescription(e.target.value)}
+                onChange={e => {
+                  setDescription(e.target.value);
+                  clearFieldError('description');
+                }}
               />
+              <FieldError error={fieldErrors.description} />
               <div className="mt-1 flex items-center justify-between text-xs">
-                {description.length > 0 && description.trim().length < 10 ? (
+                {description.length > 0 && description.trim().length < 10 && !fieldErrors.description ? (
                   <span className="text-red-600 font-medium">Description must be at least 10 characters.</span>
                 ) : (
                   <span className="text-[#555d56]">Must be between 10 and 100 characters.</span>
@@ -528,15 +619,24 @@ export function CreateListing() {
               </label>
               <select 
                 required 
-                className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
+                className={cn(
+                  "flex h-11 w-full rounded-xl border bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:outline-none focus:ring-2 transition-all shadow-2xs",
+                  fieldErrors.location
+                    ? "border-red-400 focus:border-red-500 focus:ring-red-200"
+                    : "border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
+                )}
                 value={location}
-                onChange={e => setLocation(e.target.value)}
+                onChange={e => {
+                  setLocation(e.target.value);
+                  clearFieldError('location');
+                }}
               >
                 <option value="" disabled>Select approved campus pickup location...</option>
                 {APPROVED_CAMPUS_LOCATIONS.map(loc => (
                   <option key={loc} value={loc}>{loc}</option>
                 ))}
               </select>
+              <FieldError error={fieldErrors.location} />
             </div>
           </div>
         </section>
@@ -693,6 +793,7 @@ export function CreateListing() {
               <span className="text-[11px] text-[#555d56] mt-0.5">JPG, JPEG, PNG, or WEBP up to 5MB</span>
             </label>
           )}
+          <FieldError error={fieldErrors.images} />
         </section>
 
         {/* Action Buttons */}

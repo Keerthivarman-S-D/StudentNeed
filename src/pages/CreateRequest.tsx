@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { AlertCircle, Loader2, ArrowLeft, Sparkles, HelpCircle, CheckCircle2, Clock } from 'lucide-react';
+import { AlertCircle, Loader2, ArrowLeft, CheckCircle2, Clock } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Category } from '../types';
+import { FieldError } from '../components/ui/FieldError';
+import { FormAlert } from '../components/ui/FormAlert';
+import { formatErrorMessage } from '../lib/errorHandler';
 
 export function CreateRequest() {
   const navigate = useNavigate();
@@ -24,6 +26,24 @@ export function CreateRequest() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    title?: string;
+    description?: string;
+    neededBy?: string;
+    location?: string;
+    budget?: string;
+  }>({});
+
+  const clearFieldError = (field: keyof typeof fieldErrors) => {
+    if (fieldErrors[field]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+    if (error) setError(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,25 +51,45 @@ export function CreateRequest() {
     
     // Clear previous error
     setError(null);
+    const errors: typeof fieldErrors = {};
 
     // Form input validation with clear student-friendly guidance
     if (!title.trim()) {
+      errors.title = 'Please specify what item you need.';
       setError('Please specify what item you need.');
+      setFieldErrors(errors);
       return;
     }
     if (!description.trim()) {
+      errors.description = 'Please describe what item you need.';
       setError('Please describe what item you need.');
+      setFieldErrors(errors);
       return;
     }
     if (!neededBy.trim()) {
+      errors.neededBy = 'Please specify when you need this item.';
       setError('Please specify when you need this item.');
+      setFieldErrors(errors);
       return;
     }
     if (!location.trim()) {
+      errors.location = 'Please specify your preferred campus meetup location.';
       setError('Please specify your preferred campus meetup location.');
+      setFieldErrors(errors);
       return;
     }
+
+    if (budget) {
+      const numBudget = Number(budget);
+      if (isNaN(numBudget) || numBudget < 0) {
+        errors.budget = 'Please enter a valid budget amount.';
+        setError('Please enter a valid budget amount.');
+        setFieldErrors(errors);
+        return;
+      }
+    }
     
+    setFieldErrors({});
     setIsSubmitting(true);
     
     try {
@@ -76,7 +116,16 @@ export function CreateRequest() {
     }
   };
 
-  const categories: Category[] = ['Textbooks', 'Electronics', 'Stationery', 'Lab Essentials', 'Hostel Essentials', 'Sports', 'College Wear', 'Other'];
+  const categories: Category[] = [
+    'Textbooks',
+    'Electronics',
+    'Stationery',
+    'Lab Essentials',
+    'Hostel Essentials',
+    'Sports',
+    'College Wear',
+    'Other'
+  ];
 
   if (showSuccess) {
     return (
@@ -98,35 +147,29 @@ export function CreateRequest() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Header */}
       <div className="mb-8">
         <button
           type="button"
-          onClick={() => navigate(-1)}
-          className="group inline-flex items-center gap-1.5 text-xs font-semibold text-[#555d56] hover:text-[#252b27] mb-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#204b39] rounded-lg px-1 py-0.5"
+          onClick={() => navigate('/requests')}
+          className="mb-4 inline-flex items-center gap-2 text-xs font-semibold text-[#555d56] hover:text-[#252b27] transition-colors cursor-pointer"
         >
-          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1 text-[#555d56]" />
+          <ArrowLeft className="h-4 w-4" />
           <span>Back to Requests</span>
         </button>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-[#252b27] tracking-tight">Can&apos;t find what you need?</h1>
-            <p className="text-[#555d56] text-sm mt-1">
-              Ask fellow students across campus. <span className="font-semibold text-[#204b39]">Find → Connect → Meet</span>.
-            </p>
-          </div>
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-[#edf1ec] px-3.5 py-1 text-xs font-semibold text-[#204b39] border border-[#dedcd4]">
-            <Sparkles className="h-3.5 w-3.5 text-[#204b39]" />
-            Campus Request
-          </span>
-        </div>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#252b27]">
+          Can&apos;t find what you need?
+        </h1>
+        <p className="mt-1 text-sm text-[#555d56]">
+          Post a request for textbooks, lab gear, calculators, or essentials. Peers with spare items can message you.
+        </p>
       </div>
 
+      {/* Reposting Alert Banner */}
       {repostFrom && (
-        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-[#204b39]/20 bg-[#edf1ec] p-4 text-[#204b39] text-sm">
-          <Sparkles className="h-5 w-5 shrink-0 mt-0.5 text-[#204b39]" />
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+          <Clock className="h-5 w-5 shrink-0 mt-0.5 text-amber-700" />
           <div>
-            <span className="font-bold block">Reposting Campus Request</span>
+            <span className="font-semibold block text-sm">Reposting Campus Request</span>
             <span className="text-xs text-[#555d56]">Details from your previous request have been prefilled. Submitting will publish a fresh request active for 24 hours.</span>
           </div>
         </div>
@@ -141,32 +184,38 @@ export function CreateRequest() {
       </div>
 
       {error && (
-        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
-          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-red-600" />
-          <span>{error}</span>
+        <div className="mb-6">
+          <FormAlert error={error} onDismiss={() => setError(null)} />
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-[#dedcd4] bg-white p-6 sm:p-8 shadow-xs">
+      <form onSubmit={handleSubmit} noValidate className="space-y-6 rounded-2xl border border-[#dedcd4] bg-white p-6 sm:p-8 shadow-xs">
         <div>
-          <label className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
+          <label htmlFor="req-title" className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
             What do you need? <span className="text-red-500">*</span>
           </label>
           <Input 
+            id="req-title"
             required 
             placeholder="e.g. Casio fx-991EX Scientific Calculator, Engineering Mechanics textbook" 
             value={title}
-            onChange={e => setTitle(e.target.value)}
+            error={Boolean(fieldErrors.title)}
+            onChange={e => {
+              setTitle(e.target.value);
+              clearFieldError('title');
+            }}
             className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
           />
+          <FieldError error={fieldErrors.title} />
         </div>
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
+            <label htmlFor="req-cat" className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
               Category <span className="text-red-500">*</span>
             </label>
             <select 
+              id="req-cat"
               className="flex h-11 w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2 text-sm text-[#252b27] font-medium focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs"
               value={category}
               onChange={e => setCategory(e.target.value as Category)}
@@ -177,58 +226,85 @@ export function CreateRequest() {
           
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-[#252b27] uppercase tracking-wider">Budget (₹)</label>
+              <label htmlFor="req-budget" className="block text-xs font-bold text-[#252b27] uppercase tracking-wider">Budget (₹)</label>
               <span className="text-[11px] text-[#555d56]">Optional</span>
             </div>
             <Input 
+              id="req-budget"
               type="number" 
               min="0"
               placeholder="e.g. 300" 
               value={budget}
-              onChange={e => setBudget(e.target.value)}
+              error={Boolean(fieldErrors.budget)}
+              onChange={e => {
+                setBudget(e.target.value);
+                clearFieldError('budget');
+              }}
               className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
             />
+            <FieldError error={fieldErrors.budget} />
           </div>
         </div>
 
         <div>
-          <label className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
+          <label htmlFor="req-desc" className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
             Description <span className="text-red-500">*</span>
           </label>
           <textarea 
+            id="req-desc"
             required
             rows={4}
             placeholder="Provide any specific details (model, edition, condition required, course/department)..."
-            className="w-full rounded-xl border border-[#dedcd4] bg-white px-3.5 py-2.5 text-sm text-[#252b27] focus:border-[#204b39] focus:outline-none focus:ring-2 focus:ring-[#204b39]/20 transition-all shadow-2xs placeholder:text-[#555d56]"
+            className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm transition-all shadow-2xs focus:outline-none ${
+              fieldErrors.description
+                ? 'border-red-400 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
+                : 'border-[#dedcd4] text-[#252b27] placeholder:text-[#555d56] focus:border-[#204b39] focus:ring-2 focus:ring-[#204b39]/20'
+            }`}
             value={description}
-            onChange={e => setDescription(e.target.value)}
+            onChange={e => {
+              setDescription(e.target.value);
+              clearFieldError('description');
+            }}
           />
+          <FieldError error={fieldErrors.description} />
         </div>
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
+            <label htmlFor="req-needed" className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
               When do you need it? <span className="text-red-500">*</span>
             </label>
             <Input 
+              id="req-needed"
               required 
               placeholder="e.g. By Friday, Next Monday, Urgent" 
               value={neededBy}
-              onChange={e => setNeededBy(e.target.value)}
+              error={Boolean(fieldErrors.neededBy)}
+              onChange={e => {
+                setNeededBy(e.target.value);
+                clearFieldError('neededBy');
+              }}
               className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
             />
+            <FieldError error={fieldErrors.neededBy} />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
+            <label htmlFor="req-loc" className="mb-1.5 block text-xs font-bold text-[#252b27] uppercase tracking-wider">
               Preferred Meetup Location <span className="text-red-500">*</span>
             </label>
             <Input 
+              id="req-loc"
               required 
               placeholder="e.g. Library, Red Building, Main Gate" 
               value={location}
-              onChange={e => setLocation(e.target.value)}
+              error={Boolean(fieldErrors.location)}
+              onChange={e => {
+                setLocation(e.target.value);
+                clearFieldError('location');
+              }}
               className="border-[#dedcd4] focus:border-[#204b39] focus:ring-[#204b39]/20"
             />
+            <FieldError error={fieldErrors.location} />
           </div>
         </div>
 
@@ -237,20 +313,20 @@ export function CreateRequest() {
             type="button"
             onClick={() => navigate(-1)}
             disabled={isSubmitting}
-            className="px-4 py-2 text-sm font-semibold text-[#555d56] hover:text-[#252b27] hover:bg-zinc-100 rounded-xl transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-semibold text-[#555d56] hover:text-[#252b27] hover:bg-zinc-100 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSubmitting}
-            className="min-w-[150px] h-11 px-6 rounded-xl font-semibold text-sm text-white bg-[#204b39] hover:bg-[#183a2c] transition-colors shadow-xs flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#204b39] hover:bg-[#183a2c] px-6 py-2.5 text-sm font-semibold text-white shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
           >
             {isSubmitting ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-white" />
-                Posting your request…
-              </span>
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Posting your request…</span>
+              </>
             ) : (
               'Post Request'
             )}
@@ -260,3 +336,4 @@ export function CreateRequest() {
     </div>
   );
 }
+export default CreateRequest;

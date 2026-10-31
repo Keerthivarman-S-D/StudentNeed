@@ -30,26 +30,21 @@ console.log('\n--- Running StudentNeed Authentication UI Redesign Verification T
   assert(layoutSrc.includes('bg-[#f7f6f2]') || layoutSrc.includes('bg-[#faf9f5]'), 'AuthLayout uses warm off-white background');
 }
 
-// 2. Verify Registration Screen Structure & Handlers
+// 2. Verify Step 1: Email Registration Screen (Register.tsx)
 {
   const regSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/Register.tsx'), 'utf-8');
   assert(regSrc.includes('Join your campus.'), 'Register page renders "Join your campus." heading');
   assert(regSrc.includes('Create an account with your official student email.'), 'Register page renders description');
-  assert(regSrc.includes('Only @student.annauniv.edu emails are accepted.'), 'Register page enforces email domain notice');
+  assert(regSrc.includes('Only @student.annauniv.edu emails are accepted.') || regSrc.includes('COLLEGE_EMAIL_DOMAIN'), 'Register page enforces email domain notice');
   assert(regSrc.includes('Madras Institute of Technology · Anna University'), 'Register page renders campus identification panel');
-  assert(regSrc.includes('Year of study'), 'Register page includes Year of study label');
-  assert(regSrc.includes('Select your year'), 'Register page includes Year of study placeholder');
-  assert(regSrc.includes('1st Year') && regSrc.includes('2nd Year') && regSrc.includes('3rd Year') && regSrc.includes('4th Year') && regSrc.includes('Postgraduate'), 'Register page includes valid years of study');
-  assert(regSrc.includes('PasswordRequirements'), 'Register page integrates PasswordRequirements component');
-  assert(regSrc.includes('I agree to the Terms of Service and Privacy Policy.'), 'Register page includes terms agreement checkbox');
-  assert(regSrc.includes('Create account'), 'Register page includes Create account button');
+  assert(regSrc.includes('Send Verification Code'), 'Register page includes Send Verification Code button');
   assert(regSrc.includes("send a code to your student email to confirm access") && (regSrc.includes("We'll") || regSrc.includes("We&apos;ll")), 'Register page includes verification note');
-  assert(regSrc.includes('Already registered? Sign in'), 'Register page includes Sign in link');
+  assert(regSrc.includes('Already registered? Sign in') || (regSrc.includes('Already registered?') && regSrc.includes('Sign in')), 'Register page includes Sign in link');
   assert(regSrc.includes('AUTH_ENDPOINTS.sendOtp'), 'Register page calls sendOtp endpoint');
   assert(regSrc.includes('sessionStorage.setItem'), 'Register page preserves pending credentials for verification step');
 }
 
-// 3. Verify Email OTP Verification Screen Structure & Logic
+// 3. Verify Step 2: Email OTP Verification Screen (VerifyEmail.tsx)
 {
   const otpSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/VerifyEmail.tsx'), 'utf-8');
   assert(otpSrc.includes('Check your student email.'), 'VerifyEmail renders "Check your student email." heading');
@@ -64,8 +59,23 @@ console.log('\n--- Running StudentNeed Authentication UI Redesign Verification T
   assert(otpSrc.includes('Use a different email'), 'VerifyEmail includes Use a different email button');
   assert(otpSrc.includes("Keep your code private") && (otpSrc.includes("won't") || otpSrc.includes("won&apos;t")), 'VerifyEmail includes privacy reminder');
   assert(otpSrc.includes('AUTH_ENDPOINTS.verifyOtp'), 'VerifyEmail calls verifyOtp endpoint');
-  assert(otpSrc.includes('AUTH_ENDPOINTS.createAccount'), 'VerifyEmail completes account creation');
-  assert(otpSrc.includes('AUTH_ENDPOINTS.finalizeAccount'), 'VerifyEmail finalizes profile');
+}
+
+// 4. Verify Step 3: Complete Student Profile Screen (Onboarding.tsx)
+{
+  const onbSrc = fs.readFileSync(path.join(process.cwd(), 'src/pages/Onboarding.tsx'), 'utf-8');
+  assert(onbSrc.includes("Let's set up your profile!") || onbSrc.includes("Let&apos;s set up your profile!"), 'Onboarding renders "Let\'s set up your profile!" heading');
+  assert(onbSrc.includes('Tell us a little about yourself to get started with StudentNeed.'), 'Onboarding renders subtitle');
+  assert(onbSrc.includes('Year of study'), 'Onboarding includes Year of study label');
+  assert(onbSrc.includes('Select your year'), 'Onboarding includes Year of study placeholder');
+  assert(onbSrc.includes('1st Year') && onbSrc.includes('2nd Year') && onbSrc.includes('3rd Year') && onbSrc.includes('4th Year') && onbSrc.includes('Postgraduate'), 'Onboarding includes valid years of study');
+  assert(onbSrc.includes('PasswordRequirements'), 'Onboarding integrates PasswordRequirements component');
+  assert(onbSrc.includes('Create Password'), 'Onboarding includes Create Password field');
+  assert(onbSrc.includes('Confirm Password'), 'Onboarding includes Confirm Password field');
+  assert(onbSrc.includes('Madras Institute of Technology – Anna University'), 'Onboarding displays auto-populated MIT campus');
+  assert(onbSrc.includes('Complete Profile'), 'Onboarding includes Complete Profile button');
+  assert(onbSrc.includes('AUTH_ENDPOINTS.createAccount'), 'Onboarding completes account creation');
+  assert(onbSrc.includes('AUTH_ENDPOINTS.finalizeAccount'), 'Onboarding finalizes profile');
 }
 
 // 4. Verify Sign-in Screen Structure & Handlers

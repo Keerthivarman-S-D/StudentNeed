@@ -5,7 +5,8 @@ import {
   SlidersHorizontal,
   AlertCircle,
   X,
-  ChevronDown
+  ChevronDown,
+  Loader2
 } from 'lucide-react';
 import { ActiveListingType, Category } from '../types';
 import { useAppContext } from '../context/AppContext';
@@ -15,7 +16,7 @@ import { ListingCardSkeleton } from '../components/ui/Skeleton';
 import { cn } from '../lib/utils';
 
 export function Marketplace() {
-  const { listings, listingsLoading, listingsError, hasMoreListings, loadMoreListings } = useAppContext();
+  const { listings, listingsLoading, listingsError, hasMoreListings, isLoadingMoreListings, loadMoreListings } = useAppContext();
   const { currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -442,14 +443,29 @@ export function Marketplace() {
                   ))}
                 </div>
 
+                {isLoadingMoreListings && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-5">
+                    <ListingCardSkeleton />
+                    <ListingCardSkeleton />
+                  </div>
+                )}
+
                 {hasMoreListings && (
                   <div className="flex justify-center pt-4 pb-6">
                     <button
                       type="button"
                       onClick={loadMoreListings}
-                      className="rounded-xl border border-[#dedcd4] bg-white px-8 py-2.5 text-sm font-semibold text-[#252b27] hover:border-[#204b39] hover:text-[#204b39] transition-colors shadow-2xs cursor-pointer"
+                      disabled={isLoadingMoreListings}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#dedcd4] bg-white px-8 py-2.5 text-sm font-semibold text-[#252b27] hover:border-[#204b39] hover:text-[#204b39] transition-colors shadow-2xs cursor-pointer disabled:opacity-60"
                     >
-                      Load More Listings
+                      {isLoadingMoreListings ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin text-[#204b39]" />
+                          <span>Loading more listings...</span>
+                        </>
+                      ) : (
+                        <span>Load More Listings</span>
+                      )}
                     </button>
                   </div>
                 )}

@@ -7,6 +7,7 @@ import {
 import { auth } from '../lib/firebaseAuth';
 import { User } from '../types';
 import { NOTIFICATION_ENDPOINTS } from '../config/api';
+import { broadcastSyncEvent, subscribeToSyncEvents } from '../lib/crossTabSync';
 
 type AuthContextType = {
   currentUser: User | null;
@@ -76,8 +77,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    // Cross-tab coordination: Cleanly sign out when another tab logs out
+    const unsubscribeSync = subscribeToSyncEvents((event) => {
+      if (event.type === 'AUTH_LOGOUT' && auth.currentUser) {
+        signOut(auth).catch((err) => console.warn('Cross-tab signOut non-fatal note:', err));
+      }
+    });
+
     return () => {
       unsubscribeAuth();
+      unsubscribeSync();
       if (unsubscribeDoc) unsubscribeDoc();
     };
   }, []);
@@ -85,6 +94,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       localStorage.removeItem(HAS_SESSION_KEY);
+      // Notify other open tabs immediately to terminate sessions and clean up listeners
+      broadcastSyncEvent({ type: 'AUTH_LOGOUT' });
+
       // Ensure the overall cleanup timeout covers BOTH getIdToken() and the unregisterFcm request,
       // so logout is never blocked indefinitely by token retrieval or network failure.
       try {

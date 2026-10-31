@@ -4,7 +4,7 @@ import { Listing } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { cn } from '../lib/utils';
 import { memo, useMemo } from 'react';
-import { getOptimizedImageUrl } from '../lib/cloudinary';
+import { getOptimizedImageUrl, getResponsiveImageSrcSet } from '../lib/cloudinary';
 
 export const ListingCard = memo(function ListingCard({ listing }: { listing: Listing }) {
   const { savedListings, toggleSaveListing } = useAppContext();
@@ -84,6 +84,11 @@ export const ListingCard = memo(function ListingCard({ listing }: { listing: Lis
     return `${listing.location || 'MIT Campus'} · Student-chosen meetup`;
   }, [listing.location]);
 
+  const primaryImage = listing.images && listing.images.length > 0 ? listing.images[0] : null;
+  const imageSrcSet = useMemo(() => {
+    return primaryImage ? getResponsiveImageSrcSet(primaryImage, [300, 480, 640]) : '';
+  }, [primaryImage]);
+
   return (
     <Link
       to={`/listing/${listing.id}`}
@@ -91,9 +96,11 @@ export const ListingCard = memo(function ListingCard({ listing }: { listing: Lis
     >
       {/* Product Image Section */}
       <div className="relative aspect-[16/10] overflow-hidden rounded-xl bg-[#f4f3ee] flex items-center justify-center">
-        {listing.images && listing.images.length > 0 && listing.images[0] ? (
+        {primaryImage ? (
           <img
-            src={getOptimizedImageUrl(listing.images[0], { width: 600, quality: 'auto' })}
+            src={getOptimizedImageUrl(primaryImage, { width: 480, height: 320, quality: 'auto:good' })}
+            srcSet={imageSrcSet || undefined}
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             alt={listing.title}
             loading="lazy"
             decoding="async"

@@ -680,8 +680,8 @@ export function Launch() {
             <div className="w-full max-w-[900px] mx-auto rounded-2xl border border-[#dedcd4] bg-white p-6 sm:p-8 lg:p-10 shadow-2xs space-y-4 text-center">
               <p className="text-sm sm:text-base text-[#555d56]">
                 <strong className="text-[#252b27] font-semibold">For general inquiries:</strong>{' '}
-                <a href="mailto:support@studentneed.me" className="text-[#204b39] hover:underline font-medium break-all sm:break-normal">
-                  support@studentneed.me
+                <a href="mailto:studentneed.info@gmail.com" className="text-[#204b39] hover:underline font-medium break-all sm:break-normal">
+                  studentneed.info@gmail.com
                 </a>
               </p>
               <p className="text-sm sm:text-base text-[#555d56]">

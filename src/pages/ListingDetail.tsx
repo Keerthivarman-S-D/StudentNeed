@@ -16,6 +16,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  runTransaction,
   collection,
   query,
   where,
@@ -28,11 +29,13 @@ import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { EditListingModal } from '../components/EditListingModal';
+import { broadcastSyncEvent } from '../lib/crossTabSync';
 import { ReportListingModal } from '../components/ReportListingModal';
 import { cn } from '../lib/utils';
 import { Listing, User, Reservation } from '../types';
-import { getOptimizedImageUrl } from '../lib/cloudinary';
+import { getOptimizedImageUrl, getOptimizedAvatarUrl, getResponsiveImageSrcSet } from '../lib/cloudinary';
 import { RESERVATION_ENDPOINTS } from '../config/api';
+import { formatErrorMessage } from '../lib/errorHandler';
 
 
 export function ListingDetail() {
@@ -83,7 +86,7 @@ export function ListingDetail() {
       }, 4000);
     } catch (err: any) {
       console.error('Failed to cancel listing:', err);
-      setChatError(err?.message || 'Failed to cancel listing. Please try again.');
+      setChatError(formatErrorMessage(err, 'Failed to cancel listing. Please try again.'));
       setShowCancelModal(false);
     } finally {
       setIsCancelling(false);
@@ -343,7 +346,9 @@ export function ListingDetail() {
       return;
     }
 
-    // Check for duplicate active reservation
+    // Check for duplicate active reservation or in-flight operation
+    if (isReserving) return;
+
     if (userReservation && (userReservation.status === 'pending' || userReservation.status === 'accepted')) {
       const chatId = userReservation.chatId || `listing_${listing.id}_${[currentUserId, listing.sellerId].sort().join('_')}`;
       navigate(`/chat/${chatId}`);
@@ -358,55 +363,52 @@ export function ListingDetail() {
 
       const resId = `res_${listing.id}_${currentUserId}`;
       const resRef = doc(db, 'reservations', resId);
+      const chatDocRef = doc(db, 'chats', chatId);
 
-      const qExisting = query(
-        collection(db, 'reservations'),
-        where('buyerId', '==', currentUserId),
-        where('listingId', '==', listing.id),
-        limit(1)
-      );
-      const existingSnap = await getDocs(qExisting);
+      // Execute atomic transaction to prevent race conditions and duplicate reservation documents
+      await runTransaction(db, async (transaction) => {
+        const resSnap = await transaction.get(resRef);
 
-      if (!existingSnap.empty) {
-        const existingDoc = existingSnap.docs[0];
-        const existingData = existingDoc.data();
-        const existingStatus = existingData?.status;
-        if (existingStatus === 'pending' || existingStatus === 'accepted') {
-          setChatError(`You already have an active reservation request (${existingStatus}).`);
-          navigate(`/chat/${chatId}`);
-          return;
+        if (resSnap.exists()) {
+          const resData = resSnap.data();
+          const existingStatus = resData?.status;
+
+          if (existingStatus === 'pending' || existingStatus === 'accepted') {
+            throw new Error(`ALREADY_ACTIVE:${existingStatus}`);
+          }
+
+          if (existingStatus === 'rejected' || existingStatus === 'cancelled') {
+            transaction.update(resRef, {
+              status: 'pending',
+              updatedAt: serverTimestamp(),
+            });
+            transaction.update(chatDocRef, {
+              reservationId: resId,
+              updatedAt: serverTimestamp(),
+            });
+            return;
+          }
         }
 
-        if (existingStatus === 'rejected' || existingStatus === 'cancelled') {
-          await updateDoc(doc(db, 'reservations', existingDoc.id), {
-            status: 'pending',
-            updatedAt: serverTimestamp(),
-          });
+        // New pending reservation document
+        transaction.set(resRef, {
+          listingId: listing.id,
+          buyerId: currentUserId,
+          sellerId: listing.sellerId,
+          chatId: chatId,
+          status: 'pending',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
 
-          await updateDoc(doc(db, 'chats', chatId), {
-            reservationId: existingDoc.id,
-            updatedAt: serverTimestamp(),
-          });
-
-          navigate(`/chat/${chatId}`);
-          return;
-        }
-      }
-
-      await setDoc(resRef, {
-        listingId: listing.id,
-        buyerId: currentUserId,
-        sellerId: listing.sellerId,
-        chatId: chatId,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        transaction.update(chatDocRef, {
+          reservationId: resId,
+          updatedAt: serverTimestamp(),
+        });
       });
 
-      await updateDoc(doc(db, 'chats', chatId), {
-        reservationId: resId,
-        updatedAt: serverTimestamp(),
-      });
+      // Notify other open tabs of the new reservation
+      broadcastSyncEvent({ type: 'RESERVATION_CREATED', listingId: listing.id });
 
       // Dispatch server-side verified notification to seller
       try {
@@ -425,8 +427,15 @@ export function ListingDetail() {
 
       navigate(`/chat/${chatId}`);
     } catch (err: any) {
+      if (err instanceof Error && err.message.startsWith('ALREADY_ACTIVE:')) {
+        const activeStatus = err.message.split(':')[1];
+        setChatError(`You already have an active reservation request (${activeStatus}).`);
+        const chatId = await getOrCreateChatId();
+        if (chatId) navigate(`/chat/${chatId}`);
+        return;
+      }
       console.error('Failed to reserve item:', err);
-      setChatError(err?.message || 'Failed to submit reservation request. Please try again.');
+      setChatError(formatErrorMessage(err, 'Failed to submit reservation request. Please try again.'));
     } finally {
       setIsReserving(false);
     }
@@ -551,8 +560,12 @@ export function ListingDetail() {
             <div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-[#f4f3ee] border border-[#dedcd4] flex items-center justify-center shadow-none">
               {listing.images && listing.images.length > 0 && (listing.images[selectedImageIndex] || listing.images[0]) ? (
                 <img
-                  src={getOptimizedImageUrl(listing.images[selectedImageIndex] || listing.images[0], { width: 900, quality: 'auto' })}
+                  src={getOptimizedImageUrl(listing.images[selectedImageIndex] || listing.images[0], { width: 900, quality: 'auto:good' })}
+                  srcSet={getResponsiveImageSrcSet(listing.images[selectedImageIndex] || listing.images[0], [480, 720, 1080]) || undefined}
+                  sizes="(max-width: 1024px) 100vw, 60vw"
                   alt={listing.title}
+                  loading="eager"
+                  decoding="async"
                   className="h-full w-full object-cover transition-all duration-300"
                 />
               ) : (
@@ -761,8 +774,10 @@ export function ListingDetail() {
               <div className="flex items-center gap-3">
                 {seller.avatarUrl ? (
                   <img
-                    src={seller.avatarUrl}
+                    src={getOptimizedAvatarUrl(seller.avatarUrl, 80)}
                     alt={seller.name}
+                    loading="lazy"
+                    decoding="async"
                     className="h-10 w-10 rounded-full object-cover border border-[#dedcd4]"
                   />
                 ) : (

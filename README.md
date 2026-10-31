@@ -157,7 +157,7 @@ gcloud run deploy studentneed-app \
   --region us-central1 \
   --allow-unauthenticated \
   --port 3000 \
-  --set-env-vars NODE_ENV=production,COLLEGE_EMAIL_DOMAIN=@student.annauniv.edu,EMAIL_FROM="StudentNeed <auth@studentneed.me>" \
+  --set-env-vars NODE_ENV=production,COLLEGE_EMAIL_DOMAIN=@student.annauniv.edu,EMAIL_FROM="StudentNeed <studentneed.info@gmail.com>" \
   --set-secrets RESEND_API_KEY=RESEND_API_KEY:latest
 ```
 

@@ -33,6 +33,7 @@ export type User = {
   lastActivityAt?: string;
   yearOfStudy?: string;
   bio?: string;
+  onboardingCompleted?: boolean;
 };
 
 export type ListingType = 'Sale' | 'Borrow' | 'Donate' | 'Exchange';

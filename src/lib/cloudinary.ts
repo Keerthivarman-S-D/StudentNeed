@@ -482,6 +482,16 @@ export async function uploadImageToCloudinary(
   });
 }
 
+export interface ImageOptimizationOptions {
+  width?: number;
+  height?: number;
+  quality?: string | number;
+  crop?: 'fill' | 'thumb' | 'fit' | 'limit';
+  gravity?: 'auto' | 'face' | 'center';
+  format?: 'auto' | 'webp' | 'avif' | 'jpg';
+  dpr?: 'auto' | number;
+}
+
 /**
  * Generates an optimized, resized thumbnail URL using Cloudinary URL transformations,
  * preventing downloading original high-resolution assets for small preview cards.
@@ -489,14 +499,19 @@ export async function uploadImageToCloudinary(
  */
 export function getOptimizedImageUrl(
   url: string | null | undefined,
-  options?: { width?: number; height?: number; quality?: string | number }
+  options?: ImageOptimizationOptions
 ): string {
   if (!url || typeof url !== 'string') return '';
   const trimmed = url.trim();
   if (!trimmed) return '';
 
   const width = options?.width || 400;
-  const quality = options?.quality || 'auto';
+  const height = options?.height;
+  const quality = options?.quality ?? 'auto:good';
+  const crop = options?.crop || 'fill';
+  const gravity = options?.gravity;
+  const format = options?.format || 'auto';
+  const dpr = options?.dpr ?? 'auto';
 
   // Cloudinary image transformation
   if (trimmed.includes('res.cloudinary.com') && trimmed.includes('/image/upload/')) {
@@ -510,7 +525,14 @@ export function getOptimizedImageUrl(
       return trimmed;
     }
 
-    const transform = `c_fill,w_${width},q_${quality},f_auto`;
+    const parts: string[] = [`c_${crop}`, `w_${width}`];
+    if (height) parts.push(`h_${height}`);
+    if (gravity) parts.push(`g_${gravity}`);
+    parts.push(`q_${quality}`);
+    parts.push(`f_${format}`);
+    if (dpr) parts.push(`dpr_${dpr}`);
+
+    const transform = parts.join(',');
     return `${prefix}${transform}/${suffix}`;
   }
 
@@ -518,10 +540,63 @@ export function getOptimizedImageUrl(
   if (trimmed.includes('images.unsplash.com')) {
     const separator = trimmed.includes('?') ? '&' : '?';
     if (!trimmed.includes('w=')) {
-      return `${trimmed}${separator}w=${width}&q=80&auto=format`;
+      let u = `${trimmed}${separator}w=${width}&q=80&auto=format`;
+      if (height) u += `&h=${height}&fit=crop`;
+      return u;
     }
   }
 
   return trimmed;
+}
+
+/**
+ * Returns a responsive srcSet string for Cloudinary images (e.g. "url 320w, url 640w")
+ */
+export function getResponsiveImageSrcSet(
+  url: string | null | undefined,
+  widths: number[] = [320, 480, 640, 960],
+  options?: Omit<ImageOptimizationOptions, 'width'>
+): string {
+  if (!url || typeof url !== 'string' || !url.includes('res.cloudinary.com')) return '';
+  return widths
+    .map((w) => `${getOptimizedImageUrl(url, { ...options, width: w })} ${w}w`)
+    .join(', ');
+}
+
+/**
+ * Generates an optimized square thumbnail for avatar images with face auto-centering
+ */
+export function getOptimizedAvatarUrl(
+  url: string | null | undefined,
+  size: number = 96
+): string {
+  return getOptimizedImageUrl(url, {
+    width: size,
+    height: size,
+    crop: 'thumb',
+    gravity: 'face',
+    quality: 'auto:good',
+    format: 'auto',
+    dpr: 'auto',
+  });
+}
+
+/**
+ * Generates an optimized listing card thumbnail
+ */
+export function getOptimizedListingUrl(
+  url: string | null | undefined,
+  width: number = 600,
+  height?: number
+): string {
+  return getOptimizedImageUrl(url, {
+    width,
+    height,
+    crop: 'fill',
+    gravity: 'auto',
+    quality: 'auto:good',
+    format: 'auto',
+    dpr: 'auto',
+  });
 }
 
