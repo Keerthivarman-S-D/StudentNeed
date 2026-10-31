@@ -250,16 +250,14 @@ export function EditListingModal({ listing, isOpen, onClose, onSuccess }: EditLi
 
         {error && (
           <FormAlert
-            type="error"
-            message={error}
-            onClose={() => setError(null)}
+            error={error}
+            onDismiss={() => setError(null)}
           />
         )}
 
         {successMessage && (
           <FormAlert
-            type="success"
-            message={successMessage}
+            success={successMessage}
           />
         )}
 

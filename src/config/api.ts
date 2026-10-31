@@ -1,5 +1,7 @@
 // API configuration and network client for StudentNeed frontend
-// Architecture: Firebase Hosting + Firebase Cloud Functions (same-origin /api rewrite)
+// Architecture: Firebase Hosting (static frontend) + independent Express backend on Render or Cloud Run.
+
+const CANONICAL_RENDER_BACKEND = 'https://studentneed-backend.onrender.com';
 
 export const getApiBaseUrl = (): string => {
   const customUrl = ((typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_URL) as string)?.trim();
@@ -7,10 +9,20 @@ export const getApiBaseUrl = (): string => {
     return customUrl.replace(/\/+$/, '');
   }
 
-  // Pure Firebase Architecture:
-  // Firebase Hosting automatically rewrites /api/** to Firebase Cloud Functions on the same origin.
-  // Using relative path '' ensures zero CORS overhead and complete hosting portability.
-  return '';
+  // Development mode: Same-origin relative paths when Vite is proxied or running under Express
+  const isDev = typeof import.meta !== 'undefined' && Boolean(import.meta?.env?.DEV);
+  const isLocalhost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.endsWith('.local'));
+
+  if (isDev || isLocalhost) {
+    return '';
+  }
+
+  // Production fallback: Always target the dedicated Render backend service
+  return CANONICAL_RENDER_BACKEND;
 };
 
 export const API_BASE_URL: string = getApiBaseUrl();

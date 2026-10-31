@@ -97,12 +97,17 @@ function verifyDeploymentArtifacts() {
     console.log('PASS: firebase.json hosting.ignore correctly blocks .cjs, .map, and server files.');
 
     const rewrites = firebaseJson.hosting?.rewrites || [];
-    const hasApiRewrite = rewrites.some((rw: any) => rw.source === '!/api/**' || (rw.source === '/api/**' && rw.function));
-    if (!hasApiRewrite) {
-      console.warn('WARN: firebase.json rewrites does not route /api/** to Cloud Functions');
-    } else {
-      console.log('PASS: firebase.json rewrites correctly routes /api/** to Cloud Functions.');
+    const hasSpaFallback = rewrites.some((rw: any) => rw.source === '!/api/**' && rw.destination === '/index.html');
+    if (!hasSpaFallback) {
+      console.error('FAIL: Firebase Hosting must retain the SPA fallback while the API is served by the independent Express backend.');
+      process.exit(1);
     }
+    const hasFunctions = Boolean(firebaseJson.functions && firebaseJson.functions.length);
+    if (hasFunctions || rewrites.some((rw: any) => rw.function)) {
+      console.error('FAIL: This Spark-compatible build must not deploy or route through Firebase Cloud Functions.');
+      process.exit(1);
+    }
+    console.log('PASS: Firebase Hosting serves static assets only; API is configured as an independent backend.');
   }
 
   console.log('\n===============================================================');
