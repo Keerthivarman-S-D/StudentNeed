@@ -339,6 +339,146 @@ function validatePassword(password: unknown): { valid: boolean; errors: string[]
 // In-memory development fallback store for temporary OTP records when system token is not configured
 const devOtpStore = new Map<string, OtpFirestoreDoc>();
 const devRegisteredEmails = new Set<string>();
+const devUsersStore = new Map<string, any>();
+
+async function ensureStudentProfileDocument(
+  uid: string,
+  email: string,
+  name?: string,
+  department?: string
+): Promise<any> {
+  const normalizedEmail = email.toLowerCase().trim();
+  const cleanName = (name || '').trim() || normalizedEmail.split('@')[0];
+  const cleanDept = (department || '').trim() || 'General';
+  const nowIso = new Date().toISOString();
+
+  const userProfile = {
+    id: uid,
+    uid: uid,
+    email: normalizedEmail,
+    name: cleanName,
+    department: cleanDept,
+    role: 'student',
+    status: 'active',
+    accountStatus: 'active',
+    isVerified: true,
+    campus: 'Madras Institute of Technology – Anna University',
+    onboardingCompleted: false,
+    rating: 0,
+    ratingCount: 0,
+    reviewCount: 0,
+    trustScore: 100,
+    exchangesCompleted: 0,
+    completedTransactions: 0,
+    successfulExchanges: 0,
+    reputation: 'New Student',
+    badges: ['Anna Univ Student'],
+    createdAt: nowIso,
+    lastActiveAt: nowIso,
+  };
+
+  if (!devUsersStore.has(uid)) {
+    devUsersStore.set(uid, userProfile);
+  } else {
+    const existing = devUsersStore.get(uid);
+    devUsersStore.set(uid, {
+      ...userProfile,
+      ...existing,
+      uid,
+      id: uid,
+      email: existing.email || normalizedEmail,
+      status: existing.status || existing.accountStatus || 'active',
+      accountStatus: existing.accountStatus || existing.status || 'active',
+      createdAt: existing.createdAt || nowIso,
+    });
+  }
+
+  try {
+    const systemToken = await getServerToken();
+    if (systemToken) {
+      const checkUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${uid}`;
+      const checkRes = await fetch(checkUrl, {
+        headers: { Authorization: `Bearer ${systemToken}` },
+      });
+
+      if (checkRes.status === 404) {
+        const createUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users?documentId=${uid}`;
+        await fetch(createUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${systemToken}`,
+          },
+          body: JSON.stringify({
+            fields: {
+              id: { stringValue: uid },
+              uid: { stringValue: uid },
+              email: { stringValue: normalizedEmail },
+              name: { stringValue: cleanName },
+              department: { stringValue: cleanDept },
+              role: { stringValue: 'student' },
+              status: { stringValue: 'active' },
+              accountStatus: { stringValue: 'active' },
+              isVerified: { booleanValue: true },
+              campus: { stringValue: 'Madras Institute of Technology – Anna University' },
+              onboardingCompleted: { booleanValue: false },
+              rating: { integerValue: '0' },
+              exchangesCompleted: { integerValue: '0' },
+              createdAt: { stringValue: nowIso },
+              lastActiveAt: { stringValue: nowIso },
+            },
+          }),
+        });
+      } else if (checkRes.ok) {
+        const existingDoc = await checkRes.json();
+        const f = existingDoc.fields || {};
+        const updates: Record<string, any> = {};
+        const updateMaskPaths: string[] = [];
+
+        if (!f.uid) {
+          updates.uid = { stringValue: uid };
+          updateMaskPaths.push('updateMask.fieldPaths=uid');
+        }
+        if (!f.email) {
+          updates.email = { stringValue: normalizedEmail };
+          updateMaskPaths.push('updateMask.fieldPaths=email');
+        }
+        if (!f.status) {
+          updates.status = { stringValue: 'active' };
+          updateMaskPaths.push('updateMask.fieldPaths=status');
+        }
+        if (!f.accountStatus) {
+          updates.accountStatus = { stringValue: 'active' };
+          updateMaskPaths.push('updateMask.fieldPaths=accountStatus');
+        }
+        if (!f.role) {
+          updates.role = { stringValue: 'student' };
+          updateMaskPaths.push('updateMask.fieldPaths=role');
+        }
+        if (!f.department) {
+          updates.department = { stringValue: cleanDept };
+          updateMaskPaths.push('updateMask.fieldPaths=department');
+        }
+
+        if (updateMaskPaths.length > 0) {
+          const patchUrl = `${checkUrl}?${updateMaskPaths.join('&')}`;
+          await fetch(patchUrl, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${systemToken}`,
+            },
+            body: JSON.stringify({ fields: updates }),
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[ensureStudentProfileDocument] Non-fatal note:', err);
+  }
+
+  return userProfile;
+}
 
 async function isEmailRegistered(emailDocId: string): Promise<boolean> {
   if (devRegisteredEmails.has(emailDocId)) return true;
@@ -1278,6 +1418,7 @@ Respond to the student's question directly, and if possible provide structured J
       }
 
       await markEmailRegistered(emailDocId, signUpData.localId);
+      await ensureStudentProfileDocument(signUpData.localId, normalizedEmail);
 
       // Never log or return the password in the response
       return res.status(201).json({
@@ -1362,8 +1503,10 @@ Respond to the student's question directly, and if possible provide structured J
         const firestorePayload = {
           fields: {
             id: { stringValue: uid },
+            uid: { stringValue: uid },
+            email: { stringValue: normalizedEmail },
             name: { stringValue: name || '' },
-            department: { stringValue: department || '' },
+            department: { stringValue: department || 'General' },
             yearOfStudy: { stringValue: yearOfStudy || '' },
             bio: { stringValue: bio || '' },
             onboardingCompleted: { booleanValue: true },
@@ -1372,6 +1515,8 @@ Respond to the student's question directly, and if possible provide structured J
             avatarUrl: { stringValue: finalAvatarUrl },
             exchangesCompleted: { integerValue: "0" },
             role: { stringValue: 'student' },
+            status: { stringValue: 'active' },
+            accountStatus: { stringValue: 'active' },
             isVerified: { booleanValue: true },
             createdAt: { stringValue: new Date().toISOString() }
           }
@@ -1432,6 +1577,45 @@ Respond to the student's question directly, and if possible provide structured J
           return res.status(500).json({ error: "System authentication token unavailable. Please contact campus admin." });
         }
         console.info(`[DEV MODE] Finalize account profile recorded for ${uid} (${normalizedEmail})`);
+      }
+
+      // Update in-memory dev users store
+      if (devUsersStore.has(uid)) {
+        const existing = devUsersStore.get(uid);
+        devUsersStore.set(uid, {
+          ...existing,
+          uid,
+          id: uid,
+          email: normalizedEmail,
+          name: name || existing.name,
+          department: department || existing.department || 'General',
+          yearOfStudy: yearOfStudy || existing.yearOfStudy,
+          bio: bio || existing.bio,
+          avatarUrl: finalAvatarUrl,
+          onboardingCompleted: true,
+          status: existing.status || 'active',
+          accountStatus: existing.accountStatus || existing.status || 'active',
+        });
+      } else {
+        devUsersStore.set(uid, {
+          id: uid,
+          uid,
+          email: normalizedEmail,
+          name: name || normalizedEmail.split('@')[0],
+          department: department || 'General',
+          yearOfStudy: yearOfStudy || '',
+          bio: bio || '',
+          avatarUrl: finalAvatarUrl,
+          onboardingCompleted: true,
+          campus: 'Madras Institute of Technology – Anna University',
+          rating: 0,
+          exchangesCompleted: 0,
+          role: 'student',
+          status: 'active',
+          accountStatus: 'active',
+          isVerified: true,
+          createdAt: new Date().toISOString(),
+        });
       }
 
       // Mark email as registered in persistent store
@@ -5225,9 +5409,21 @@ Respond to the student's question directly, and if possible provide structured J
         fetchFirestoreCollection(systemToken, "admin_audit_logs", 25),
       ]);
 
-      const totalUsers = users.length;
-      const suspendedUsers = users.filter((u) => u.status === "suspended").length;
-      const bannedUsers = users.filter((u) => u.status === "banned").length;
+      // Merge users from Firestore and devUsersStore
+      const allUsersMap = new Map<string, any>();
+      for (const u of users) {
+        allUsersMap.set(u.id || u.uid, u);
+      }
+      for (const [id, devUser] of devUsersStore.entries()) {
+        if (!allUsersMap.has(id)) {
+          allUsersMap.set(id, devUser);
+        }
+      }
+      const allOverviewUsers = Array.from(allUsersMap.values());
+
+      const totalUsers = allOverviewUsers.length;
+      const suspendedUsers = allOverviewUsers.filter((u) => u.status === "suspended").length;
+      const bannedUsers = allOverviewUsers.filter((u) => u.status === "banned").length;
       const activeUsers = totalUsers - suspendedUsers - bannedUsers;
 
       const totalListings = listings.length;
@@ -5319,13 +5515,44 @@ Respond to the student's question directly, and if possible provide structured J
         return res.status(503).json({ error: "System service unavailable." });
       }
 
-      const [users, listings, reports, requests, reservations] = await Promise.all([
+      const [users, listings, reports, requests, reservations, registeredEmails] = await Promise.all([
         fetchFirestoreCollection(systemToken, "users", 500),
         fetchFirestoreCollection(systemToken, "listings", 500),
         fetchFirestoreCollection(systemToken, "reports", 500),
         fetchFirestoreCollection(systemToken, "requests", 500),
         fetchFirestoreCollection(systemToken, "reservations", 500),
+        fetchFirestoreCollection(systemToken, "registered_emails", 500),
       ]);
+
+      const registeredEmailMap = new Map<string, string>();
+      for (const re of registeredEmails) {
+        if (re.uid && re.email) {
+          registeredEmailMap.set(re.uid, re.email);
+        }
+      }
+
+      // Merge Firestore users with devUsersStore
+      const usersMap = new Map<string, any>();
+      for (const u of users) {
+        const id = u.id || u.uid;
+        if (id) usersMap.set(id, u);
+      }
+      for (const [id, devUser] of devUsersStore.entries()) {
+        if (!usersMap.has(id)) {
+          usersMap.set(id, devUser);
+        } else {
+          const existing = usersMap.get(id);
+          usersMap.set(id, {
+            ...devUser,
+            ...existing,
+            uid: existing.uid || id,
+            email: existing.email || devUser.email || registeredEmailMap.get(id) || "",
+            status: existing.status || existing.accountStatus || devUser.status || "active",
+            accountStatus: existing.accountStatus || existing.status || devUser.accountStatus || "active",
+          });
+        }
+      }
+      const combinedUsers = Array.from(usersMap.values());
 
       const listingsCountMap = new Map<string, number>();
       for (const l of listings) {
@@ -5358,16 +5585,27 @@ Respond to the student's question directly, and if possible provide structured J
         }
       }
 
-      const enhancedUsers = users.map((u) => {
+      const enhancedUsers = combinedUsers.map((u) => {
+        const id = u.id || u.uid;
+        const email = u.email || registeredEmailMap.get(id) || "";
+        const status = u.status || u.accountStatus || "active";
         return {
           ...u,
-          status: u.status || "active",
+          id,
+          uid: u.uid || id,
+          name: u.name || (email ? email.split("@")[0] : "Student"),
+          email,
+          department: u.department || "General",
+          role: u.role || "student",
+          status,
+          accountStatus: u.accountStatus || status,
+          createdAt: u.createdAt || new Date().toISOString(),
           warningCount: typeof u.warningCount === "number" ? u.warningCount : 0,
           warnings: Array.isArray(u.warnings) ? u.warnings : [],
-          listingsCount: listingsCountMap.get(u.id) || 0,
-          requestsCount: requestsCountMap.get(u.id) || 0,
-          reservationsCount: reservationsCountMap.get(u.id) || 0,
-          reportsReceivedCount: reportsReceivedMap.get(u.id) || 0,
+          listingsCount: listingsCountMap.get(id) || 0,
+          requestsCount: requestsCountMap.get(id) || 0,
+          reservationsCount: reservationsCountMap.get(id) || 0,
+          reportsReceivedCount: reportsReceivedMap.get(id) || 0,
         };
       });
 
@@ -6369,6 +6607,515 @@ Respond to the student's question directly, and if possible provide structured J
     } catch (err: any) {
       console.error("Admin activity logs error:", err);
       return res.status(500).json({ error: "Internal server error fetching activity logs." });
+    }
+  });
+
+  // =========================================================================
+  // --- Admin Feature: Clear Testing Data (Preview & Safe Execution) ---
+  // =========================================================================
+
+  const KNOWN_TEST_UIDS = new Set([
+    'test_staging_user_1',
+    'test_staging_user_2',
+    'test_staging_admin',
+    'test_student_1',
+    'test_student_2',
+    'test_student_user',
+    'test_student_user_1',
+    'test_student_user_2',
+  ]);
+
+  const KNOWN_TEST_LISTINGS = new Set([
+    'test_staging_listing_1',
+    'test_staging_listing_2',
+    'test_staging_listing_3',
+  ]);
+
+  function isDeterministicTestId(id?: string | null): boolean {
+    if (!id || typeof id !== 'string') return false;
+    const lower = id.toLowerCase().trim();
+    return (
+      lower.startsWith('test_staging_') ||
+      lower.startsWith('test_') ||
+      lower.startsWith('staging_test_') ||
+      KNOWN_TEST_UIDS.has(id) ||
+      KNOWN_TEST_LISTINGS.has(id)
+    );
+  }
+
+  function identifyTestUser(
+    u: any,
+    currentAdmin: { uid: string; email: string }
+  ): { isTest: boolean; reason?: string } {
+    const uid = u.uid || u.id;
+    const email = (u.email || '').toLowerCase().trim();
+    const adminEmail = (currentAdmin.email || '').toLowerCase().trim();
+    const configuredAdmin = (process.env.ADMIN_EMAIL || 'admin@student.annauniv.edu').toLowerCase().trim();
+
+    // Safety Gate 1: Never delete currently authenticated admin
+    if (uid === currentAdmin.uid || email === adminEmail) {
+      return { isTest: false };
+    }
+
+    // Safety Gate 2: Never delete protected system admin accounts
+    if (
+      email === 'admin@student.annauniv.edu' ||
+      email === configuredAdmin ||
+      email === 'internal.system@student.annauniv.edu'
+    ) {
+      return { isTest: false };
+    }
+
+    // Criteria 1: Explicit test-data marker field
+    if (u.isTestData === true || u.isTest === true || u.testData === true) {
+      return { isTest: true, reason: 'Explicit test-data marker (isTestData: true)' };
+    }
+
+    // Criteria 2: Verified test UID list match
+    if (KNOWN_TEST_UIDS.has(uid) || KNOWN_TEST_UIDS.has(u.id)) {
+      return { isTest: true, reason: `Verified test UID list match (${uid})` };
+    }
+
+    // Criteria 3: Deterministic test ID prefix
+    if (isDeterministicTestId(uid) || isDeterministicTestId(u.id)) {
+      return { isTest: true, reason: `Deterministic test UID prefix (${uid})` };
+    }
+
+    // Strict Safety Invariant: Never identify test accounts using only email prefix or an unreliable heuristic
+    return { isTest: false };
+  }
+
+  async function scanAllTestData(
+    admin: { uid: string; email: string },
+    systemToken: string
+  ) {
+    const [users, listings, requests, reservations, chats, reports] = await Promise.all([
+      fetchFirestoreCollection(systemToken, "users", 500),
+      fetchFirestoreCollection(systemToken, "listings", 500),
+      fetchFirestoreCollection(systemToken, "requests", 500),
+      fetchFirestoreCollection(systemToken, "reservations", 500),
+      fetchFirestoreCollection(systemToken, "chats", 500),
+      fetchFirestoreCollection(systemToken, "reports", 500),
+    ]);
+
+    // Also include devUsersStore
+    const allUsersMap = new Map<string, any>();
+    for (const u of users) {
+      allUsersMap.set(u.id || u.uid, u);
+    }
+    for (const [id, devUser] of devUsersStore.entries()) {
+      if (!allUsersMap.has(id)) {
+        allUsersMap.set(id, devUser);
+      }
+    }
+    const allUsers = Array.from(allUsersMap.values());
+
+    const testUsers: any[] = [];
+    const testUserIds = new Set<string>();
+
+    for (const u of allUsers) {
+      const check = identifyTestUser(u, admin);
+      if (check.isTest) {
+        testUsers.push({
+          id: u.id || u.uid,
+          name: u.name || 'Test User',
+          email: u.email || '',
+          reason: check.reason,
+        });
+        testUserIds.add(u.id || u.uid);
+      }
+    }
+
+    const testListings: any[] = [];
+    const testListingIds = new Set<string>();
+
+    for (const l of listings) {
+      let isTest = false;
+      let reason = '';
+
+      if (l.isTestData === true || l.isTest === true) {
+        isTest = true;
+        reason = 'Explicit isTestData marker';
+      } else if (KNOWN_TEST_LISTINGS.has(l.id) || isDeterministicTestId(l.id)) {
+        isTest = true;
+        reason = `Deterministic test listing ID (${l.id})`;
+      } else if (l.sellerId && testUserIds.has(l.sellerId)) {
+        isTest = true;
+        reason = `Associated with test seller (${l.sellerId})`;
+      }
+
+      if (isTest) {
+        testListings.push({
+          id: l.id,
+          title: l.title || 'Test Listing',
+          sellerId: l.sellerId || '',
+          reason,
+        });
+        testListingIds.add(l.id);
+      }
+    }
+
+    const testRequests: any[] = [];
+    for (const r of requests) {
+      let isTest = false;
+      let reason = '';
+
+      if (r.isTestData === true || r.isTest === true) {
+        isTest = true;
+        reason = 'Explicit isTestData marker';
+      } else if (isDeterministicTestId(r.id)) {
+        isTest = true;
+        reason = `Deterministic test request ID (${r.id})`;
+      } else if (r.requesterId && testUserIds.has(r.requesterId)) {
+        isTest = true;
+        reason = `Associated with test requester (${r.requesterId})`;
+      }
+
+      if (isTest) {
+        testRequests.push({
+          id: r.id,
+          title: r.title || 'Test Request',
+          requesterId: r.requesterId || '',
+          reason,
+        });
+      }
+    }
+
+    const testReservations: any[] = [];
+    for (const resItem of reservations) {
+      let isTest = false;
+      let reason = '';
+
+      if (resItem.isTestData === true || resItem.isTest === true) {
+        isTest = true;
+        reason = 'Explicit isTestData marker';
+      } else if (isDeterministicTestId(resItem.id)) {
+        isTest = true;
+        reason = `Deterministic test reservation ID (${resItem.id})`;
+      } else if (
+        (resItem.buyerId && testUserIds.has(resItem.buyerId)) ||
+        (resItem.sellerId && testUserIds.has(resItem.sellerId)) ||
+        (resItem.listingId && testListingIds.has(resItem.listingId))
+      ) {
+        isTest = true;
+        reason = 'Associated with test user or test listing';
+      }
+
+      if (isTest) {
+        testReservations.push({
+          id: resItem.id,
+          listingTitle: resItem.listingTitle || 'Test Reservation',
+          reason,
+        });
+      }
+    }
+
+    const testChats: any[] = [];
+    for (const c of chats) {
+      let isTest = false;
+      let reason = '';
+
+      if (c.isTestData === true || c.isTest === true) {
+        isTest = true;
+        reason = 'Explicit isTestData marker';
+      } else if (isDeterministicTestId(c.id)) {
+        isTest = true;
+        reason = `Deterministic test chat ID (${c.id})`;
+      } else if (c.listingId && testListingIds.has(c.listingId)) {
+        isTest = true;
+        reason = 'Chat linked to test listing';
+      } else if (Array.isArray(c.participants) && c.participants.some((p: string) => testUserIds.has(p))) {
+        isTest = true;
+        reason = 'Chat participants include test user';
+      }
+
+      if (isTest) {
+        testChats.push({
+          id: c.id,
+          reason,
+        });
+      }
+    }
+
+    const testReports: any[] = [];
+    for (const rep of reports) {
+      let isTest = false;
+      let reason = '';
+
+      if (rep.isTestData === true || rep.isTest === true) {
+        isTest = true;
+        reason = 'Explicit isTestData marker';
+      } else if (isDeterministicTestId(rep.id)) {
+        isTest = true;
+        reason = `Deterministic test report ID (${rep.id})`;
+      } else if (
+        (rep.reporterId && testUserIds.has(rep.reporterId)) ||
+        (rep.reportedUserId && testUserIds.has(rep.reportedUserId)) ||
+        (rep.listingId && testListingIds.has(rep.listingId))
+      ) {
+        isTest = true;
+        reason = 'Report involves test user or test listing';
+      }
+
+      if (isTest) {
+        testReports.push({
+          id: rep.id,
+          reason,
+        });
+      }
+    }
+
+    const totalCount =
+      testUsers.length +
+      testListings.length +
+      testRequests.length +
+      testReservations.length +
+      testChats.length +
+      testReports.length;
+
+    return {
+      testUsers,
+      testListings,
+      testRequests,
+      testReservations,
+      testChats,
+      testReports,
+      totalCount,
+    };
+  }
+
+  // Admin Endpoint: Preview Testing Data Cleanup
+  app.get("/api/admin/cleanup-test-data/preview", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const scanResult = await scanAllTestData(admin, systemToken);
+
+      return res.json({
+        summary: {
+          usersCount: scanResult.testUsers.length,
+          listingsCount: scanResult.testListings.length,
+          requestsCount: scanResult.testRequests.length,
+          reservationsCount: scanResult.testReservations.length,
+          chatsCount: scanResult.testChats.length,
+          reportsCount: scanResult.testReports.length,
+          totalCount: scanResult.totalCount,
+        },
+        preview: {
+          users: scanResult.testUsers,
+          listings: scanResult.testListings,
+          requests: scanResult.testRequests,
+          reservations: scanResult.testReservations,
+          chats: scanResult.testChats,
+          reports: scanResult.testReports,
+        },
+        safety: {
+          protectedAdminUid: admin.uid,
+          protectedAdminEmail: admin.email,
+          rulesApplied: [
+            "Current administrator account is strictly protected and will not be touched.",
+            "Real student accounts are preserved; accounts are never identified as test data using only email prefix.",
+            "Testing data requires explicit isTestData flag, verified test list match, or deterministic test prefix.",
+          ],
+        },
+      });
+    } catch (err: any) {
+      console.error("Cleanup preview error:", err);
+      return res.status(500).json({ error: "Failed to generate test data cleanup preview." });
+    }
+  });
+
+  // Admin Endpoint: Execute Testing Data Cleanup
+  app.post("/api/admin/cleanup-test-data/execute", async (req, res) => {
+    try {
+      const admin = await verifyAdminCaller(req);
+      if (!admin) {
+        return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
+      }
+
+      if (!req.body || req.body.confirmed !== true) {
+        return res.status(400).json({ error: "Administrator confirmation is required to proceed with cleanup." });
+      }
+
+      const systemToken = getEffectiveToken(req, await getServerToken());
+      if (!systemToken) {
+        return res.status(503).json({ error: "System service unavailable." });
+      }
+
+      const scanResult = await scanAllTestData(admin, systemToken);
+
+      const deletedCounts = {
+        users: 0,
+        listings: 0,
+        requests: 0,
+        reservations: 0,
+        chats: 0,
+        messages: 0,
+        reports: 0,
+        total: 0,
+      };
+
+      // 1. Delete test listings
+      for (const item of scanResult.testListings) {
+        try {
+          await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/listings/${item.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          });
+          deletedCounts.listings++;
+        } catch (e) {
+          console.warn(`Failed to delete test listing ${item.id}:`, e);
+        }
+      }
+
+      // 2. Delete test requests
+      for (const item of scanResult.testRequests) {
+        try {
+          await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/requests/${item.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          });
+          deletedCounts.requests++;
+        } catch (e) {
+          console.warn(`Failed to delete test request ${item.id}:`, e);
+        }
+      }
+
+      // 3. Delete test reservations
+      for (const item of scanResult.testReservations) {
+        try {
+          await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/reservations/${item.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          });
+          deletedCounts.reservations++;
+        } catch (e) {
+          console.warn(`Failed to delete test reservation ${item.id}:`, e);
+        }
+      }
+
+      // 4. Delete test chats and subcollection messages
+      for (const item of scanResult.testChats) {
+        try {
+          const messages = await fetchFirestoreCollection(systemToken, `chats/${item.id}/messages`, 100);
+          for (const msg of messages) {
+            if (msg.id) {
+              await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/chats/${item.id}/messages/${msg.id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${systemToken}` },
+              });
+              deletedCounts.messages++;
+            }
+          }
+          await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/chats/${item.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          });
+          deletedCounts.chats++;
+        } catch (e) {
+          console.warn(`Failed to delete test chat ${item.id}:`, e);
+        }
+      }
+
+      // 5. Delete test reports
+      for (const item of scanResult.testReports) {
+        try {
+          await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/reports/${item.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          });
+          deletedCounts.reports++;
+        } catch (e) {
+          console.warn(`Failed to delete test report ${item.id}:`, e);
+        }
+      }
+
+      // 6. Delete test users (and private subcollection profile)
+      for (const item of scanResult.testUsers) {
+        try {
+          // Safety double check against active admin
+          if (item.id === admin.uid || item.email?.toLowerCase().trim() === admin.email.toLowerCase().trim()) {
+            continue;
+          }
+
+          // Delete private profile subcollection
+          await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${item.id}/private/profile`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          }).catch(() => {});
+
+          // Delete user document in users
+          await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/users/${item.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${systemToken}` },
+          });
+
+          // Delete from devUsersStore if present
+          devUsersStore.delete(item.id);
+
+          // If email is known, delete registered_emails record
+          if (item.email) {
+            const emailDocId = crypto.createHash("sha256").update(item.email.toLowerCase().trim()).digest("hex");
+            await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/registered_emails/${emailDocId}`, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${systemToken}` },
+            }).catch(() => {});
+          }
+
+          // Delete Auth account ONLY if explicitly identified as test account
+          if (isDeterministicTestId(item.id) || KNOWN_TEST_UIDS.has(item.id)) {
+            try {
+              await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${apiKey}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ localId: item.id }),
+              }).catch(() => {});
+            } catch (_) {}
+          }
+
+          deletedCounts.users++;
+        } catch (e) {
+          console.warn(`Failed to delete test user ${item.id}:`, e);
+        }
+      }
+
+      deletedCounts.total =
+        deletedCounts.users +
+        deletedCounts.listings +
+        deletedCounts.requests +
+        deletedCounts.reservations +
+        deletedCounts.chats +
+        deletedCounts.messages +
+        deletedCounts.reports;
+
+      // Audit Log for testing data cleanup
+      await commitAdminMutationWithAudit(
+        systemToken,
+        admin.email,
+        "clear_testing_data",
+        "system",
+        "testing_data_cleanup",
+        `Cleared ${deletedCounts.total} test records across Firestore.`,
+        [],
+        { deletedCounts, timestamp: new Date().toISOString() }
+      ).catch((err) => console.warn("Failed to write audit log for test cleanup:", err));
+
+      return res.json({
+        success: true,
+        message: `Successfully cleared ${deletedCounts.total} test records.`,
+        deleted: deletedCounts,
+      });
+    } catch (err: any) {
+      console.error("Cleanup execute error:", err);
+      return res.status(500).json({ error: "Failed to execute testing data cleanup." });
     }
   });
 

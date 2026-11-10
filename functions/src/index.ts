@@ -318,6 +318,43 @@ const handleAccountCreation = async (req: express.Request, res: express.Response
         registeredAt: FieldValue.serverTimestamp(),
       });
 
+      // Ensure every successfully registered student has a corresponding Firestore document in 'users'
+      const userDocRef = db.collection("users").doc(userRecord.uid);
+      const userSnap = await userDocRef.get();
+      if (!userSnap.exists) {
+        await userDocRef.set({
+          id: userRecord.uid,
+          uid: userRecord.uid,
+          email: normalizedEmail,
+          name: normalizedEmail.split('@')[0],
+          department: "General",
+          role: "student",
+          status: "active",
+          accountStatus: "active",
+          isVerified: true,
+          campus: "Madras Institute of Technology – Anna University",
+          onboardingCompleted: false,
+          rating: 0,
+          ratingCount: 0,
+          reviewCount: 0,
+          trustScore: 100,
+          exchangesCompleted: 0,
+          completedTransactions: 0,
+          successfulExchanges: 0,
+          reputation: "New Student",
+          badges: ["Anna Univ Student"],
+          createdAt: FieldValue.serverTimestamp(),
+          lastActiveAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        await userDocRef.set({
+          uid: userRecord.uid,
+          email: normalizedEmail,
+          status: userSnap.data()?.status || "active",
+          accountStatus: userSnap.data()?.accountStatus || userSnap.data()?.status || "active",
+        }, { merge: true });
+      }
+
       return res.status(201).json({
         message: "Account created successfully.",
         uid: userRecord.uid,
@@ -405,6 +442,8 @@ app.post("/api/auth/finalize-account", async (req, res) => {
     await userRef.set(
       {
         id: uid,
+        uid: uid,
+        email: normalizedEmail,
         name: cleanName,
         department: cleanDept,
         yearOfStudy: cleanYear,
@@ -415,6 +454,7 @@ app.post("/api/auth/finalize-account", async (req, res) => {
         isVerified: true,
         role: existingData?.role || "student",
         status: existingData?.status || "active",
+        accountStatus: existingData?.accountStatus || existingData?.status || "active",
         rating: existingData?.rating ?? 0,
         ratingCount: existingData?.ratingCount ?? 0,
         reviewCount: existingData?.reviewCount ?? 0,

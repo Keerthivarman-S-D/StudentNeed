@@ -212,6 +212,36 @@ export function AdminDashboard() {
     reason: '',
   });
 
+  // 4. Testing Data Cleanup
+  const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
+  const [cleanupLoadingPreview, setCleanupLoadingPreview] = useState(false);
+  const [cleanupExecuting, setCleanupExecuting] = useState(false);
+  const [cleanupPreviewData, setCleanupPreviewData] = useState<{
+    summary?: {
+      usersCount: number;
+      listingsCount: number;
+      requestsCount: number;
+      reservationsCount: number;
+      chatsCount: number;
+      reportsCount: number;
+      totalCount: number;
+    };
+    preview?: {
+      users: any[];
+      listings: any[];
+      requests: any[];
+      reservations: any[];
+      chats: any[];
+      reports: any[];
+    };
+    safety?: {
+      protectedAdminUid: string;
+      protectedAdminEmail: string;
+      rulesApplied: string[];
+    };
+  } | null>(null);
+  const [cleanupShowDetails, setCleanupShowDetails] = useState(false);
+
   // Fetch all admin data
   const fetchData = async () => {
     try {
@@ -284,6 +314,70 @@ export function AdminDashboard() {
     setTimeout(() => {
       setFeedbackMsg(null);
     }, 4500);
+  };
+
+  // Open Cleanup Modal & load preview
+  const handleOpenCleanupModal = async () => {
+    setCleanupModalOpen(true);
+    setCleanupLoadingPreview(true);
+    setCleanupPreviewData(null);
+    setCleanupShowDetails(false);
+
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const idToken = await currentUser.getIdToken();
+
+      const res = await fetch(ADMIN_ENDPOINTS.cleanupTestDataPreview, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Failed to load test data preview.');
+      }
+
+      const data = await res.json();
+      setCleanupPreviewData(data);
+    } catch (err: any) {
+      console.error('Error fetching test cleanup preview:', err);
+      showToast('error', err.message || 'Failed to scan for testing data.');
+    } finally {
+      setCleanupLoadingPreview(false);
+    }
+  };
+
+  // Execute cleanup
+  const handleExecuteCleanup = async () => {
+    setCleanupExecuting(true);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const idToken = await currentUser.getIdToken();
+
+      const res = await fetch(ADMIN_ENDPOINTS.cleanupTestDataExecute, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ confirmed: true }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to execute test data cleanup.');
+      }
+
+      setCleanupModalOpen(false);
+      showToast('success', `Testing data cleanup complete: ${data.deleted?.total || 0} test records removed.`);
+      handleRefresh();
+    } catch (err: any) {
+      console.error('Error executing test cleanup:', err);
+      showToast('error', err.message || 'Failed to clear testing data.');
+    } finally {
+      setCleanupExecuting(false);
+    }
   };
 
   // Open Edit Listing modal
@@ -657,7 +751,10 @@ export function AdminDashboard() {
   const filteredUsers = useMemo(() => {
     let list = users;
     if (userStatusFilter !== 'all') {
-      list = list.filter((u) => u.status === userStatusFilter);
+      list = list.filter((u) => {
+        const status = u.status || u.accountStatus || 'active';
+        return status === userStatusFilter;
+      });
     }
 
     if (userSearch.trim()) {
@@ -667,7 +764,8 @@ export function AdminDashboard() {
           (u.name && u.name.toLowerCase().includes(q)) ||
           (u.email && u.email.toLowerCase().includes(q)) ||
           (u.department && u.department.toLowerCase().includes(q)) ||
-          (u.id && u.id.toLowerCase().includes(q))
+          (u.id && u.id.toLowerCase().includes(q)) ||
+          (u.uid && u.uid.toLowerCase().includes(q))
       );
     }
     return list;
@@ -761,7 +859,17 @@ export function AdminDashboard() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start md:self-auto">
+        <div className="flex items-center gap-2.5 self-start md:self-auto flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleOpenCleanupModal}
+            className="gap-2 text-xs font-semibold border-rose-200 text-rose-700 hover:bg-rose-50 hover:border-rose-300"
+          >
+            <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+            Clear Testing Data
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -2684,6 +2792,203 @@ export function AdminDashboard() {
               <Button size="sm" variant="outline" onClick={() => setSelectedReportDetail(null)}>
                 Close
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Clear Testing Data Confirmation Modal */}
+      {cleanupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl bg-white rounded-3xl p-6 shadow-2xl border border-zinc-200 max-h-[90vh] overflow-y-auto space-y-5">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-zinc-900 leading-tight">Clear Testing Data</h3>
+                  <p className="text-xs text-zinc-500">Safely identify and remove development test records.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCleanupModalOpen(false)}
+                disabled={cleanupExecuting}
+                className="p-1.5 rounded-full hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 transition-colors"
+                aria-label="Close dialog"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Safety Guarantee Notice */}
+            <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-xs text-emerald-900 space-y-1.5">
+              <div className="flex items-center gap-2 font-semibold">
+                <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
+                <span>Protected Safety Invariants</span>
+              </div>
+              <ul className="list-disc pl-5 space-y-0.5 text-emerald-800">
+                <li>Your currently authenticated administrator account is <strong>never deleted</strong>.</li>
+                <li>Real student accounts and records are <strong>never touched</strong>.</li>
+                <li>Accounts are verified using strict test markers and deterministic test identifiers, never unreliable email heuristics.</li>
+              </ul>
+            </div>
+
+            {/* Body: Preview / Counts */}
+            {cleanupLoadingPreview ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-3 text-zinc-500">
+                <Loader2 className="h-7 w-7 animate-spin text-emerald-600" />
+                <span className="text-xs font-medium">Scanning Firestore for testing records...</span>
+              </div>
+            ) : cleanupPreviewData ? (
+              <div className="space-y-4">
+                {/* Summary Metrics */}
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">
+                    Records Identified for Removal ({cleanupPreviewData.summary?.totalCount || 0} total)
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    <div className="bg-white rounded-xl p-3 border border-zinc-200/80">
+                      <span className="text-[11px] text-zinc-500 block">Test Students</span>
+                      <span className="text-lg font-bold text-zinc-900">{cleanupPreviewData.summary?.usersCount || 0}</span>
+                    </div>
+                    <div className="bg-white rounded-xl p-3 border border-zinc-200/80">
+                      <span className="text-[11px] text-zinc-500 block">Test Listings</span>
+                      <span className="text-lg font-bold text-zinc-900">{cleanupPreviewData.summary?.listingsCount || 0}</span>
+                    </div>
+                    <div className="bg-white rounded-xl p-3 border border-zinc-200/80">
+                      <span className="text-[11px] text-zinc-500 block">Test Requests</span>
+                      <span className="text-lg font-bold text-zinc-900">{cleanupPreviewData.summary?.requestsCount || 0}</span>
+                    </div>
+                    <div className="bg-white rounded-xl p-3 border border-zinc-200/80">
+                      <span className="text-[11px] text-zinc-500 block">Test Reservations</span>
+                      <span className="text-lg font-bold text-zinc-900">{cleanupPreviewData.summary?.reservationsCount || 0}</span>
+                    </div>
+                    <div className="bg-white rounded-xl p-3 border border-zinc-200/80">
+                      <span className="text-[11px] text-zinc-500 block">Test Chats</span>
+                      <span className="text-lg font-bold text-zinc-900">{cleanupPreviewData.summary?.chatsCount || 0}</span>
+                    </div>
+                    <div className="bg-white rounded-xl p-3 border border-zinc-200/80">
+                      <span className="text-[11px] text-zinc-500 block">Test Reports</span>
+                      <span className="text-lg font-bold text-zinc-900">{cleanupPreviewData.summary?.reportsCount || 0}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Details Accordion / Toggle */}
+                {cleanupPreviewData.summary && cleanupPreviewData.summary.totalCount > 0 ? (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setCleanupShowDetails(!cleanupShowDetails)}
+                      className="text-xs font-medium text-emerald-800 hover:text-emerald-950 flex items-center gap-1.5"
+                    >
+                      <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', cleanupShowDetails && 'rotate-90')} />
+                      <span>{cleanupShowDetails ? 'Hide' : 'Show'} Itemized Record Preview</span>
+                    </button>
+
+                    {cleanupShowDetails && (
+                      <div className="rounded-xl border border-zinc-200 bg-white p-3 max-h-48 overflow-y-auto text-xs divide-y divide-zinc-100">
+                        {cleanupPreviewData.preview?.users?.map((u: any) => (
+                          <div key={u.id} className="py-2 flex items-center justify-between gap-2">
+                            <div>
+                              <span className="font-semibold text-zinc-800">Student: {u.name}</span>
+                              <span className="font-mono text-[10px] text-zinc-500 block">{u.id} ({u.email})</span>
+                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                              {u.reason}
+                            </span>
+                          </div>
+                        ))}
+                        {cleanupPreviewData.preview?.listings?.map((l: any) => (
+                          <div key={l.id} className="py-2 flex items-center justify-between gap-2">
+                            <div>
+                              <span className="font-semibold text-zinc-800">Listing: {l.title}</span>
+                              <span className="font-mono text-[10px] text-zinc-500 block">{l.id}</span>
+                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                              {l.reason}
+                            </span>
+                          </div>
+                        ))}
+                        {cleanupPreviewData.preview?.requests?.map((r: any) => (
+                          <div key={r.id} className="py-2 flex items-center justify-between gap-2">
+                            <div>
+                              <span className="font-semibold text-zinc-800">Request: {r.title}</span>
+                              <span className="font-mono text-[10px] text-zinc-500 block">{r.id}</span>
+                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                              {r.reason}
+                            </span>
+                          </div>
+                        ))}
+                        {cleanupPreviewData.preview?.reservations?.map((res: any) => (
+                          <div key={res.id} className="py-2 flex items-center justify-between gap-2">
+                            <div>
+                              <span className="font-semibold text-zinc-800">Reservation: {res.listingTitle}</span>
+                              <span className="font-mono text-[10px] text-zinc-500 block">{res.id}</span>
+                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                              {res.reason}
+                            </span>
+                          </div>
+                        ))}
+                        {cleanupPreviewData.preview?.chats?.map((c: any) => (
+                          <div key={c.id} className="py-2 flex items-center justify-between gap-2">
+                            <div>
+                              <span className="font-semibold text-zinc-800">Chat</span>
+                              <span className="font-mono text-[10px] text-zinc-500 block">{c.id}</span>
+                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                              {c.reason}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-6 text-center text-xs text-zinc-600">
+                    <CheckCircle2 className="h-6 w-6 text-emerald-600 mx-auto mb-2" />
+                    <p className="font-semibold text-zinc-900">Database is Clean</p>
+                    <p className="text-zinc-500 mt-0.5">No test records were detected in Firestore.</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCleanupModalOpen(false)}
+                disabled={cleanupExecuting}
+              >
+                Cancel
+              </Button>
+
+              {cleanupPreviewData?.summary && cleanupPreviewData.summary.totalCount > 0 && (
+                <Button
+                  size="sm"
+                  onClick={handleExecuteCleanup}
+                  disabled={cleanupExecuting || cleanupLoadingPreview}
+                  className="bg-rose-700 hover:bg-rose-800 text-white gap-2 font-semibold text-xs"
+                >
+                  {cleanupExecuting ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Cleaning Up...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Confirm & Clear ({cleanupPreviewData.summary.totalCount}) Test Records
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>

@@ -204,6 +204,12 @@ export const ADMIN_ENDPOINTS = {
   get activityLogs() {
     return `${getApiBaseUrl()}/api/admin/activity-logs`;
   },
+  get cleanupTestDataPreview() {
+    return `${getApiBaseUrl()}/api/admin/cleanup-test-data/preview`;
+  },
+  get cleanupTestDataExecute() {
+    return `${getApiBaseUrl()}/api/admin/cleanup-test-data/execute`;
+  },
 };
 
 export const RESERVATION_ENDPOINTS = {

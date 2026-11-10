@@ -331,6 +331,8 @@ export function Onboarding() {
             doc(db, 'users', activeUid),
             {
               id: activeUid,
+              uid: activeUid,
+              email: cleanEmail,
               name: cleanName,
               department: cleanDept,
               yearOfStudy: cleanYear,
@@ -339,6 +341,10 @@ export function Onboarding() {
               campus: 'Madras Institute of Technology – Anna University',
               onboardingCompleted: true,
               isVerified: true,
+              role: 'student',
+              status: 'active',
+              accountStatus: 'active',
+              createdAt: new Date().toISOString(),
             },
             { merge: true }
           );
