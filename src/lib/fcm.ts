@@ -3,17 +3,30 @@ import { initializeApp, getApps } from 'firebase/app';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 let messagingInstance: any = null;
+let messagingPromise: Promise<any> | null = null;
 
 export async function getFCMInstance() {
   if (typeof window === 'undefined') return null;
-  const supported = await isSupported().catch(() => false);
-  if (!supported) return null;
+  if (messagingInstance) return messagingInstance;
+  if (messagingPromise) return messagingPromise;
 
-  if (!messagingInstance) {
-    const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
-    messagingInstance = getMessaging(app);
-  }
-  return messagingInstance;
+  messagingPromise = (async () => {
+    try {
+      const supported = await isSupported().catch(() => false);
+      if (!supported) return null;
+
+      const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
+      messagingInstance = getMessaging(app);
+      return messagingInstance;
+    } catch (err) {
+      console.debug('[FCM] Messaging instance initialization skipped or unsupported:', err);
+      return null;
+    } finally {
+      messagingPromise = null;
+    }
+  })();
+
+  return messagingPromise;
 }
 
 export function isPushSupported(): boolean {
@@ -33,29 +46,61 @@ export function isStandalonePWA(): boolean {
   return window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
 }
 
+export function isPushServiceError(err: any): boolean {
+  if (!err) return false;
+  const name = err.name || '';
+  const msg = String(err.message || err);
+  return (
+    name === 'AbortError' ||
+    msg.includes('push service error') ||
+    msg.includes('Registration failed') ||
+    msg.includes('Push service error')
+  );
+}
+
 export async function requestPushPermission(): Promise<NotificationPermission> {
   if (!isPushSupported()) return 'denied';
   if (Notification.permission === 'granted') return 'granted';
   return await Notification.requestPermission();
 }
 
+async function getOrRegisterMessagingSW(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return null;
+
+  try {
+    // 1. Check if an active service worker is already registered for root scope
+    const existing = await navigator.serviceWorker.getRegistration('/');
+    if (existing && existing.active) {
+      return existing;
+    }
+
+    // 2. Register canonical service worker under root scope
+    let reg: ServiceWorkerRegistration;
+    try {
+      reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+    } catch (swErr) {
+      // Fallback to proxy service worker if direct script registration fails
+      reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    }
+    await navigator.serviceWorker.ready;
+    return reg;
+  } catch (err) {
+    console.debug('[FCM] Service worker registration notice:', err);
+    return null;
+  }
+}
+
 export async function subscribeToFCM(vapidPublicKey?: string): Promise<string | null> {
   try {
     if (!isPushSupported()) return null;
 
-    const permission = await requestPushPermission();
-    if (permission !== 'granted') return null;
-
-    // Register canonical service worker under root scope
-    let reg: ServiceWorkerRegistration;
-    try {
-      reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
-      await navigator.serviceWorker.ready;
-    } catch (swErr) {
-      console.warn('FCM service worker fallback to /sw.js:', swErr);
-      reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-      await navigator.serviceWorker.ready;
+    // Push notifications are strictly optional. Never prompt for permission automatically.
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+      return null;
     }
+
+    const reg = await getOrRegisterMessagingSW();
+    if (!reg) return null;
 
     const messaging = await getFCMInstance();
     if (!messaging) return null;
@@ -72,8 +117,14 @@ export async function subscribeToFCM(vapidPublicKey?: string): Promise<string | 
     });
 
     return token || null;
-  } catch (err) {
-    console.warn('FCM registration notice:', err);
+  } catch (err: any) {
+    if (isPushServiceError(err)) {
+      // Push service is disabled in private/incognito mode or blocked by browser/network.
+      // Log as diagnostic debug info to avoid alarming console errors.
+      console.debug('[FCM] Push service unavailable in current browser session (Incognito/private mode or push service disabled):', err?.message);
+    } else {
+      console.warn('FCM registration notice:', err);
+    }
     return null;
   }
 }
@@ -81,9 +132,11 @@ export async function subscribeToFCM(vapidPublicKey?: string): Promise<string | 
 export function onForegroundMessage(callback: (payload: any) => void): (() => void) | null {
   if (typeof window === 'undefined') return null;
 
+  let isDisposed = false;
   let unsub: (() => void) | null = null;
+
   getFCMInstance().then((messaging) => {
-    if (messaging) {
+    if (messaging && !isDisposed) {
       unsub = onMessage(messaging, (payload) => {
         callback(payload);
       });
@@ -91,6 +144,7 @@ export function onForegroundMessage(callback: (payload: any) => void): (() => vo
   }).catch(() => {});
 
   return () => {
+    isDisposed = true;
     if (unsub) unsub();
   };
 }

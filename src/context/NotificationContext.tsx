@@ -24,7 +24,8 @@ import {
   isStandalonePWA,
   requestPushPermission,
   subscribeToFCM,
-  onForegroundMessage
+  onForegroundMessage,
+  isPushServiceError,
 } from '../lib/fcm';
 import { NOTIFICATION_ENDPOINTS } from '../config/api';
 
@@ -85,15 +86,20 @@ export function getStableNotificationKey(item: any): string {
   return '';
 }
 
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
+function urlBase64ToUint8Array(base64String: string): Uint8Array | null {
+  if (!base64String || typeof base64String !== 'string') return null;
+  try {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  } catch {
+    return null;
   }
-  return outputArray;
 }
 
 interface NotificationContextType {
@@ -299,19 +305,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setSoundEnabled((prev) => !prev);
   };
 
-  // Helper to sync and register both FCM and Web Push tokens independently with backend
+  // Helper to sync and register FCM and Web Push tokens independently with backend
   const syncPushRegistration = useCallback(async (vapidKeyParam?: string): Promise<{
     fcmToken: string | null;
     fcmSuccess: boolean;
     webPushSuccess: boolean;
     success: boolean;
+    pushServiceAvailable: boolean;
   }> => {
     let fcmToken: string | null = null;
     let fcmSuccess = false;
     let webPushSuccess = false;
+    let pushServiceAvailable = true;
 
-    if (!isPushSupported()) {
-      return { fcmToken: null, fcmSuccess: false, webPushSuccess: false, success: false };
+    if (!isPushSupported() || typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+      return { fcmToken: null, fcmSuccess: false, webPushSuccess: false, success: false, pushServiceAvailable: false };
     }
 
     try {
@@ -330,7 +338,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             vapidPublicKey = vapidData.publicKey || '';
           }
         } catch (vErr) {
-          console.warn('VAPID public key fetch notice:', vErr);
+          console.debug('VAPID public key fetch notice:', vErr);
         }
       }
 
@@ -356,7 +364,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             const fcmData = await fcmRes.json().catch(() => ({}));
             // Only count FCM as successful delivery channel if backend confirms delivery credentials (Google ADC) exist
             if (fcmData.deliveryAvailable === false) {
-              console.warn('FCM token registered, but backend FCM v1 delivery credentials (Google ADC) are not configured. Web Push fallback remains active.');
+              console.debug('FCM token registered; Web Push fallback remains active if configured.');
               fcmSuccess = false;
             } else {
               fcmSuccess = true;
@@ -365,47 +373,65 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             console.warn(`FCM token registration rejected by server: HTTP ${fcmRes?.status ?? 'error'}`);
           }
         }
-      } catch (fcmErr) {
-        console.warn('FCM registration notice (non-fatal, Web Push fallback remains active):', fcmErr);
+      } catch (fcmErr: any) {
+        if (isPushServiceError(fcmErr)) {
+          pushServiceAvailable = false;
+          console.debug('[Push] Browser push service unavailable in current session:', fcmErr?.message);
+        } else {
+          console.warn('FCM registration notice (non-fatal, Web Push fallback remains active):', fcmErr);
+        }
       }
 
-      // 3. Register standard Web Push VAPID subscription independently and check actual HTTP status
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        if (vapidPublicKey && 'pushManager' in reg) {
-          let sub = await reg.pushManager.getSubscription();
-          if (!sub) {
-            sub = await reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-            });
-          }
-          if (idToken && sub) {
-            const subRes = await fetch(NOTIFICATION_ENDPOINTS.subscribe, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${idToken}`,
-              },
-              body: JSON.stringify({ subscription: sub.toJSON() }),
-            }).catch(() => null);
+      // 3. Register standard Web Push VAPID subscription ONLY IF:
+      // - FCM was not already successfully registered on the server (avoids redundant/competing push subscriptions)
+      // - Push service is actually available (avoids duplicate AbortError when push service is blocked or Incognito)
+      // - A valid VAPID public key exists
+      if (!fcmSuccess && pushServiceAvailable && vapidPublicKey) {
+        try {
+          const appServerKey = urlBase64ToUint8Array(vapidPublicKey);
+          if (appServerKey && 'serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.ready;
+            if ('pushManager' in reg) {
+              let sub = await reg.pushManager.getSubscription();
+              if (!sub) {
+                sub = await reg.pushManager.subscribe({
+                  userVisibleOnly: true,
+                  applicationServerKey: appServerKey,
+                });
+              }
+              if (idToken && sub) {
+                const subRes = await fetch(NOTIFICATION_ENDPOINTS.subscribe, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${idToken}`,
+                  },
+                  body: JSON.stringify({ subscription: sub.toJSON() }),
+                }).catch(() => null);
 
-            if (subRes && subRes.ok) {
-              webPushSuccess = true;
-            } else {
-              console.warn(`Web Push registration rejected by server: HTTP ${subRes?.status ?? 'error'}`);
+                if (subRes && subRes.ok) {
+                  webPushSuccess = true;
+                } else {
+                  console.warn(`Web Push registration rejected by server: HTTP ${subRes?.status ?? 'error'}`);
+                }
+              }
             }
           }
+        } catch (webPushErr: any) {
+          if (isPushServiceError(webPushErr)) {
+            pushServiceAvailable = false;
+            console.debug('[Push] Web Push subscription notice: push service unavailable in this environment.');
+          } else {
+            console.warn('Web Push subscription notice:', webPushErr);
+          }
         }
-      } catch (webPushErr) {
-        console.warn('Web Push subscription notice:', webPushErr);
       }
     } catch (err) {
-      console.warn('Push sync error:', err);
+      console.debug('Push sync notice:', err);
     }
 
     const success = fcmSuccess || webPushSuccess;
-    return { fcmToken, fcmSuccess, webPushSuccess, success };
+    return { fcmToken, fcmSuccess, webPushSuccess, success, pushServiceAvailable };
   }, []);
 
   const toggleBrowserNotifications = async () => {
@@ -487,11 +513,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setIsPushRegisteredOnServer(regResult.success);
       if (!regResult.success) {
         // Distinguish browser permission from successful server registration
-        // Never mark push registration successful if both methods failed on the backend
         setBrowserNotificationsEnabled(false);
-        alert(
-          'Notification permission was granted by your browser, but registration with the push notification server could not be completed. Please check your connection or server status and try again.'
-        );
+        if (!regResult.pushServiceAvailable) {
+          alert(
+            'Notification permission was granted, but your browser push service is unavailable (for example, in Private/Incognito browsing mode or due to browser/network restrictions). In-app alerts will continue to work while StudentNeed is open.'
+          );
+        } else {
+          alert(
+            'Notification permission was granted by your browser, but registration with the push notification server could not be completed. Please check your connection or server status and try again.'
+          );
+        }
         return;
       }
       setBrowserNotificationsEnabled(true);
@@ -521,14 +552,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setIsPushRegisteredOnServer(regResult.success);
           if (!regResult.success) {
-            console.warn('Push registration auto-refresh notice: backend registration unconfirmed; preserving user preference.');
+            console.debug('Push registration auto-refresh notice: backend registration unconfirmed; preserving user preference.');
             // Crucial: DO NOT erase user's persistent preference during network outages or server restarts!
           }
         }
       } catch (e) {
         if (isMounted) {
           setIsPushRegisteredOnServer(false);
-          console.warn('Auto-refresh push token notice:', e);
+          console.debug('Auto-refresh push token notice:', e);
         }
       }
     };
